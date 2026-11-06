@@ -1,0 +1,46 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  docker:
+    compose:
+      # El gateway no tiene base de datos propia
+      enabled: false
+  cloud:
+    gateway:
+      server:
+        webmvc:
+          routes:
+            - id: auth-service
+              uri: ${AUTH_SERVICE_URL:http://localhost:8081}
+              predicates:
+                - Path=/api/auth/**,/api/users/**,/api/roles/**,/api/permissions/**
+
+            # Expone el OpenAPI de cada servicio para el Swagger unificado del gateway
+            - id: auth-service-docs
+              uri: ${AUTH_SERVICE_URL:http://localhost:8081}
+              predicates:
+                - Path=/docs/auth-service/**
+              filters:
+                - RewritePath=/docs/auth-service/(?<segment>.*), /${segment}
+
+# Swagger unificado: http://localhost:8080/swagger-ui.html
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: method
+    display-request-duration: true
+    urls:
+      - name: auth-service
+        url: /docs/auth-service/api-docs
+  api-docs:
+    path: /api-docs
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway

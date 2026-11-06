@@ -1,0 +1,11 @@
+name: ticketya-event
+services:
+  event-db:
+    image: 'mysql:8.4'
+    environment:
+      - 'MYSQL_DATABASE=event_db'
+      - 'MYSQL_USER=group10'
+      - 'MYSQL_PASSWORD=group10'
+      - 'MYSQL_ROOT_PASSWORD=group10'
+    ports:
+      - '3308:3306'

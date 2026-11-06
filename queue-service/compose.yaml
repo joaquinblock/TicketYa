@@ -1,0 +1,6 @@
+name: ticketya-queue
+services:
+  queue-redis:
+    image: 'redis:7.4'
+    ports:
+      - '6379:6379'

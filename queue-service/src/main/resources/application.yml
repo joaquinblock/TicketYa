@@ -1,0 +1,30 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: queue-service
+  http:
+    serviceclient:
+      event-service:
+        base-url: ${EVENT_SERVICE_URL:http://localhost:8082}
+  docker:
+    compose:
+      file: compose.yaml
+      lifecycle-management: start-only
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: method
+    display-request-duration: true
+  api-docs:
+    path: /api-docs
+
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

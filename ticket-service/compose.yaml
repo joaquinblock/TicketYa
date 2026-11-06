@@ -1,0 +1,11 @@
+name: ticketya-ticket
+services:
+  ticket-db:
+    image: 'mysql:8.4'
+    environment:
+      - 'MYSQL_DATABASE=ticket_db'
+      - 'MYSQL_USER=group10'
+      - 'MYSQL_PASSWORD=group10'
+      - 'MYSQL_ROOT_PASSWORD=group10'
+    ports:
+      - '3309:3306'

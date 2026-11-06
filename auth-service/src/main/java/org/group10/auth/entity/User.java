@@ -1,4 +1,4 @@
-package org.group10.auth.model;
+package org.group10.auth.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

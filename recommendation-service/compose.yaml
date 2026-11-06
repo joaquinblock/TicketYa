@@ -1,0 +1,10 @@
+name: ticketya-recommendation
+services:
+  recommendation-mongo:
+    image: 'mongo:8.0'
+    environment:
+      - 'MONGO_INITDB_DATABASE=recommendation_db'
+      - 'MONGO_INITDB_ROOT_USERNAME=group10'
+      - 'MONGO_INITDB_ROOT_PASSWORD=group10'
+    ports:
+      - '27017:27017'

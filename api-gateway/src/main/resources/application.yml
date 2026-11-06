@@ -6,7 +6,6 @@ spring:
     name: api-gateway
   docker:
     compose:
-      # El gateway no tiene base de datos propia
       enabled: false
   cloud:
     gateway:
@@ -16,17 +15,75 @@ spring:
             - id: auth-service
               uri: ${AUTH_SERVICE_URL:http://localhost:8081}
               predicates:
-                - Path=/api/auth/**,/api/users/**,/api/roles/**,/api/permissions/**
+                - Path=/api/auth/**,/api/users/**,/api/roles/**,/api/permissions/**,/api/organizations/**
+            - id: event-service
+              uri: ${EVENT_SERVICE_URL:http://localhost:8082}
+              predicates:
+                - Path=/api/events/**,/api/venues/**,/api/participants/**
+            - id: ticket-service
+              uri: ${TICKET_SERVICE_URL:http://localhost:8083}
+              predicates:
+                - Path=/api/orders/**,/api/tickets/**,/api/refunds/**,/api/reports/**
+            - id: payment-service
+              uri: ${PAYMENT_SERVICE_URL:http://localhost:8084}
+              predicates:
+                - Path=/api/payments/**
+            - id: queue-service
+              uri: ${QUEUE_SERVICE_URL:http://localhost:8085}
+              predicates:
+                - Path=/api/queue/**
+            - id: notification-service
+              uri: ${NOTIFICATION_SERVICE_URL:http://localhost:8086}
+              predicates:
+                - Path=/api/notifications/**
+            - id: recommendation-service
+              uri: ${RECOMMENDATION_SERVICE_URL:http://localhost:8087}
+              predicates:
+                - Path=/api/preferences/**,/api/recommendations/**
 
-            # Expone el OpenAPI de cada servicio para el Swagger unificado del gateway
             - id: auth-service-docs
               uri: ${AUTH_SERVICE_URL:http://localhost:8081}
               predicates:
                 - Path=/docs/auth-service/**
               filters:
                 - RewritePath=/docs/auth-service/(?<segment>.*), /${segment}
+            - id: event-service-docs
+              uri: ${EVENT_SERVICE_URL:http://localhost:8082}
+              predicates:
+                - Path=/docs/event-service/**
+              filters:
+                - RewritePath=/docs/event-service/(?<segment>.*), /${segment}
+            - id: ticket-service-docs
+              uri: ${TICKET_SERVICE_URL:http://localhost:8083}
+              predicates:
+                - Path=/docs/ticket-service/**
+              filters:
+                - RewritePath=/docs/ticket-service/(?<segment>.*), /${segment}
+            - id: payment-service-docs
+              uri: ${PAYMENT_SERVICE_URL:http://localhost:8084}
+              predicates:
+                - Path=/docs/payment-service/**
+              filters:
+                - RewritePath=/docs/payment-service/(?<segment>.*), /${segment}
+            - id: queue-service-docs
+              uri: ${QUEUE_SERVICE_URL:http://localhost:8085}
+              predicates:
+                - Path=/docs/queue-service/**
+              filters:
+                - RewritePath=/docs/queue-service/(?<segment>.*), /${segment}
+            - id: notification-service-docs
+              uri: ${NOTIFICATION_SERVICE_URL:http://localhost:8086}
+              predicates:
+                - Path=/docs/notification-service/**
+              filters:
+                - RewritePath=/docs/notification-service/(?<segment>.*), /${segment}
+            - id: recommendation-service-docs
+              uri: ${RECOMMENDATION_SERVICE_URL:http://localhost:8087}
+              predicates:
+                - Path=/docs/recommendation-service/**
+              filters:
+                - RewritePath=/docs/recommendation-service/(?<segment>.*), /${segment}
 
-# Swagger unificado: http://localhost:8080/swagger-ui.html
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
@@ -36,6 +93,18 @@ springdoc:
     urls:
       - name: auth-service
         url: /docs/auth-service/api-docs
+      - name: event-service
+        url: /docs/event-service/api-docs
+      - name: ticket-service
+        url: /docs/ticket-service/api-docs
+      - name: payment-service
+        url: /docs/payment-service/api-docs
+      - name: queue-service
+        url: /docs/queue-service/api-docs
+      - name: notification-service
+        url: /docs/notification-service/api-docs
+      - name: recommendation-service
+        url: /docs/recommendation-service/api-docs
   api-docs:
     path: /api-docs
 

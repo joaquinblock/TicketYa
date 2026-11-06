@@ -4,6 +4,10 @@ server:
 spring:
   application:
     name: auth-service
+  http:
+    serviceclient:
+      event-service:
+        base-url: ${EVENT_SERVICE_URL:http://localhost:8082}
   docker:
     compose:
       file: compose.yaml
@@ -25,6 +29,7 @@ springdoc:
     display-request-duration: true
   api-docs:
     path: /api-docs
+
 
 management:
   endpoints:

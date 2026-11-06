@@ -2,9 +2,9 @@ package org.group10.auth.seeder;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.group10.auth.model.Permission;
-import org.group10.auth.model.Role;
-import org.group10.auth.model.User;
+import org.group10.auth.entity.Permission;
+import org.group10.auth.entity.Role;
+import org.group10.auth.entity.User;
 import org.group10.auth.repository.PermissionRepository;
 import org.group10.auth.repository.RoleRepository;
 import org.group10.auth.repository.UserRepository;

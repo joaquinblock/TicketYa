@@ -1,0 +1,13 @@
+# Base de datos propia del auth-service.
+# spring-boot-docker-compose la levanta sola al arrancar la app y configura el datasource.
+name: ticketya-auth
+services:
+  auth-db:
+    image: 'mysql:8.4'
+    environment:
+      - 'MYSQL_DATABASE=auth_db'
+      - 'MYSQL_USER=group10'
+      - 'MYSQL_PASSWORD=group10'
+      - 'MYSQL_ROOT_PASSWORD=group10'
+    ports:
+      - '3307:3306'

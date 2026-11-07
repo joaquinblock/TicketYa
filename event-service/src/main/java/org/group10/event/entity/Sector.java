@@ -11,6 +11,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import jakarta.validation.constraints.Min;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -48,5 +49,7 @@ public class Sector {
     @Column(nullable = false)
     private boolean numbered;
 
+    @Min(1)
+    @Column(nullable = false)
     private Integer capacity;
 }

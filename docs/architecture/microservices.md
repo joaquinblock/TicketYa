@@ -70,6 +70,16 @@ Alternativas descartadas: **OpenFeign** (en mantenimiento), **WebClient** (react
 
 Cada client es una interfaz `@HttpExchange` en el paquete `client`, registrada en `config/HttpClientsConfig` con `@ImportHttpServices`. La URL base va en `spring.http.serviceclient.<servicio>.base-url` del `application.yml`, con variable de entorno para Docker (p. ej. `EVENT_SERVICE_URL`).
 
+## Módulos Maven
+
+| Módulo | Qué es |
+|---|---|
+| `pom.xml` (raíz) | Padre y agregador. Lista los módulos, fija versiones (`dependencyManagement`) y define las dependencias que heredan todos |
+| `common` | Librería (`.jar` común, sin `spring-boot-maven-plugin`): `ErrorDto`, `TicketYaException`, `ErrorCode` y `GlobalExceptionHandler`, este último auto-configurado. Hereda del padre como cualquier módulo |
+| `*-service` | Heredan del padre (`<parent>`) y **dependen** de `common` (`<dependency>`, sin versión) para tener el manejo de errores sin repetirlo |
+
+Heredar trae la configuración y las dependencias comunes. Depender trae el código compartido.
+
 ## Estructura de paquetes de cada servicio
 
 | Paquete | Contenido |

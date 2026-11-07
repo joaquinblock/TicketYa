@@ -26,6 +26,7 @@
     <description>Plataforma de venta de entradas - Arquitectura Web (TUDAI) - Grupo 10</description>
 
     <modules>
+        <module>common</module>
         <module>api-gateway</module>
         <module>auth-service</module>
         <module>event-service</module>
@@ -107,6 +108,13 @@
                 <version>${spring-cloud.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+
+            <!-- Librería compartida: formato de error y manejo de excepciones -->
+            <dependency>
+                <groupId>org.group10</groupId>
+                <artifactId>common</artifactId>
+                <version>${project.version}</version>
             </dependency>
 
             <!-- Generación de códigos QR (servicio que emita entradas) -->

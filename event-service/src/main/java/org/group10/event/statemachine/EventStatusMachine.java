@@ -21,9 +21,7 @@ public class EventStatusMachine {
     static {
         ALLOWED.put(DRAFT, EnumSet.of(PUBLISHED));
         ALLOWED.put(PUBLISHED, EnumSet.of(SOLD_OUT, SUSPENDED, CANCELLED, FINISHED));
-        // Vuelve a PUBLISHED si se libera stock (devolución de una entrada)
         ALLOWED.put(SOLD_OUT, EnumSet.of(PUBLISHED, SUSPENDED, CANCELLED, FINISHED));
-        // Al reanudar vuelve a PUBLISHED o a SOLD_OUT, según el stock del ticket-service
         ALLOWED.put(SUSPENDED, EnumSet.of(PUBLISHED, SOLD_OUT, CANCELLED));
         ALLOWED.put(CANCELLED, EnumSet.noneOf(EventStatus.class));
         ALLOWED.put(FINISHED, EnumSet.noneOf(EventStatus.class));
@@ -31,17 +29,11 @@ public class EventStatusMachine {
 
     public EventStatus transition(EventStatus current, EventStatus next) {
 
+        if (current == null || next == null) throw new RuntimeException("Los estados no pueden ser null");
+
         if(current.equals(next)) return current;
 
-        if (current == null || next == null) {
-            throw new RuntimeException("Los estados no pueden ser null");
-        }
-
-        if (!ALLOWED.get(current).contains(next)) {
-            throw new RuntimeException(
-                    "Transición no permitida: " + current + " -> " + next
-            );
-        }
+        if (!ALLOWED.get(current).contains(next)) throw new RuntimeException("Transición no permitida: " + current + " -> " + next);
 
         return next;
     }

@@ -49,7 +49,5 @@ public class Sector {
     @Column(nullable = false)
     private boolean numbered;
 
-    @Min(1)
-    @Column(nullable = false)
     private Integer capacity;
 }

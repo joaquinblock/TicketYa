@@ -66,7 +66,6 @@ public class Event {
 
     private LocalDateTime saleStart;
 
-    @Column(nullable = false)
     private Integer maxTicketsPerCustomer;
 
     @Column(nullable = false)

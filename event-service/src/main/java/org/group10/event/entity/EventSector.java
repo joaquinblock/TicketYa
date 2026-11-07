@@ -10,12 +10,16 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.NotNull;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.ColumnDefault;
 
 import java.math.BigDecimal;
 
@@ -43,6 +47,9 @@ public class EventSector {
     @JoinColumn(name = "sector_id", nullable = false)
     private Sector sector;
 
+    @NotNull
+    @DecimalMin(value = "0.00", inclusive = false) // consultar entredas gratis
+    @Digits(integer = 10, fraction = 2) // admisión con solamente 2 digitos de centavos
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal price;
 }

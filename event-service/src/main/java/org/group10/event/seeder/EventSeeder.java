@@ -153,7 +153,6 @@ public class EventSeeder implements ApplicationRunner {
                 .event(event)
                 .sector(sector)
                 .price(new BigDecimal(price))
-                .occupied(sector.isNumbered() ? null : 0)
                 .build();
     }
 }

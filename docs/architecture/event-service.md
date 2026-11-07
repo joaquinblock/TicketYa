@@ -63,7 +63,6 @@ erDiagram
         bigint event_id FK
         bigint sector_id FK
         decimal price
-        int occupied "non-numbered only"
     }
 ```
 
@@ -131,6 +130,11 @@ Si el event-service pasa a MongoDB, la cuestión desaparece: el `venue` es un do
 
 ## Lo que no vive acá
 
-La **disponibilidad** de los asientos (libre, reservado o vendido) no es parte del catálogo: está en `event_seat`, en el **ticket-service**, porque necesita consistencia fuerte y no puede cachearse. El event-service solo dice qué se vende y a qué precio. Ver `microservices.md`.
+La **disponibilidad** no es parte del catálogo: vive en el **ticket-service**, porque necesita consistencia fuerte y no puede cachearse. El event-service solo dice qué se vende y a qué precio.
 
-**Pendiente:** `event_sector.occupied` es el equivalente de `event_seat` para los sectores no numerados, así que por el mismo motivo debería pasar al ticket-service.
+| Tipo de sector | Dónde está la disponibilidad |
+|---|---|
+| Numerado | `event_seat`, un registro por asiento y evento |
+| No numerado | `event_sector_stock`, un contador por sector y evento |
+
+Por eso `event_sector` no tiene un campo de ocupados: el diagrama original lo tenía (`occupied`) y se movió al ticket-service. Ver `ticket-service.md`.

@@ -48,8 +48,8 @@ public class EventSector {
     private Sector sector;
 
     @NotNull
-    @DecimalMin(value = "0.00", inclusive = false) // consultar entredas gratis
-    @Digits(integer = 10, fraction = 2) // admisión con solamente 2 digitos de centavos
+    @DecimalMin(value = "0.00", inclusive = false)
+    @Digits(integer = 10, fraction = 2)
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal price;
 }

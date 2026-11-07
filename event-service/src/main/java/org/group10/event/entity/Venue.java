@@ -35,7 +35,9 @@ public class Venue {
     @Column(nullable = false)
     private String city;
 
+    @Column(nullable = false)
     private Double latitude;
 
+    @Column(nullable = false)
     private Double longitude;
 }

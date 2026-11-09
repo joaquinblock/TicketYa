@@ -1,15 +1,15 @@
 {
   "info": {
     "name": "TicketYa - Creación de eventos",
-    "description": "Casos de POST /api/events y de los endpoints del auth-service que usa. Necesita auth-service (8081), event-service (8082) y api-gateway (8080) levantados, y en AuthSeeder la organización 1 con el organizador 2 y la organización 2 sin él (ver docs/team/event-creation-pending.md).",
+    "description": "Casos de POST /api/events y de los endpoints del auth-service que usa, incluido el chequeo de permisos (ver docs/architecture/permissions.md). Necesita auth-service (8081), event-service (8082) y api-gateway (8080) levantados, y en AuthSeeder la organización 1 con el organizador 2 y la organización 2 sin él (ver docs/team/event-creation-pending.md).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:8080" },
-    { "key": "authUrl", "value": "http://localhost:8081" },
     { "key": "organizationId", "value": "1" },
     { "key": "otherOrganizationId", "value": "2" },
     { "key": "organizerId", "value": "2" },
+    { "key": "clientId", "value": "1" },
     { "key": "venueId", "value": "1" },
     { "key": "eventId", "value": "" }
   ],
@@ -47,11 +47,7 @@
             "  pm.expect(pm.response.json().organizationId).to.eql(Number(pm.collectionVariables.get('organizationId')));",
             "});"
           ] } }],
-          "request": {
-            "method": "GET",
-            "description": "Directo a auth (authUrl): el gateway todavía no enruta /api/organizers/**.",
-            "url": "{{authUrl}}/api/organizers/{{organizerId}}"
-          }
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/organizers/{{organizerId}}" }
         },
         {
           "name": "Usuario que no es organizador → 404",
@@ -61,7 +57,39 @@
             "  pm.expect(pm.response.json().error).to.eql('organizer_not_found');",
             "});"
           ] } }],
-          "request": { "method": "GET", "url": "{{authUrl}}/api/organizers/1" }
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/organizers/{{clientId}}" }
+        },
+        {
+          "name": "Permisos del organizador",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 con EVENT_MANAGE', () => {",
+            "  pm.response.to.have.status(200);",
+            "  const body = pm.response.json();",
+            "  pm.expect(body.role).to.eql('ORGANIZER');",
+            "  pm.expect(body.permissions).to.include('EVENT_MANAGE');",
+            "});"
+          ] } }],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/users/{{organizerId}}/permissions" }
+        },
+        {
+          "name": "Permisos del cliente: sin EVENT_MANAGE",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 sin EVENT_MANAGE', () => {",
+            "  pm.response.to.have.status(200);",
+            "  pm.expect(pm.response.json().permissions).to.not.include('EVENT_MANAGE');",
+            "});"
+          ] } }],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/users/{{clientId}}/permissions" }
+        },
+        {
+          "name": "Permisos de un usuario inexistente → 404",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('404 user_not_found', () => {",
+            "  pm.response.to.have.status(404);",
+            "  pm.expect(pm.response.json().error).to.eql('user_not_found');",
+            "});"
+          ] } }],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/users/999/permissions" }
         }
       ]
     },
@@ -267,11 +295,13 @@
           }
         },
         {
-          "name": "Usuario que no es organizador → 404 (de auth)",
+          "name": "Usuario sin EVENT_MANAGE → 403",
           "event": [{ "listen": "test", "script": { "exec": [
-            "pm.test('404 organizer_not_found reenviado por el event-service', () => {",
-            "  pm.response.to.have.status(404);",
-            "  pm.expect(pm.response.json().error).to.eql('organizer_not_found');",
+            "pm.test('403 forbidden con el permiso que falta', () => {",
+            "  pm.response.to.have.status(403);",
+            "  const body = pm.response.json();",
+            "  pm.expect(body.error).to.eql('forbidden');",
+            "  pm.expect(body.message).to.include('EVENT_MANAGE');",
             "});"
           ] } }],
           "request": {
@@ -279,7 +309,45 @@
             "header": [
               { "key": "Content-Type", "value": "application/json" },
               { "key": "X-Organization-Id", "value": "{{organizationId}}" },
-              { "key": "X-User-Id", "value": "1" }
+              { "key": "X-User-Id", "value": "{{clientId}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Los Serranos en vivo\",\n  \"type\": \"CONCERT\",\n  \"venueId\": {{venueId}},\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"highDemand\": false\n}" },
+            "url": "{{baseUrl}}/api/events"
+          }
+        },
+        {
+          "name": "Sin permiso y body inválido → 403 (el permiso va primero)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('403 forbidden, no 400', () => {",
+            "  pm.response.to.have.status(403);",
+            "  pm.expect(pm.response.json().error).to.eql('forbidden');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Organization-Id", "value": "{{organizationId}}" },
+              { "key": "X-User-Id", "value": "{{clientId}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"  \",\n  \"type\": \"CONCERT\",\n  \"venueId\": {{venueId}},\n  \"dateTime\": \"2020-01-01T21:00:00\",\n  \"highDemand\": false\n}" },
+            "url": "{{baseUrl}}/api/events"
+          }
+        },
+        {
+          "name": "Usuario inexistente → 404 (de auth)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('404 user_not_found reenviado por el event-service', () => {",
+            "  pm.response.to.have.status(404);",
+            "  pm.expect(pm.response.json().error).to.eql('user_not_found');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Organization-Id", "value": "{{organizationId}}" },
+              { "key": "X-User-Id", "value": "999" }
             ],
             "body": { "mode": "raw", "raw": "{\n  \"name\": \"Los Serranos en vivo\",\n  \"type\": \"CONCERT\",\n  \"venueId\": {{venueId}},\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"highDemand\": false\n}" },
             "url": "{{baseUrl}}/api/events"

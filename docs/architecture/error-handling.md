@@ -28,6 +28,8 @@ No se crea una clase por error. Cada servicio tiene su enum `<Servicio>ErrorCode
 | `TicketErrorCode` | ticket-service | `order_not_found`, `ticket_not_found`, `sale_not_started`, `seat_unavailable`, `sector_sold_out`, `ticket_limit_exceeded`, `reservation_expired`, `ticket_already_used`, `refund_not_allowed`, `invalid_qr` |
 | `PaymentErrorCode` | payment-service | `payment_not_found`, `payment_rejected`, `payment_gateway_unavailable`, `refund_failed` |
 
+**`forbidden` es el error de permisos de todos los servicios.** Lo usa `PermissionInterceptor` cuando el rol del usuario no tiene el permiso que pide `@RequiresPermission`, con un mensaje que dice cuál faltó. Los `403` de negocio, como `organizer_not_in_organization`, llevan su propio código (ver [`permissions.md`](permissions.md)).
+
 ## Qué atrapa el `GlobalExceptionHandler`
 
 | Caso | Status | Código |

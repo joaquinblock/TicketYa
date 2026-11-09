@@ -21,6 +21,7 @@ erDiagram
         datetime expires_at "10 min hold"
         decimal total
         varchar idempotency_key UK
+        varchar payment_attempt_key "attempt without result; NULL if none"
         datetime created_at
     }
     event_seat {
@@ -135,7 +136,7 @@ Si actualiza 0 filas, no hay lugar. La base ejecuta el `UPDATE` de a una fila po
 
 ### La `ticket` existe desde la reserva
 
-Cuando el cliente reserva, se crean la `orders` (`PENDING`) y sus `ticket` en `RESERVED`, sin QR. Cuando el pago se aprueba, pasan a `ISSUED` con su `qr_code`. Si se rechaza o vence, pasan a `VOIDED`.
+Cuando el cliente reserva, se crean la `orders` (`PENDING`) y sus `ticket` en `RESERVED`, sin QR. Cuando el pago se aprueba, pasan a `ISSUED` con su `qr_code`. Si la orden se rechaza, vence o se cancela, pasan a `VOIDED`.
 
 Así el detalle de la compra (qué sector, qué asiento, a qué precio) queda registrado antes de cobrar, como pide la consigna 4. Además, si algo falla después de cobrar, la saga tiene las entradas para compensar con un reintegro.
 
@@ -185,9 +186,47 @@ Si el payment-service no responde, la solicitud sigue `PENDING` y el administrad
 
 ### Una sola transición desde `PENDING`
 
-Una orden en `PENDING` puede terminar por varios caminos a la vez: se confirma el pago, se rechaza, vence o se cancela el evento. Cada salida se aplica con un `UPDATE orders SET status = :next WHERE id = :id AND status = 'PENDING'`. La base ejecuta esa operación de a una por fila, así que solo una actualiza la fila. Las demás ven 0 filas afectadas y no modifican nada. `orders` no tiene `@Version` porque este `UPDATE` condicional alcanza.
+Una orden en `PENDING` puede terminar por varios caminos a la vez: se confirma el pago, llega al tope de rechazos, vence, el cliente la abandona o se cancela el evento. Cada salida se aplica con un `UPDATE orders SET status = :next WHERE id = :id AND status = 'PENDING'`. La base ejecuta esa operación de a una por fila, así que solo una actualiza la fila. Las demás ven 0 filas afectadas y no modifican nada. `orders` no tiene `@Version` porque este `UPDATE` condicional alcanza.
 
 Si el pago se aprobó y la orden ya no puede pasar a `PAID`, no se emiten entradas y se pide el reintegro de cada `ticket` con motivo `PURCHASE_COMPENSATION`.
+
+### Intentos de pago: la orden `PENDING` es la reserva
+
+La orden nace `PENDING` al reservar y es la reserva misma. No se puede crear recién al aprobar: hace falta antes para saber cuánto cupo devolver, a qué compra pertenece cada asiento y cuánto cobrar. Solo una orden `PAID` cuenta como compra, y es la única con entradas `ISSUED`.
+
+Una orden admite varios pagos. El cliente genera una clave por intento, y `orders.payment_attempt_key` guarda la del intento sin resultado. Antes de llamar al payment-service se toma la orden, sin ninguna transacción abierta durante la llamada:
+
+```sql
+UPDATE orders
+SET payment_attempt_key = :key
+WHERE id = :id AND status = 'PENDING'
+  AND (payment_attempt_key IS NULL OR payment_attempt_key = :key)
+```
+
+Si actualiza 0 filas, hay otro intento sin resultado y responde 409 `payment_in_progress`. Así, dos intentos con tarjetas distintas nunca viajan a la vez, que es lo que la idempotencia sola no evita porque sus claves son distintas.
+
+| Resultado del intento | Qué pasa |
+|---|---|
+| Aprobado | La orden pasa a `PAID` y se emiten las entradas |
+| Rechazado, con menos de 3 rechazos | Se limpia la clave, la orden sigue `PENDING` y el cliente puede usar otro medio |
+| Rechazado por tercera vez | La orden pasa a `REJECTED`, las entradas a `VOIDED` y los lugares se liberan |
+| Sin resultado (corte, timeout, caída) | La clave queda cargada. Solo se puede reintentar ese mismo intento, nunca asumirlo cancelado |
+
+La cantidad de rechazos sale del `rejectedAttempts` que informa el payment-service, porque contar filas no suma de más al repetir una clave.
+
+### Manda la reserva
+
+La reserva dura 10 minutos y nunca se extiende. Un intento nuevo solo se acepta hasta 1 minuto antes del vencimiento; después responde 409 `payment_window_closed`. Reintentar el mismo intento se permite hasta el vencimiento, porque no es un cobro nuevo. El tiempo máximo de espera al payment-service, sumando reintentos, tiene que ser menor a ese margen, así el resultado llega antes de que venza.
+
+La duración, el margen y el tope de rechazos son configurables.
+
+Si se pierde la respuesta y se llega al vencimiento sin resultado, la orden pasa igual a `EXPIRED` y los lugares se liberan. En la Entrega 2, el job busca las órdenes `EXPIRED` o `CANCELLED` con la clave cargada y le pide al payment-service anular el intento. Si resulta aprobado, pide el reintegro de cada entrada con motivo `PURCHASE_COMPENSATION`. Si sigue sin resultado, vuelve a preguntar en la siguiente corrida.
+
+### Abandonar una reserva
+
+El cliente puede abandonar su orden `PENDING`. La confirmación ("¿Estás seguro?") es del front; el back recibe una sola llamada, `POST /api/orders/{id}/cancel`. En una transacción, la orden pasa a `CANCELLED`, las entradas a `VOIDED` y los lugares se liberan sin esperar al job. No se llama al payment-service, porque una orden `PENDING` sin intento en curso no tiene nada cobrado.
+
+La salida es un `UPDATE` condicional que además exige `payment_attempt_key IS NULL`: con un pago en curso responde 409 `payment_in_progress`. Solo libera lugares quien efectivamente cambió el estado, así que repetir el pedido no descuenta el cupo dos veces.
 
 ### Verificar el asiento antes de emitir
 
@@ -219,10 +258,13 @@ Las historias y sus criterios de aceptación están en [`user-stories.md`](../us
 
 | Tema | Regla | Por qué |
 |---|---|---|
-| Pago rechazado | Libera los lugares, y reintentar requiere una reserva nueva | Es lo que pide la consigna 4 |
+| Pago rechazado | La orden sigue `PENDING` y el cliente puede usar otro medio, hasta 3 rechazos o la hora de corte. Al tercero, se liberan los lugares | La consigna 4 no define si "rechazado" es un intento o el pago completo. Se interpreta como lo segundo: perder el lugar por una tarjeta rechazada es injusto, y reintentar no retiene los lugares más de los 10 minutos originales |
+| Pago sin resultado | Solo se reintenta el mismo intento, y nunca se lo asume cancelado | El primer cobro pudo haberse aprobado; otra tarjeta podría generar un doble cobro |
+| Vencimiento con un pago sin resultado | La orden vence igual, y si el pago resulta aprobado se reintegra | La reserva manda: los lugares no quedan trabados si la pasarela está caída |
 | Devolución con evento `SUSPENDED` | Se acepta, con la regla de 72 horas. Solo se bloquea la venta | El cliente no queda atrapado si la nueva fecha no le sirve |
 | Identidad en la Entrega 1 | Header `X-User-Id`, sin validar roles | El enunciado no pide autenticación en esta entrega |
 | Órdenes y solicitudes pendientes al cancelar | Pasan a `CANCELLED` | Es una causa distinta de `EXPIRED` y de `REJECTED`, y el cliente no debe ver "rechazada" cuando le devuelven el dinero |
+| Abandono voluntario de una reserva | La orden también pasa a `CANCELLED`, salvo con un pago en curso | Para el cliente es lo mismo que una cancelación, y la causa queda en el log de operaciones |
 | Entradas `USED` al cancelar | También se reintegran | La consigna 7 dice "todas sus entradas vendidas" |
 | Aprobar una devolución si el payment-service no responde | La solicitud sigue `PENDING` y el administrador reintenta | La entrada no se marca como devuelta hasta que payment acepte el reintegro |
 | Compra que falla después de cobrar | La orden termina en `FAILED` | El pago sí se aprobó, así que el cliente no debe ver "rechazado" |
@@ -230,10 +272,9 @@ Las historias y sus criterios de aceptación están en [`user-stories.md`](../us
 
 ### Pendientes para la implementación
 
-- **Códigos nuevos en `TicketErrorCode`:** `event_not_on_sale`, `order_not_payable`, `return_request_not_found`, `return_request_already_pending`, `invalid_queue_token`.
+- **Códigos nuevos en `TicketErrorCode`:** `event_not_on_sale`, `order_not_payable`, `order_not_cancellable`, `payment_in_progress`, `payment_window_closed`, `return_request_not_found`, `return_request_already_pending`, `invalid_queue_token`.
 - **Valores nuevos de enums:** `CANCELLED` y `FAILED` en `OrderStatus`, `CANCELLED` en `ReturnRequestStatus`.
-- **Modelo:** entidades `EventSale` y `EventSectorPrice`, `event_sector_id` en `EventSeat` y `payment_method` en `Order`. El `TicketSeeder` tiene que cargarlos.
-- **payment-service:** ante un reintegro repetido para el mismo `ticket_id` tiene que devolver el existente. `payment-service.md` hoy dice que el segundo pedido falla.
+- **Modelo:** entidades `EventSale` y `EventSectorPrice`, `event_sector_id` en `EventSeat`, y `payment_method` y `payment_attempt_key` en `Order`. El `TicketSeeder` tiene que cargarlos, con la misma clave que el pago `PENDING` de la orden 3.
 
 ### Dependencias con otros servicios
 
@@ -241,6 +282,6 @@ Las historias y sus criterios de aceptación están en [`user-stories.md`](../us
 |---|---|---|
 | event-service → ticket-service | Avisar la publicación con asientos, capacidades y datos de venta; avisar cualquier cambio de esos datos y la cancelación | US-TKT-01, 07, 18 |
 | ticket-service → event-service | Pedir `SOLD_OUT` y su reversa; capacidad y organización para los reportes | US-TKT-13, 20 |
-| ticket-service → payment-service | Cobrar por `order_id` con el monto de `orders.total`; reintegrar por `ticket_id` | US-TKT-09 a 11, 16, 18, 22, 23 |
+| ticket-service → payment-service | Cobrar por `order_id` con el monto de `orders.total` y la clave del intento; anular un intento sin resultado; reintegrar por `ticket_id`. Contrato en `payment-service.md` | US-TKT-09 a 11, 16, 18, 22, 23 |
 | ticket-service → auth-service | Confirmar la asignación del personal de acceso y la organización del organizador | US-TKT-19, 20 |
 | recommendation-service → ticket-service | Historial de compras | US-TKT-25 |

@@ -32,9 +32,11 @@ public class PaymentController {
     @ApiResponse(responseCode = "201", description = "Pago aprobado")
     @ApiResponse(responseCode = "400", description = "validation_error",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    @ApiResponse(responseCode = "409", description = "data_conflict: la orden ya tiene otro pago PENDING o APPROVED",
+    @ApiResponse(responseCode = "409", description = "data_conflict: la clave ya se usó con otros datos o la orden ya tiene otro pago PENDING o APPROVED",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "422", description = "payment_rejected, con reason y rejectedAttempts en detail",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "503", description = "payment_gateway_unavailable: el pago de esa clave sigue sin resultado",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     public PaymentResponse charge(@Valid @RequestBody PaymentRequest request) {
         return paymentService.charge(request);

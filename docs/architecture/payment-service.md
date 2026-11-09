@@ -96,7 +96,7 @@ La clave de idempotencia no alcanza para evitar un doble cobro entre intentos, p
 
 La fila se inserta en `PENDING` antes de llamar a la pasarela, y el rechazo solo le cambia el estado. Se conserva porque:
 
-- **Cuenta para el tope de 3 rechazos.** El 422 informa `rejectedAttempts` en `detail`, y el ticket-service decide con ese número. Un contador en `orders` sumaría de más cuando se repite una misma clave; contando filas, misma clave es misma fila.
+- **Cuenta para el tope de 3 rechazos.** El 422 informa `rejectedAttempts` en `detail`, y el ticket-service decide con ese número. Un contador en `orders` sumaría de más cuando se repite una misma clave; contando filas, misma clave es misma fila. Se cuentan los rechazos de la orden hasta ese pago (`id` menor o igual), así un rechazo repetido devuelve el número original aunque después haya habido otros.
 - **Permite repetir la respuesta** de una clave ya usada sin volver a llamar a la pasarela.
 - **Registra el motivo** (`failure_reason`) para el cliente y para resolver reclamos.
 
@@ -198,10 +198,9 @@ El `PaymentSeeder` usa las órdenes que crea el `TicketSeeder`:
 
 No hay reintegros: la única devolución del `TicketSeeder` está pendiente, así que todavía no corresponde devolver dinero.
 
-La clave del pago `PENDING` de la orden 3 tiene que coincidir con `orders.payment_attempt_key` de esa orden en el `TicketSeeder`.
+La clave del pago `PENDING` de la orden 3 es `seed-pending-order-3` y tiene que coincidir con `orders.payment_attempt_key` de esa orden en el `TicketSeeder`.
 
 ## Pendientes para la implementación
 
 - Código nuevo `payment_not_refundable` en `PaymentErrorCode`.
 - `CANCELLED` en el estado de `Payment` (Entrega 2).
-- Clave fija en el pago `PENDING` del `PaymentSeeder`, hoy generada al azar.

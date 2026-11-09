@@ -12,6 +12,7 @@ import org.group10.payment.gateway.ChargeResult;
 import org.group10.payment.gateway.PaymentGateway;
 import org.group10.payment.mapper.PaymentMapper;
 import org.group10.payment.repository.PaymentRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -27,9 +28,40 @@ public class PaymentService {
     private final PaymentGateway paymentGateway;
 
     public PaymentResponse charge(PaymentRequest request) {
-        ensureOrderHasNoPendingOrApprovedPayment(request.orderId());
+        return paymentRepository.findByIdempotencyKey(request.idempotencyKey())
+                .map(storedPayment -> answerWithTheStoredResult(storedPayment, request))
+                .orElseGet(() -> chargeNewAttempt(request));
+    }
 
-        Payment pendingPayment = commitPendingPaymentBeforeCallingTheGateway(request);
+    private PaymentResponse chargeNewAttempt(PaymentRequest request) {
+        ensureOrderHasNoPendingOrApprovedPaymentFromAnotherAttempt(request);
+
+        Payment pendingPayment;
+        try {
+            pendingPayment = commitPendingPaymentBeforeCallingTheGateway(request);
+        } catch (DataIntegrityViolationException duplicateKey) {
+            return answerWithTheResultOfTheAttemptThatTookTheKey(request, duplicateKey);
+        }
+
+        return chargeThroughTheGateway(pendingPayment);
+    }
+
+    private PaymentResponse answerWithTheResultOfTheAttemptThatTookTheKey(PaymentRequest request,
+                                                                          DataIntegrityViolationException duplicateKey) {
+        return paymentRepository.findByIdempotencyKey(request.idempotencyKey())
+                .map(storedPayment -> answerWithTheStoredResult(storedPayment, request))
+                .orElseThrow(() -> duplicateKey);
+    }
+
+    private PaymentResponse answerWithTheStoredResult(Payment storedPayment, PaymentRequest request) {
+        ensureRequestRepeatsTheDataOfTheStoredPayment(storedPayment, request);
+        ensurePaymentAlreadyHasAResult(storedPayment);
+        ensurePaymentWasNotRejected(storedPayment);
+
+        return PaymentMapper.toResponse(storedPayment);
+    }
+
+    private PaymentResponse chargeThroughTheGateway(Payment pendingPayment) {
         ChargeResult chargeResult = paymentGateway.charge(pendingPayment);
         Payment chargedPayment = commitChargeResult(pendingPayment, chargeResult);
         ensurePaymentWasNotRejected(chargedPayment);
@@ -37,11 +69,30 @@ public class PaymentService {
         return PaymentMapper.toResponse(chargedPayment);
     }
 
-    private void ensureOrderHasNoPendingOrApprovedPayment(Long orderId) {
-        paymentRepository.findFirstByOrderIdAndStatusIn(orderId, PENDING_OR_APPROVED)
+    private void ensureRequestRepeatsTheDataOfTheStoredPayment(Payment storedPayment, PaymentRequest request) {
+        boolean repeatsTheData = storedPayment.getOrderId().equals(request.orderId())
+                && storedPayment.getAmount().compareTo(request.amount()) == 0
+                && storedPayment.getPaymentMethod() == request.paymentMethod();
+
+        if (!repeatsTheData) {
+            throw new TicketYaException(CommonErrorCode.DATA_CONFLICT,
+                    "La clave de idempotencia ya se usó con otros datos");
+        }
+    }
+
+    private void ensurePaymentAlreadyHasAResult(Payment payment) {
+        if (payment.getStatus() == PaymentStatus.PENDING) {
+            throw new TicketYaException(PaymentErrorCode.PAYMENT_GATEWAY_UNAVAILABLE,
+                    "El pago todavía no tiene resultado, se puede reintentar con la misma clave");
+        }
+    }
+
+    private void ensureOrderHasNoPendingOrApprovedPaymentFromAnotherAttempt(PaymentRequest request) {
+        paymentRepository.findFirstByOrderIdAndStatusIn(request.orderId(), PENDING_OR_APPROVED)
+                .filter(existingPayment -> !request.idempotencyKey().equals(existingPayment.getIdempotencyKey()))
                 .ifPresent(existingPayment -> {
                     throw new TicketYaException(CommonErrorCode.DATA_CONFLICT,
-                            "La orden %d ya tiene un pago en curso o aprobado".formatted(orderId));
+                            "La orden %d ya tiene un pago en curso o aprobado".formatted(request.orderId()));
                 });
     }
 
@@ -61,11 +112,12 @@ public class PaymentService {
             throw new TicketYaException(PaymentErrorCode.PAYMENT_REJECTED,
                     "El pago fue rechazado: %s".formatted(payment.getFailureReason()),
                     Map.of("reason", payment.getFailureReason(),
-                            "rejectedAttempts", countRejectedPaymentsOfTheOrder(payment.getOrderId())));
+                            "rejectedAttempts", countRejectedPaymentsOfTheOrderUpTo(payment)));
         }
     }
 
-    private long countRejectedPaymentsOfTheOrder(Long orderId) {
-        return paymentRepository.countByOrderIdAndStatus(orderId, PaymentStatus.REJECTED);
+    private long countRejectedPaymentsOfTheOrderUpTo(Payment payment) {
+        return paymentRepository.countByOrderIdAndStatusAndIdLessThanEqual(
+                payment.getOrderId(), PaymentStatus.REJECTED, payment.getId());
     }
 }

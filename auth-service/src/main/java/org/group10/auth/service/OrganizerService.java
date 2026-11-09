@@ -18,14 +18,14 @@ public class OrganizerService {
     private final OrganizerRepository organizerRepository;
 
     /**
-     * Returns the organizer only while it can act as one: an organizer that was removed, or whose user was
-     * deleted, is treated as not existing.
+     * Returns the organizer only while it can act as one: an organizer that was removed, or whose user or
+     * organization was deleted, is treated as not existing.
      *
      * @throws TicketYaException {@code ORGANIZER_NOT_FOUND}
      */
     public OrganizerResponse findActiveByUserId(Long userId) {
         Organizer organizer = organizerRepository.findWithUserAndOrganizationByUserId(userId)
-                .filter(o -> o.isActive() && o.getUser().isActive())
+                .filter(o -> o.isActive() && o.getUser().isActive() && o.getOrganization().isActive())
                 .orElseThrow(() -> new TicketYaException(AuthErrorCode.ORGANIZER_NOT_FOUND,
                         "El usuario %d no es un organizador activo".formatted(userId)));
         User user = organizer.getUser();

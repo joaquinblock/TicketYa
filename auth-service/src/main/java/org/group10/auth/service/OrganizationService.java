@@ -17,13 +17,16 @@ public class OrganizationService {
     private final OrganizationRepository organizationRepository;
 
     /**
+     * Only active organizations: one that was removed is treated as not existing.
+     *
      * @throws TicketYaException {@code ORGANIZATION_NOT_FOUND}
      */
     public OrganizationResponse findById(Long id) {
         Organization organization = organizationRepository.findById(id)
+                .filter(Organization::isActive)
                 .orElseThrow(() -> new TicketYaException(AuthErrorCode.ORGANIZATION_NOT_FOUND,
                         "No se encontró la organización con id %d".formatted(id)));
         return new OrganizationResponse(organization.getId(), organization.getLegalName(),
-                organization.getDisplayName(), organization.getType());
+                organization.getPublicName(), organization.getType());
     }
 }

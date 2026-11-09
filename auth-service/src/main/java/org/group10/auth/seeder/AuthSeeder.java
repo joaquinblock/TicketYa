@@ -106,7 +106,7 @@ AuthSeeder implements ApplicationRunner {
         return organizationRepository.saveAll(List.of(
                 organization("Del Sur Producciones S.A.", "Del Sur Producciones", OrganizationType.COMPANY,
                         "30-71234567-8", "0110599520000001234567"),
-                organization("Asociación Civil Cultura Serrana", "Cultura Serrana", OrganizationType.CIVIL_ASSOCIATION,
+                organization("Asociación Civil Cultura Serrana", "Cultura Serrana", OrganizationType.NON_PROFIT,
                         "30-70987654-3", "0140123401000009876543")
         ));
     }
@@ -142,14 +142,14 @@ AuthSeeder implements ApplicationRunner {
                 .build();
     }
 
-    private static Organization organization(String legalName, String displayName, OrganizationType type,
-                                             String taxId, String bankAccountNumber) {
+    private static Organization organization(String legalName, String publicName, OrganizationType type,
+                                             String taxId, String bankAccount) {
         return Organization.builder()
                 .legalName(legalName)
-                .displayName(displayName)
+                .publicName(publicName)
                 .type(type)
                 .taxId(taxId)
-                .bankAccountNumber(bankAccountNumber)
+                .bankAccount(bankAccount)
                 .build();
     }
 

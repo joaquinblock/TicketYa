@@ -6,7 +6,8 @@
   },
   "variable": [
     { "key": "paymentUrl", "value": "http://localhost:8084" },
-    { "key": "orderId", "value": "" }
+    { "key": "orderId", "value": "" },
+    { "key": "rejectedOrderId", "value": "" }
   ],
   "item": [
     {
@@ -103,6 +104,66 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "url": "{{paymentUrl}}/internal/payments",
             "body": { "mode": "raw", "raw": "{\n  \"orderId\": 1,\n  \"amount\": 0,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{$guid}}\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "US-PAY-02: Saber por qué se rechazó un pago",
+      "description": "Necesita payment.mock.rejected-method en DEBIT_CARD, el valor por defecto.",
+      "item": [
+        {
+          "name": "Primer rechazo → 422",
+          "event": [
+            { "listen": "prerequest", "script": { "exec": [
+              "pm.collectionVariables.set('rejectedOrderId', String(Date.now()));"
+            ] } },
+            { "listen": "test", "script": { "exec": [
+              "pm.test('422 con el motivo y un rechazo', () => {",
+              "  pm.response.to.have.status(422);",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.error).to.eql('payment_rejected');",
+              "  pm.expect(body.detail.reason).to.be.a('string').and.not.empty;",
+              "  pm.expect(body.detail.rejectedAttempts).to.eql(1);",
+              "});"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{rejectedOrderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"DEBIT_CARD\",\n  \"idempotencyKey\": \"{{$guid}}\"\n}" }
+          }
+        },
+        {
+          "name": "Segundo rechazo con otra clave → 422",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('422 con dos rechazos', () => {",
+            "  pm.response.to.have.status(422);",
+            "  pm.expect(pm.response.json().detail.rejectedAttempts).to.eql(2);",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{rejectedOrderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"DEBIT_CARD\",\n  \"idempotencyKey\": \"{{$guid}}\"\n}" }
+          }
+        },
+        {
+          "name": "Otro medio después de los rechazos → 201",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('201 aprobado en la misma orden', () => {",
+            "  pm.response.to.have.status(201);",
+            "  pm.expect(pm.response.json().status).to.eql('APPROVED');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "description": "Una orden admite otro pago si los anteriores fueron rechazados (US-PAY-01).",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{rejectedOrderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{$guid}}\"\n}" }
           }
         }
       ]

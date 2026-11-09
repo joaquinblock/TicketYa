@@ -7,5 +7,5 @@ package org.group10.event.client.dto;
 public record OrganizationResponse(
         Long id,
         String legalName,
-        String displayName
+        String publicName
 ) {}

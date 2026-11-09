@@ -7,7 +7,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import org.group10.common.dto.ErrorDto;
 import org.group10.event.dto.EventCreateRequest;
@@ -52,9 +51,9 @@ public class EventController {
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     public EventResponse create(
             @Parameter(description = "Organización dueña del evento", example = "1")
-            @RequestHeader(ORGANIZATION_HEADER) @Positive Long organizationId,
+            @RequestHeader(ORGANIZATION_HEADER) Long organizationId,
             @Parameter(description = "Organizador que lo crea (id de usuario)", example = "2")
-            @RequestHeader(USER_HEADER) @Positive Long organizerId,
+            @RequestHeader(USER_HEADER) Long organizerId,
             @Valid @RequestBody EventCreateRequest request) {
         return eventService.create(organizationId, organizerId, request);
     }

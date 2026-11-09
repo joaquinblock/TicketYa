@@ -89,6 +89,19 @@ class EventControllerTest {
     }
 
     @Test
+    void create_withSeveralInvalidFields_returns400WithEachOne() throws Exception {
+        String body = VALID_EVENT.replace("\"Los Serranos en vivo\"", "\"  \"")
+                .replace("2099-12-12T21:00:00", "2020-01-01T21:00:00");
+
+        mockMvc.perform(createRequest(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Campos inválidos"))
+                .andExpect(jsonPath("$.detail.name").exists())
+                .andExpect(jsonPath("$.detail.dateTime").exists());
+        verifyNoInteractions(eventService);
+    }
+
+    @Test
     void create_withUnknownType_returns400WithTheAllowedValues() throws Exception {
         String body = VALID_EVENT.replace("CONCERT", "PICNIC");
 

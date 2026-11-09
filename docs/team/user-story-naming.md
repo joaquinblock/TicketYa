@@ -24,7 +24,7 @@ Ejemplos: `US-TKT-02: Consultar la disponibilidad`, `US-EVT-02: Configurar y pub
 |---|---|---|
 | ticket-service | `TKT` | En uso (US-TKT-01 a 28) |
 | event-service | `EVT` | En uso (US-EVT-01 a 05) |
-| payment-service | `PAY` | Mencionado en `user-stories.md`, sin historias todavía |
+| payment-service | `PAY` | En uso (US-PAY-01 a 15) |
 | auth-service | `AUTH` | Propuesto |
 | queue-service | `QUE` | Propuesto |
 | notification-service | `NOT` | Propuesto |
@@ -70,5 +70,5 @@ Antes se numeraban según la épica (`3.1`, `3.2`, …), con separadores mezclad
 - [ ] **Escribir las US-EVT en `user-stories.md`:** hoy solo están las de ticket-service, así que las issues #39, #40, #41, #43 y #56 no tienen historia ni criterios de aceptación a los que enlazar
 - [ ] **Pasar el detalle de la #43 al cuerpo:** el título viejo listaba los filtros (tipo, organizador, participante, ciudad, rango de fechas) y el orden (fecha, precio, relevancia), y el nuevo ya no
 - [ ] **Decidir qué pasa con la #56:** generar el seeder y correr los tests es una tarea técnica, no una historia. Según la regla de arriba, iría sin prefijo (`Generar el seeder y correr los tests`), y `US-EVT-05` quedaría libre para la próxima historia
-- [ ] **Unificar el título de la US-TKT-10:** en GitHub (#52) dice *Reintentar con otro medio si el pago se rechaza*, y en `user-stories.md` dice *Liberar los lugares si el pago se rechaza*
+- [x] **Unificar el título de la US-TKT-10:** en GitHub (#52) dice *Reintentar con otro medio si el pago se rechaza*, y en `user-stories.md` dice *Liberar los lugares si el pago se rechaza*
 - [ ] **Confirmar las siglas propuestas** de auth, queue, notification y recommendation

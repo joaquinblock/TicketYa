@@ -1,6 +1,6 @@
 package org.group10.auth.entity;
 
 public enum OrganizationType {
-    EMPRESA,
-    ASOCIACION_CIVIL
+    COMPANY,
+    CIVIL_ASSOCIATION
 }

@@ -15,8 +15,10 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.LocalDateTime;
+
 /**
- * Empresa o asociación civil que organiza eventos. El event-service la referencia por id
+ * Empresa u organización sin fines de lucro que organiza eventos. El event-service la referencia por id
  * ({@code event.organization_id}), sin FK porque está en otra base.
  */
 @Entity
@@ -36,7 +38,7 @@ public class Organization {
     private String legalName;
 
     @Column(nullable = false)
-    private String displayName;
+    private String publicName;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -46,5 +48,14 @@ public class Organization {
     private String taxId;
 
     @Column(nullable = false)
-    private String bankAccountNumber;
+    private String bankAccount;
+
+    /**
+     * Cuándo se dio de baja; {@code null} mientras esté activa. Nada se borra: la baja es lógica.
+     */
+    private LocalDateTime deletedAt;
+
+    public boolean isActive() {
+        return deletedAt == null;
+    }
 }

@@ -18,7 +18,9 @@ public enum EventErrorCode implements ErrorCode {
     SEAT_ROW_DUPLICATED(HttpStatus.CONFLICT),
     PARTICIPANT_NOT_FOUND(HttpStatus.NOT_FOUND),
     INVALID_STATUS_TRANSITION(HttpStatus.CONFLICT),
-    EVENT_NOT_EDITABLE(HttpStatus.CONFLICT);
+    EVENT_NOT_EDITABLE(HttpStatus.CONFLICT),
+    INVALID_EVENT_CONFIGURATION(HttpStatus.BAD_REQUEST),
+    ORGANIZER_NOT_IN_ORGANIZATION(HttpStatus.FORBIDDEN);
 
     private final HttpStatus status;
 

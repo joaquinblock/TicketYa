@@ -1,6 +1,6 @@
 # RFC-004: Relaciones entre tablas de distintos microservicios
 
-- **Estado:** Abierto: a decidir en equipo antes de implementar el CRUD de eventos (Épica 3, #3)
+- **Estado:** Aceptada el 2026-11-09: opción A, referencia por id (ver *Decisión*)
 - **Relacionado:** `event-service.md` (columnas `organization_id` y `created_by`), `microservices.md` (Clients síncronos y mensajería), RFC-002 (contratos compartidos)
 
 ## Contexto
@@ -9,8 +9,8 @@
 
 | Tabla | Campos | Relaciones |
 |---|---|---|
-| `organization` | `legal_name`, `display_name`, `type` (`COMPANY`, `CIVIL_ASSOCIATION`), `tax_id`, `bank_account_number`, todos `NOT NULL` | — |
-| `organizer` | `user_id` (PK), `organization_id`, `fecha_baja` (nullable) | `user_id` 1 a 1 con `user.id`; `organization_id` N a 1 con `organization.id` |
+| `organization` | `legal_name`, `public_name`, `type` (`COMPANY`, `NON_PROFIT`), `tax_id`, `bank_account`, `deleted_at` (nullable) | — |
+| `organizer` | `user_id` (PK), `organization_id`, `deleted_at` (nullable) | `user_id` 1 a 1 con `user.id`; `organization_id` N a 1 con `organization.id` |
 
 `event` vive en el **event-service**, en otra base, y tiene que relacionarse con las dos:
 
@@ -28,7 +28,7 @@ Al separar las bases se pierden tres cosas que la base daba gratis, y hay que de
 | Se pierde | Qué garantizaba | Pregunta a resolver |
 |---|---|---|
 | **FK** | Que `organization_id` apunte a una organización que existe | ¿Quién valida que la organización y el organizador existen, y cuándo? |
-| **JOIN** | Leer el evento junto con el nombre de su organización | ¿Cómo se muestra `display_name` en las páginas de eventos? |
+| **JOIN** | Leer el evento junto con el nombre de su organización | ¿Cómo se muestra `public_name` en las páginas de eventos? |
 | **`ON DELETE`** | Que no se borre una organización con eventos | ¿Qué pasa con los eventos si auth da de baja una organización o un organizador? |
 
 La transacción entre las dos bases también se pierde, pero no afecta a este caso: crear un evento solo escribe en el event-service.
@@ -45,7 +45,7 @@ private Long organizationId;   // organization.id en auth-service, sin FK
 ```
 
 - **Reemplazo de la FK:** al crear el evento, el event-service consulta a auth con `AuthClient` (`GET /api/organizers/{userId}`) y obtiene el `organizationId` del organizador. Si da 404, no se crea.
-- **Reemplazo del `ON DELETE`:** auth nunca borra físicamente: da de baja (`fecha_baja`). Así ningún id queda huérfano.
+- **Reemplazo del `ON DELETE`:** auth nunca borra físicamente: da de baja (`deleted_at`). Así ningún id queda huérfano.
 - **Reemplazo del JOIN:** combinarla con la opción B o la D.
 
 ### B. Composición en la API
@@ -55,7 +55,7 @@ Al leer un evento, el event-service pide los datos de la organización a auth y 
 ```
 GET /api/events/5
   → event-service lee event (organization_id = 1)
-  → AuthClient: GET /api/organizations/1 → { displayName: "Del Sur Producciones" }
+  → AuthClient: GET /api/organizations/1 → { publicName: "Del Sur Producciones" }
   → responde el evento con organizationName
 ```
 
@@ -73,7 +73,7 @@ El event-service mantiene **su propia tabla `organization`**: una copia de solo 
 public class OrganizationReplica {
     @Id
     private Long id;              // el mismo id que en auth, no se genera acá
-    private String displayName;
+    private String publicName;
 }
 
 // Event
@@ -97,7 +97,7 @@ Se copia el dato en la propia tabla `event` al crearla, por ejemplo `event.organ
 
 ### E. Mover `organization` al event-service
 
-`Organization` pasa a ser del event-service, con `@ManyToOne` y FK reales desde `event`. En auth queda `organizer.organization_id` como `Long`, sin FK. **Así el problema pasa a la relación `organizer` → `organization`.** Además, `tax_id` y `bank_account_number` quedarían en el catálogo, que es el servicio más expuesto y el que más se cachea.
+`Organization` pasa a ser del event-service, con `@ManyToOne` y FK reales desde `event`. En auth queda `organizer.organization_id` como `Long`, sin FK. **Así el problema pasa a la relación `organizer` → `organization`.** Además, `tax_id` y `bank_account` quedarían en el catálogo, que es el servicio más expuesto y el que más se cachea.
 
 ## Comparación
 
@@ -105,7 +105,7 @@ Se copia el dato en la propia tabla `event` al crearla, por ejemplo `event.organ
 |---|---|---|---|---|---|
 | `@ManyToOne` en `Event` | No | No | **Sí**, a la réplica | No | Sí |
 | Valida que exista al crear | Llamada a auth | Llamada a auth | Llamada a auth o réplica | Llamada a auth | FK local |
-| Mostrar `display_name` | Necesita B o D | Llamada a auth en cada lectura | JOIN local | Columna local | JOIN local |
+| Mostrar `public_name` | Necesita B o D | Llamada a auth en cada lectura | JOIN local | Columna local | JOIN local |
 | Lecturas si auth está caído | — | Fallan o se degradan | Funcionan | Funcionan | Funcionan |
 | Dato desactualizado | No aplica | Nunca | Eventual | Congelado | Nunca |
 | Costo en Entrega 1 | Bajo (casi hecho) | Bajo | Medio (tabla + sincronización) | Bajo | Medio, y rehace el modelo de auth |
@@ -115,12 +115,19 @@ Las opciones se pueden combinar, por ejemplo A + D o A + C. A es la base de casi
 
 ## Preguntas abiertas
 
-- ¿El mapeo con `@ManyToOne` en `Event` es un requisito, o alcanza con que la relación esté documentada y validada?
+- ~~¿El mapeo con `@ManyToOne` en `Event` es un requisito, o alcanza con que la relación esté documentada y validada?~~ Alcanza con documentarla y validarla (ver *Decisión*).
 - Si un evento se publicó con un nombre de organización y la organización lo cambia, ¿el evento debe mostrar el nombre nuevo (C) o el que tenía al crearse (D)?
-- ¿`fecha_baja` en `organizer` bloquea solo crear eventos nuevos, o también editar o publicar los que ya creó?
-- ¿Hace falta un baja lógica también en `organization`? Hoy no tiene columna para eso.
+- ¿`deleted_at` en `organizer` bloquea solo crear eventos nuevos, o también editar o publicar los que ya creó?
+- ~~¿Hace falta una baja lógica también en `organization`?~~ Sí: `organization.deleted_at`, como en el DER. Una organización dada de baja, y sus organizadores, dan 404 en auth.
 - ¿`created_by` pasa a llamarse `organizer_id` para que diga a qué apunta?
 
 ## Decisión
 
-Pendiente. Cuando se decida, registrarla como ADR y actualizar `event-service.md` (diagrama y columnas de `event`) y `microservices.md`.
+**Opción A: referencia por id.** La decidió el equipo el 2026-11-09.
+
+- **Qué se guarda:** `event.organization_id` y `event.created_by` son `Long`, sin FK ni relación JPA.
+- **Cómo se reemplaza la FK:** al crear un evento, el event-service valida con `AuthClient` que la organización exista y que el organizador esté activo y pertenezca a ella. Si algo no se cumple, el evento no se crea.
+- **Cómo se reemplaza el `ON DELETE`:** auth no borra nada, todo es baja lógica (`deleted_at`). Así ningún id queda huérfano.
+- **Cómo se reemplaza el JOIN:** por ahora no hace falta. El event-service filtra por `organization_id` sin necesitar el nombre. Si una página tiene que mostrar `public_name`, se suma B o D, y eso responde la segunda pregunta abierta.
+
+Queda pendiente actualizar `event-service.md` (diagrama y columnas de `event`) y `microservices.md`, y registrar la decisión como ADR.

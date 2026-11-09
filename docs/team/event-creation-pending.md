@@ -15,7 +15,7 @@
 
 ## Para poder probar lo que ya está
 
-- [ ] **Seeder del auth-service:** `AuthSeeder` no carga organizaciones ni organizadores, así que hoy `POST /api/events` responde siempre `404`. Hay que crear la organización `1` con el organizador `2` (`organizer@ticketya.com`), que son los ids que asume `EventSeeder`. Para probar el `403`, sumar una organización `2` sin ese organizador
+- [x] **Seeder del auth-service:** `AuthSeeder` carga la organización `1` con el organizador `2` (`organizer@ticketya.com`), que son los ids que asume `EventSeeder`, y la organización `2` sin organizadores para probar el `403` (PR #37)
 - [ ] **Ruta del gateway:** `api-gateway` enruta `/api/organizations/**` al auth-service, pero no `/api/organizers/**`. El event-service no la necesita (llama directo a `:8081`), pero sin ella el endpoint no se puede usar desde `:8080`
 - [ ] **Correr los tests:** `EventServiceTest` y `EventControllerTest` todavía no se ejecutaron. Maven desde la terminal usa JDK 24 y el proyecto pide 25
 - [ ] **Colección de Postman:** importar [`docs/postman/event-creation.postman_collection.json`](../postman/event-creation.postman_collection.json) y correrla con los tres servicios levantados
@@ -50,7 +50,7 @@
 - [ ] **`GET /api/events/{id}`:** con lugar, sectores y precios, participantes y capacidad
 - [ ] **`GET /api/events`:** filtros simples (`organizationId`, `status`). La búsqueda de la consigna 9 (tipo, organizador, participante, ciudad, fechas, ordenamiento) es otra tarea
 - [ ] **`DELETE /api/events/{id}`:** solo en `DRAFT`. En borrador no hay tickets, porque el inventario nace al publicar, así que no hace falta cascada. Un evento publicado se cancela, no se borra
-- [ ] **Nombre de la organización:** las páginas de eventos tienen que mostrar `displayName`. Depende de la decisión de [`RFC-004`](../rfc/RFC-004-cross-service-relations.md) (composición, réplica o snapshot)
+- [ ] **Nombre de la organización:** las páginas de eventos tienen que mostrar `publicName`. [`RFC-004`](../rfc/RFC-004-cross-service-relations.md) eligió la referencia por id, así que para mostrar el nombre hay que sumarle composición (B) o snapshot (D)
 
 ## Resiliencia de `AuthClient`
 
@@ -59,7 +59,7 @@
 
 ## Decisiones abiertas
 
-- [ ] **RFC-004:** la referencia por id a la organización es provisoria hasta que decida el equipo
+- [x] **RFC-004:** el equipo eligió la referencia por id (opción A)
 - [ ] **`created_by` → `organizer_id`:** el campo apunta a `organizer.user_id`, pero su nombre no lo dice
 - [ ] **Headers duplicados:** `X-Organization-Id` es redundante, porque el organizador ya trae su `organizationId`. Se mantiene para validar las dos cosas, pero con JWT (Épica 9) alcanza con el usuario del token
 - [ ] **`saleStart` en el pasado:** hoy se acepta si es anterior a `dateTime`. Definir si un borrador puede tener una apertura de venta ya vencida

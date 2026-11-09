@@ -24,7 +24,7 @@
             "pm.test('No expone CUIT ni cuenta bancaria', () => {",
             "  const body = pm.response.json();",
             "  pm.expect(body).to.not.have.property('taxId');",
-            "  pm.expect(body).to.not.have.property('bankAccountNumber');",
+            "  pm.expect(body).to.not.have.property('bankAccount');",
             "});"
           ] } }],
           "request": { "method": "GET", "url": "{{baseUrl}}/api/organizations/{{organizationId}}" }

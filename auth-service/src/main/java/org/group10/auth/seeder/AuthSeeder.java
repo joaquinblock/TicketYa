@@ -2,9 +2,14 @@ package org.group10.auth.seeder;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.group10.auth.entity.Organization;
+import org.group10.auth.entity.OrganizationType;
+import org.group10.auth.entity.Organizer;
 import org.group10.auth.entity.Permission;
 import org.group10.auth.entity.Role;
 import org.group10.auth.entity.User;
+import org.group10.auth.repository.OrganizationRepository;
+import org.group10.auth.repository.OrganizerRepository;
 import org.group10.auth.repository.PermissionRepository;
 import org.group10.auth.repository.RoleRepository;
 import org.group10.auth.repository.UserRepository;
@@ -24,11 +29,15 @@ import java.util.stream.Collectors;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class AuthSeeder implements ApplicationRunner {
+public class
+
+AuthSeeder implements ApplicationRunner {
 
     private final PermissionRepository permissionRepository;
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
+    private final OrganizationRepository organizationRepository;
+    private final OrganizerRepository organizerRepository;
 
     @Override
     @Transactional
@@ -40,10 +49,12 @@ public class AuthSeeder implements ApplicationRunner {
 
         Map<String, Permission> permissions = seedPermissions();
         Map<String, Role> roles = seedRoles(permissions);
-        seedUsers(roles);
+        Map<String, User> users = seedUsers(roles);
+        List<Organization> organizations = seedOrganizations();
+        seedOrganizers(users, organizations);
 
-        log.info("AuthSeeder: {} permisos, {} roles y {} usuarios cargados",
-                permissions.size(), roles.size(), userRepository.count());
+        log.info("AuthSeeder: {} permisos, {} roles, {} usuarios, {} organizaciones y {} organizadores cargados",
+                permissions.size(), roles.size(), users.size(), organizations.size(), organizerRepository.count());
     }
 
     private Map<String, Permission> seedPermissions() {
@@ -78,13 +89,37 @@ public class AuthSeeder implements ApplicationRunner {
                 .collect(Collectors.toMap(Role::getName, Function.identity()));
     }
 
-    private void seedUsers(Map<String, Role> roles) {
-        userRepository.saveAll(List.of(
+    private Map<String, User> seedUsers(Map<String, Role> roles) {
+        return userRepository.saveAll(List.of(
                 user("client@ticketya.com", "Juan", "Pérez", "30111222", "Tandil", roles.get("CLIENT")),
                 user("organizer@ticketya.com", "María", "Gómez", "28333444", "Buenos Aires", roles.get("ORGANIZER")),
                 user("admin@ticketya.com", "Laura", "Fernández", "25555666", "Tandil", roles.get("ADMIN")),
                 user("staff@ticketya.com", "Diego", "López", "35777888", "Mar del Plata", roles.get("ACCESS_STAFF"))
+        )).stream().collect(Collectors.toMap(User::getEmail, Function.identity()));
+    }
+
+    /**
+     * The first one (id 1) is the {@code ORGANIZATION_ID} the event-service's seeder uses. The second one has
+     * no organizers, so creating an event for it with organizer 2 gives {@code organizer_not_in_organization}.
+     */
+    private List<Organization> seedOrganizations() {
+        return organizationRepository.saveAll(List.of(
+                organization("Del Sur Producciones S.A.", "Del Sur Producciones", OrganizationType.COMPANY,
+                        "30-71234567-8", "0110599520000001234567"),
+                organization("Asociación Civil Cultura Serrana", "Cultura Serrana", OrganizationType.NON_PROFIT,
+                        "30-70987654-3", "0140123401000009876543")
         ));
+    }
+
+    /**
+     * Only {@code organizer@ticketya.com} (user 2, the {@code ORGANIZER_USER_ID} of the event-service's seeder)
+     * organizes, for the first organization.
+     */
+    private void seedOrganizers(Map<String, User> users, List<Organization> organizations) {
+        organizerRepository.save(Organizer.builder()
+                .user(users.get("organizer@ticketya.com"))
+                .organization(organizations.getFirst())
+                .build());
     }
 
     private static Permission permission(String name, String description) {
@@ -104,6 +139,17 @@ public class AuthSeeder implements ApplicationRunner {
                 .birthDate(LocalDate.of(1995, 1, 1))
                 .city(city)
                 .role(role)
+                .build();
+    }
+
+    private static Organization organization(String legalName, String publicName, OrganizationType type,
+                                             String taxId, String bankAccount) {
+        return Organization.builder()
+                .legalName(legalName)
+                .publicName(publicName)
+                .type(type)
+                .taxId(taxId)
+                .bankAccount(bankAccount)
                 .build();
     }
 

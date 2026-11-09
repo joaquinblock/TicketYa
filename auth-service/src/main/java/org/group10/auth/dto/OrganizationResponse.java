@@ -13,5 +13,5 @@ public record OrganizationResponse(
         @Schema(example = "Producciones del Sur S.A.") String legalName,
         @Schema(description = "Nombre que se muestra en las páginas de eventos", example = "Del Sur Producciones")
         String displayName,
-        @Schema(example = "EMPRESA") OrganizationType type
+        @Schema(example = "COMPANY") OrganizationType type
 ) {}

@@ -22,7 +22,7 @@ erDiagram
         bigint id PK
         varchar legal_name
         varchar display_name
-        enum type "EMPRESA | ASOCIACION_CIVIL"
+        enum type "COMPANY | CIVIL_ASSOCIATION"
         varchar tax_id "unique"
         varchar bank_account_number
     }
@@ -64,7 +64,7 @@ Los consume el event-service con `AuthClient`. Swagger: `/swagger-ui.html` en el
 ```http
 GET /api/organizations/1
 → { "id": 1, "legalName": "Producciones del Sur S.A.",
-    "displayName": "Del Sur Producciones", "type": "EMPRESA" }
+    "displayName": "Del Sur Producciones", "type": "COMPANY" }
 
 GET /api/organizers/2
 → { "userId": 2, "firstName": "María", "lastName": "Gómez", "organizationId": 1 }

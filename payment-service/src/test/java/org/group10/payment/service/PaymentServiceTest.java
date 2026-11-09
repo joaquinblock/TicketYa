@@ -7,6 +7,7 @@ import org.group10.payment.dto.PaymentResponse;
 import org.group10.payment.entity.Payment;
 import org.group10.payment.entity.PaymentMethod;
 import org.group10.payment.entity.PaymentStatus;
+import org.group10.payment.exception.PaymentErrorCode;
 import org.group10.payment.gateway.ChargeResult;
 import org.group10.payment.gateway.PaymentGateway;
 import org.group10.payment.repository.PaymentRepository;
@@ -76,6 +77,37 @@ class PaymentServiceTest {
         paymentService.charge(request);
 
         assertThat(savedStatuses).containsExactly(PaymentStatus.PENDING, PaymentStatus.APPROVED);
+    }
+
+    @Test
+    void charge_rejectedByTheGateway_failsWithTheReasonAndTheRejectedAttempts() {
+        when(paymentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(paymentGateway.charge(any())).thenReturn(ChargeResult.rejected("MOCK-1", "Fondos insuficientes"));
+        when(paymentRepository.countByOrderIdAndStatus(ORDER_ID, PaymentStatus.REJECTED)).thenReturn(2L);
+
+        assertThatThrownBy(() -> paymentService.charge(request))
+                .isInstanceOfSatisfying(TicketYaException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(PaymentErrorCode.PAYMENT_REJECTED);
+                    assertThat(ex.getDetail()).containsEntry("reason", "Fondos insuficientes")
+                            .containsEntry("rejectedAttempts", 2L);
+                });
+    }
+
+    @Test
+    void charge_rejectedByTheGateway_storesThePaymentAsRejectedWithItsReason() {
+        List<Payment> savedPayments = new ArrayList<>();
+        when(paymentRepository.save(any())).thenAnswer(invocation -> {
+            savedPayments.add(invocation.getArgument(0));
+            return invocation.getArgument(0);
+        });
+        when(paymentGateway.charge(any())).thenReturn(ChargeResult.rejected("MOCK-1", "Fondos insuficientes"));
+
+        assertThatThrownBy(() -> paymentService.charge(request)).isInstanceOf(TicketYaException.class);
+
+        Payment lastSavedPayment = savedPayments.getLast();
+        assertThat(lastSavedPayment.getStatus()).isEqualTo(PaymentStatus.REJECTED);
+        assertThat(lastSavedPayment.getFailureReason()).isEqualTo("Fondos insuficientes");
+        assertThat(lastSavedPayment.getGatewayId()).isEqualTo("MOCK-1");
     }
 
     @Test

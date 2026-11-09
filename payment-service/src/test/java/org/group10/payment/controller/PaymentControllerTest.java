@@ -5,6 +5,7 @@ import org.group10.common.exception.TicketYaException;
 import org.group10.payment.dto.PaymentResponse;
 import org.group10.payment.entity.PaymentMethod;
 import org.group10.payment.entity.PaymentStatus;
+import org.group10.payment.exception.PaymentErrorCode;
 import org.group10.payment.service.PaymentService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -17,6 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
 import java.math.BigDecimal;
+import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -74,6 +76,19 @@ class PaymentControllerTest {
                 .andExpect(jsonPath("$.error").value("validation_error"));
 
         verifyNoInteractions(paymentService);
+    }
+
+    @Test
+    void charge_rejectedPayment_returns422WithTheReasonAndTheRejectedAttempts() throws Exception {
+        when(paymentService.charge(any())).thenThrow(new TicketYaException(PaymentErrorCode.PAYMENT_REJECTED,
+                "El pago fue rechazado: Fondos insuficientes",
+                Map.of("reason", "Fondos insuficientes", "rejectedAttempts", 1L)));
+
+        postPayment(VALID_PAYMENT)
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.error").value("payment_rejected"))
+                .andExpect(jsonPath("$.detail.reason").value("Fondos insuficientes"))
+                .andExpect(jsonPath("$.detail.rejectedAttempts").value(1));
     }
 
     @Test

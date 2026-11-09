@@ -7,4 +7,8 @@ public record ChargeResult(String gatewayId, PaymentStatus status, String failur
     public static ChargeResult approved(String gatewayId) {
         return new ChargeResult(gatewayId, PaymentStatus.APPROVED, null);
     }
+
+    public static ChargeResult rejected(String gatewayId, String failureReason) {
+        return new ChargeResult(gatewayId, PaymentStatus.REJECTED, failureReason);
+    }
 }

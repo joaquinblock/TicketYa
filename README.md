@@ -43,3 +43,68 @@ El trabajo debe centrarse en el **backend**, que orquesta todas las interaccione
 - **Seguridad**: autenticación y autorización con JWT (usuarios y roles: cliente, organizador, administrador y personal de acceso).
 - **Despliegue**: cada microservicio (y cada base de datos, el gateway, etc.) debe poder desplegarse en su **propio contenedor Docker**, y todo el sistema debe poder levantarse con un único `docker-compose.yml`.
 - **Rendimiento**: el sistema debe soportar la apertura de venta de un evento masivo. Se debe realizar al menos una prueba de carga sobre el flujo de compra (por ej. con JMeter) y reportar sus resultados.
+
+## Metodología sugerida
+
+Se sugiere seguir prácticas de **desarrollo guiado por especificaciones** (*spec-driven development*), por ejemplo utilizando **OpenSpec**. La idea es que cada funcionalidad o cambio comience con una especificación escrita y revisada por el grupo (propuesta → especificación de requisitos y escenarios → diseño → tareas) antes de implementarse, y que esas especificaciones queden versionadas en el repositorio junto al código. Las especificaciones sirven además como base para los contratos OpenAPI y para los casos de prueba. Si se utilizan coding agents de IA para programar, las especificaciones son el insumo que debe guiar a estos agentes.
+
+## Interfaz gráfica
+
+El foco del trabajo es el backend. Sin embargo, **se valorará positivamente** que el sistema no sea solo backend y cuente con una **interfaz gráfica** (p. ej. una aplicación web en React, Angular, Vue o Thymeleaf) que consuma la API a través del gateway. Como mínimo, sería deseable cubrir los flujos principales del cliente: buscar eventos, elegir sector y asientos, comprar y ver sus entradas.
+
+## Modalidad de entrega
+
+El trabajo se realiza en grupo y se entrega en **dos partes incrementales**, sobre el mismo repositorio. La primera entrega se focaliza en el **núcleo del sistema** (el circuito de publicación, búsqueda y compra sin doble venta); la segunda completa la funcionalidad y los aspectos no funcionales restantes. Los números entre paréntesis refieren a la sección [Funcionalidad](#funcionalidad).
+
+| | Entrega 1: Core del sistema | Entrega 2: Sistema completo |
+|---|---|---|
+| **Funcionalidad** | Eventos y lugares (1, 2), publicación (3), compra con reserva temporal y emisión de QR (4), no doble venta (5), devoluciones y cancelación de eventos (7), búsqueda por múltiples criterios (9). | Fila virtual (6), control de acceso con QR (8), preferencias y recomendaciones (10), notificaciones (11), reportes para organizadores (12). |
+| **Arquitectura** | Microservicios Spring Boot con API REST síncrona, API Gateway, una base relacional por microservicio, mecanismo contra la doble venta. Pasarela de pagos simulada (mock). | Base NoSQL (MongoDB) en al menos un servicio, consistencia entre servicios y compensaciones, resiliencia, cache, bitácora y log centralizado, comunicación asíncrona donde se justifique. |
+| **Seguridad** | Sin autenticación (el usuario se identifica por parámetro o encabezado). | Autenticación y autorización con JWT y roles. |
+| **Despliegue** | Ejecución local de los microservicios (las bases de datos pueden levantarse con Docker). | Cada microservicio en un contenedor Docker separado; todo el sistema con un docker-compose.yml. |
+| **Testing** | Pruebas unitarias de la lógica de negocio y una prueba que verifique la no doble venta. | Pruebas de integración entre servicios, pruebas de seguridad de endpoints y prueba de carga. |
+
+## Tareas: Entrega 1 (core)
+
+- **Features y User Stories:**
+  - Transformar los requerimientos dados en una serie de features y user stories (de todo el sistema), incluyendo criterios de aceptación para las historias.
+- **Arquitectura de microservicios:**
+  - Definir los microservicios, sus responsabilidades y API pública.
+  - Diagrama de módulos de la arquitectura de solución.
+  - Diagrama de secuencia del flujo de compra de una entrada numerada, incluyendo qué ocurre si el pago es rechazado o la reserva vence.
+- **Modelo de datos:**
+  - Diagrama entidad-relación por microservicio, indicando claves y relaciones entre servicios. Se debe indicar también si existen entidades solapadas entre bases.
+- **Diseño de API REST:**
+  - Listado de endpoints con método, ruta, parámetros, códigos de respuesta, ejemplos de request/response (JSON).
+  - Documentar utilizando OpenAPI (Swagger), incluyendo descripciones, ejemplos y códigos de error.
+- **Implementación:**
+  - Desarrollar en Spring Boot los microservicios y el API Gateway necesarios para la funcionalidad de esta entrega, en forma completa.
+  - Incluir mínimamente un README de cómo ejecutar, pero también documentación técnica adicional.
+- **Testing:**
+  - Pruebas unitarias de la lógica de negocio (compra, devoluciones, búsqueda).
+  - Una prueba que simule muchas compras simultáneas del mismo asiento (o del último lugar de una zona) y verifique que solo una resulta exitosa.
+
+**Entregable 1** (fecha sin definir en el enunciado): repositorio Git con código fuente, especificaciones (si se utilizó OpenSpec u otra práctica similar), documentación de diseño, README con instrucciones de ejecución, datos de prueba y una colección de requests (Postman o similar) para probar los endpoints.
+
+## Tareas: Entrega 2 (sistema completo)
+
+- **Features y User Stories:**
+  - Completar los criterios de aceptación de las historias restantes y actualizar las que hayan cambiado.
+- **Arquitectura y modelo de datos:**
+  - Actualizar los diagramas de módulos y entidad-relación con los nuevos servicios y la base NoSQL.
+  - Estrategias de consistencia (eventual vs. fuerte) y manejo de fallos parciales en la compra (compensaciones).
+- **Decisiones tecnológicas:**
+  - Justificar elección de las tecnologías (en particular, la base NoSQL elegida y para qué datos).
+  - Justificar uso de patrones: API Gateway, Circuit Breaker, Backend For Frontend, Saga, Service Discovery, etc.
+- **Implementación:**
+  - Desarrollar la funcionalidad restante. La fila virtual y las recomendaciones pueden implementarse con una versión simplificada, justificando las simplificaciones.
+  - Incorporar JWT con roles, la base NoSQL, la estrategia de cache, la resiliencia ante servicios externos y la bitácora/log centralizado.
+  - Empaquetar cada microservicio en un contenedor Docker separado y orquestar el sistema completo con docker-compose.
+- **Diseño de API REST:**
+  - Actualizar la documentación OpenAPI con los nuevos endpoints y los requisitos de seguridad.
+- **Testing:**
+  - Pruebas de integración entre microservicios (p. ej. con Testcontainers o levantando el entorno con docker-compose).
+  - Pruebas que verifiquen que cada endpoint solo es accesible por los roles correspondientes.
+  - Prueba de carga del flujo de compra, con un breve informe de resultados (usuarios concurrentes, tiempos de respuesta, errores).
+
+**Entregable 2** (fecha sin definir en el enunciado): repositorio Git actualizado con código fuente, archivo docker-compose.yml para levantar todos los servicios (bases de datos, gateway, microservicios, etc.), especificaciones y documentación de diseño actualizadas, README con instrucciones de ejecución y descripción del diseño, colección de requests actualizada e informe de la prueba de carga. Si se desarrolló interfaz gráfica, incluir instrucciones para ejecutarla.

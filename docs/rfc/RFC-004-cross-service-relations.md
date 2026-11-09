@@ -9,7 +9,7 @@
 
 | Tabla | Campos | Relaciones |
 |---|---|---|
-| `organization` | `legal_name`, `display_name`, `type` (`EMPRESA`, `ASOCIACION_CIVIL`), `tax_id`, `bank_account_number`, todos `NOT NULL` | — |
+| `organization` | `legal_name`, `display_name`, `type` (`COMPANY`, `CIVIL_ASSOCIATION`), `tax_id`, `bank_account_number`, todos `NOT NULL` | — |
 | `organizer` | `user_id` (PK), `organization_id`, `fecha_baja` (nullable) | `user_id` 1 a 1 con `user.id`; `organization_id` N a 1 con `organization.id` |
 
 `event` vive en el **event-service**, en otra base, y tiene que relacionarse con las dos:

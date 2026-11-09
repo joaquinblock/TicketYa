@@ -12,6 +12,12 @@ spring:
     hibernate:
       ddl-auto: create
     open-in-view: false
+  jackson:
+    deserialization:
+      accept-float-as-int: false
+    datatype:
+      enum:
+        fail-on-numbers-for-enums: true
 
 springdoc:
   swagger-ui:

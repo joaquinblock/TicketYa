@@ -16,7 +16,8 @@ erDiagram
         bigint id PK
         bigint user_id "auth-service, by ID"
         bigint event_id "event-service, by ID"
-        enum status "PENDING | PAID | REJECTED | EXPIRED"
+        enum status "PENDING | PAID | REJECTED | EXPIRED | CANCELLED | FAILED"
+        enum payment_method "CREDIT_CARD | DEBIT_CARD | ACCOUNT_MONEY; NULL until paid"
         datetime expires_at "10 min hold"
         decimal total
         varchar idempotency_key UK
@@ -25,6 +26,7 @@ erDiagram
     event_seat {
         bigint event_id PK "event-service, by ID"
         bigint seat_id PK "event-service, by ID"
+        bigint event_sector_id "event-service, by ID"
         enum status "AVAILABLE | RESERVED | SOLD"
         bigint order_id FK "NULL if available"
         datetime reserved_until
@@ -35,6 +37,19 @@ erDiagram
         bigint event_id "event-service, by ID"
         int capacity
         int taken
+    }
+    event_sale {
+        bigint event_id PK "event-service, by ID"
+        enum status "copy of event.status"
+        datetime date_time
+        datetime sale_start
+        boolean high_demand
+        int max_tickets_per_customer
+    }
+    event_sector_price {
+        bigint event_sector_id PK "event-service, by ID"
+        bigint event_id "event-service, by ID"
+        decimal price
     }
     ticket {
         bigint id PK
@@ -53,7 +68,7 @@ erDiagram
         bigint ticket_id FK
         bigint requested_by "auth-service, by ID"
         datetime requested_at
-        enum status "PENDING | APPROVED | REJECTED"
+        enum status "PENDING | APPROVED | REJECTED | CANCELLED"
         bigint resolved_by "auth-service, by ID"
         datetime resolved_at
     }
@@ -67,9 +82,9 @@ Todas van por ID, sin FK física, porque cada servicio tiene su propia base.
 |---|---|---|
 | `orders.user_id`, `return_request.requested_by`, `return_request.resolved_by` | `user` | auth-service |
 | `ticket.validated_by` | `access_staff` | auth-service |
-| `orders.event_id`, `event_seat.event_id`, `event_sector_stock.event_id` | `event` | event-service |
+| `orders.event_id`, `event_seat.event_id`, `event_sector_stock.event_id`, `event_sale.event_id`, `event_sector_price.event_id` | `event` | event-service |
 | `event_seat.seat_id`, `ticket.seat_id` | `seat` | event-service |
-| `ticket.event_sector_id`, `event_sector_stock.event_sector_id` | `event_sector` | event-service |
+| `ticket.event_sector_id`, `event_seat.event_sector_id`, `event_sector_stock.event_sector_id`, `event_sector_price.event_sector_id` | `event_sector` | event-service |
 
 **Datos solapados entre bases** (copias que se guardan a propósito):
 
@@ -79,6 +94,9 @@ Todas van por ID, sin FK física, porque cada servicio tiene su propia base.
 | `orders.total` | Suma de `ticket.price` | Es el monto que se le pide cobrar al payment-service |
 | `event_sector_stock.capacity` | `sector.capacity` | Controlar el cupo sin llamar al event-service en cada compra |
 | Filas de `event_seat` | Los `seat` de los sectores habilitados | Cada asiento necesita su propio estado y su `version` en esta base |
+| `event_sale` | `event` | Reservar sin llamar al event-service en cada compra |
+| `event_sector_price.price` | `event_sector.price` | Lo mismo para el precio que se copia en cada `ticket` |
+| `orders.payment_method` | `payment.payment_method` | Listar las compras sin depender del payment-service |
 
 ## Decisiones
 
@@ -109,11 +127,11 @@ WHERE event_sector_id = :id AND taken + :quantity <= capacity
 
 Si actualiza 0 filas, no hay lugar. La base ejecuta el `UPDATE` de a una fila por vez, así que dos compras del último lugar nunca pasan las dos. Además, un `CHECK (taken >= 0 AND taken <= capacity)` impide que el contador quede inconsistente aunque haya un bug en el código.
 
-**Costo:** a diferencia de `event_seat`, el contador no se libera solo cuando una reserva vence. Hace falta un job programado que pase a `EXPIRED` las órdenes vencidas y le reste al contador las entradas de esas órdenes. El mismo job limpia `event_seat`.
+**Costo:** a diferencia de `event_seat`, el contador no se libera solo cuando una reserva vence. Hace falta un job programado que pase a `EXPIRED` las órdenes vencidas y le reste al contador las entradas de esas órdenes. El mismo job limpia `event_seat` y corre cada 30 segundos, así un cupo vencido se libera a más tardar 1 minuto después. Hasta entonces, ese cupo figura ocupado y no se puede comprar.
 
 ### El inventario se crea al publicar el evento
 
-`event_seat` y `event_sector_stock` se crean cuando el evento pasa a `PUBLISHED`: el event-service le pasa al ticket-service los asientos de los sectores numerados y la capacidad de los no numerados que tienen fila en `event_sector`. Así hay un solo momento de sincronización entre los dos servicios, y durante la venta el ticket-service no necesita consultar al event-service para saber qué hay disponible. Se implementa en la épica de publicación o de compra.
+`event_seat` y `event_sector_stock` se crean cuando el evento pasa a `PUBLISHED`: el event-service le pasa al ticket-service los asientos de los sectores numerados y la capacidad de los no numerados que tienen fila en `event_sector`. Así hay un solo momento de sincronización entre los dos servicios, y durante la venta el ticket-service no necesita consultar al event-service para saber qué hay disponible. Se implementa en la épica #3.
 
 ### La `ticket` existe desde la reserva
 
@@ -147,9 +165,39 @@ Se deja a propósito: permite saber si un asiento está libre mirando solo `even
 
 La devolución es la solicitud del cliente y la resolución del administrador (consigna 7); el reintegro es el movimiento de dinero con la pasarela. Por eso la devolución vive acá, junto a la entrada que libera, y el reintegro en el payment-service.
 
+### Copia de los datos de venta
+
+Reservar necesita precio, estado, fecha, `sale_start`, `high_demand` y `max_tickets_per_customer`, que son del event-service. Consultarlos en cada reserva pondría a ese servicio en el camino crítico de la compra: en una apertura masiva, cada reserva le pegaría, y si se cachearan, un `SUSPENDED` podría verse tarde.
+
+Por eso se copian a `event_sale` y `event_sector_price` junto con el inventario, y el event-service avisa cualquier cambio de esos datos. `event_seat` también guarda su `event_sector_id`, para validar el sector y completar el `ticket` sin otra llamada.
+
+**Costo:** el event-service tiene que avisar cada cambio. Si un aviso falla, ese cambio de estado no debe darse por aplicado, porque el ticket-service seguiría vendiendo con el dato anterior.
+
+### Aprobar una devolución: primero payment
+
+No hay una transacción que abarque las dos bases, así que aprobar se hace en tres pasos:
+
+1. Se verifica, en una transacción, que la solicitud siga `PENDING` y la entrada `ISSUED`.
+2. Se pide el reintegro al payment-service, sin ninguna transacción abierta, para no retener conexiones ni bloqueos durante la llamada.
+3. Si lo aceptó, se confirma en una transacción: solicitud `APPROVED`, entrada `REFUNDED` y lugar liberado.
+
+Si el payment-service no responde, la solicitud sigue `PENDING` y el administrador reintenta. Ante un timeout no se sabe si el reintegro se procesó, por eso el reintento tiene que ser seguro: para el mismo `ticket_id`, el payment-service devuelve el reintegro existente. El mismo reintento completa el paso 3 si el ticket-service se cayó después del paso 2.
+
+### Una sola transición desde `PENDING`
+
+Una orden en `PENDING` puede terminar por varios caminos a la vez: se confirma el pago, se rechaza, vence o se cancela el evento. Cada salida se aplica con un `UPDATE orders SET status = :next WHERE id = :id AND status = 'PENDING'`. La base ejecuta esa operación de a una por fila, así que solo una actualiza la fila. Las demás ven 0 filas afectadas y no modifican nada. `orders` no tiene `@Version` porque este `UPDATE` condicional alcanza.
+
+Si el pago se aprobó y la orden ya no puede pasar a `PAID`, no se emiten entradas y se pide el reintegro de cada `ticket` con motivo `PURCHASE_COMPENSATION`.
+
+### Verificar el asiento antes de emitir
+
+Un `event_seat` con `reserved_until` vencido se trata como libre, así que otro cliente puede tomarlo aunque el job todavía no haya expirado la orden original. Antes de pasar a `PAID` se verifica que cada asiento siga asociado a esa orden. Si alguno ya no lo está, la orden pasa a `EXPIRED` y se compensa el pago como en el caso anterior.
+
 ## Limitaciones conocidas
 
-**Límite de entradas por cliente.** Se controla contando las entradas del usuario para el evento (`orders.user_id` + `orders.event_id`) contra `event.max_tickets_per_customer`. Si el mismo usuario lanza dos compras exactamente al mismo tiempo, las dos pueden pasar el control. Resolverlo requiere un lock por usuario y evento; para la Entrega 1 se valida en el service y queda anotado. No afecta la no doble venta: cada lugar sigue vendiéndose una sola vez.
+**Límite de entradas por cliente.** Se controla contando las entradas del usuario para el evento (`orders.user_id` + `orders.event_id`) contra `event_sale.max_tickets_per_customer`. Si el mismo usuario lanza dos compras exactamente al mismo tiempo, las dos pueden pasar el control. Resolverlo requiere un lock por usuario y evento; para la Entrega 1 se valida en el service y queda anotado. No afecta la no doble venta: cada lugar sigue vendiéndose una sola vez.
+
+**Ingreso durante la aprobación de una devolución.** Si alguien entra con una entrada justo entre el pedido de reintegro y la confirmación local, el reintegro ya se pidió y la entrada queda `USED`. Es muy improbable y se registra en el log para resolverlo a mano. Si la entrada ya estaba usada al aprobar, no se pide el reintegro.
 
 ## Datos de prueba
 
@@ -162,3 +210,37 @@ El `TicketSeeder` usa los IDs que generan los seeders del auth-service y del eve
 | Obra de teatro | `event` 2, sectores `event_sector` 3 (Platea) y 4 (Pullman), asientos 81–154 | event-service |
 
 Carga el inventario de los dos eventos publicados, una compra pagada en el Campo, una pagada con asientos en la obra (con una devolución pendiente) y una reserva en curso en la Platea del recital.
+
+## User stories
+
+Las historias y sus criterios de aceptación están en [`user-stories.md`](../user-stories.md), con el prefijo `US-TKT`. Acá quedan las decisiones de negocio que definen y lo que necesitan de otros servicios.
+
+### Decisiones de negocio
+
+| Tema | Regla | Por qué |
+|---|---|---|
+| Pago rechazado | Libera los lugares, y reintentar requiere una reserva nueva | Es lo que pide la consigna 4 |
+| Devolución con evento `SUSPENDED` | Se acepta, con la regla de 72 horas. Solo se bloquea la venta | El cliente no queda atrapado si la nueva fecha no le sirve |
+| Identidad en la Entrega 1 | Header `X-User-Id`, sin validar roles | El enunciado no pide autenticación en esta entrega |
+| Órdenes y solicitudes pendientes al cancelar | Pasan a `CANCELLED` | Es una causa distinta de `EXPIRED` y de `REJECTED`, y el cliente no debe ver "rechazada" cuando le devuelven el dinero |
+| Entradas `USED` al cancelar | También se reintegran | La consigna 7 dice "todas sus entradas vendidas" |
+| Aprobar una devolución si el payment-service no responde | La solicitud sigue `PENDING` y el administrador reintenta | La entrada no se marca como devuelta hasta que payment acepte el reintegro |
+| Compra que falla después de cobrar | La orden termina en `FAILED` | El pago sí se aprobó, así que el cliente no debe ver "rechazado" |
+| Compensación por vencimiento durante el pago | Va en la Entrega 1, en su forma simple | El caso puede ocurrir desde la primera entrega y la llamada de reintegro ya existe. La US-TKT-22 agrega los reintentos y los demás fallos |
+
+### Pendientes para la implementación
+
+- **Códigos nuevos en `TicketErrorCode`:** `event_not_on_sale`, `order_not_payable`, `return_request_not_found`, `return_request_already_pending`, `invalid_queue_token`.
+- **Valores nuevos de enums:** `CANCELLED` y `FAILED` en `OrderStatus`, `CANCELLED` en `ReturnRequestStatus`.
+- **Modelo:** entidades `EventSale` y `EventSectorPrice`, `event_sector_id` en `EventSeat` y `payment_method` en `Order`. El `TicketSeeder` tiene que cargarlos.
+- **payment-service:** ante un reintegro repetido para el mismo `ticket_id` tiene que devolver el existente. `payment-service.md` hoy dice que el segundo pedido falla.
+
+### Dependencias con otros servicios
+
+| Servicio | Qué se necesita | Historias |
+|---|---|---|
+| event-service → ticket-service | Avisar la publicación con asientos, capacidades y datos de venta; avisar cualquier cambio de esos datos y la cancelación | US-TKT-01, 07, 18 |
+| ticket-service → event-service | Pedir `SOLD_OUT` y su reversa; capacidad y organización para los reportes | US-TKT-13, 20 |
+| ticket-service → payment-service | Cobrar por `order_id` con el monto de `orders.total`; reintegrar por `ticket_id` | US-TKT-09 a 11, 16, 18, 22, 23 |
+| ticket-service → auth-service | Confirmar la asignación del personal de acceso y la organización del organizador | US-TKT-19, 20 |
+| recommendation-service → ticket-service | Historial de compras | US-TKT-25 |

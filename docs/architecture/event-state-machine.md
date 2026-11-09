@@ -39,5 +39,5 @@ Es necesario agregarlo en el `HashMap` junto con los estados a los que puede pas
 ---
 ## A considerar
 - Se puede saltear la máquina. `Event` tiene `@Setter` en toda la clase, así que cualquiera puede hacer `event.setStatus(...)` sin pasar por `transition`, y por ahora nadie la llama. Para que se respete, convendría quitar el setter de status y exponer un método como `event.changeStatus(next)` que la use.
--  Efectos al cambiar de estado. Llegar a `CANCELLED` desde `PUBLISHED`, `SOLD_OUT` o `SUSPENDED` tiene que disparar el aviso al ticket-service para los reintegros. Además, el ticket-service tiene que vender solo cuando el evento está en `PUBLISHED`; `SUSPENDED` también debe bloquear la venta. Falta definir si durante la suspensión se aceptan devoluciones
+-  Efectos al cambiar de estado. Llegar a `CANCELLED` desde `PUBLISHED`, `SOLD_OUT` o `SUSPENDED` tiene que disparar el aviso al ticket-service para los reintegros. Además, el ticket-service tiene que vender solo cuando el evento está en `PUBLISHED`; `SUSPENDED` también debe bloquear la venta. Durante la suspensión se aceptan devoluciones, con la regla de 72 horas (ver US-TKT-14 en `user-stories.md`)
 - Estados nuevos. Si alguien agrega un estado al enum y no lo carga en el mapa, transition falla con un NullPointerException en vez de un mensaje claro. Un test que recorra todos los valores lo detecta.

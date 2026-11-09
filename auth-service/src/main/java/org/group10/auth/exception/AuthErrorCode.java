@@ -10,6 +10,7 @@ public enum AuthErrorCode implements ErrorCode {
     EMAIL_DUPLICATED(HttpStatus.CONFLICT),
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED),
     ORGANIZATION_NOT_FOUND(HttpStatus.NOT_FOUND),
+    ORGANIZER_NOT_FOUND(HttpStatus.NOT_FOUND),
     STAFF_NOT_ASSIGNED(HttpStatus.FORBIDDEN);
 
     private final HttpStatus status;

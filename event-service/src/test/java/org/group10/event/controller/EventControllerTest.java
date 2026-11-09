@@ -1,12 +1,15 @@
 package org.group10.event.controller;
 
 import org.group10.common.exception.TicketYaException;
+import org.group10.event.client.AuthClient;
+import org.group10.event.client.dto.UserPermissionsResponse;
 import org.group10.event.dto.EventResponse;
 import org.group10.event.dto.VenueSummaryResponse;
 import org.group10.event.entity.EventStatus;
 import org.group10.event.entity.EventType;
 import org.group10.event.exception.EventErrorCode;
 import org.group10.event.service.EventService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -17,6 +20,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import org.springframework.web.client.ResourceAccessException;
 
 import java.time.LocalDateTime;
+import java.util.Set;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -39,6 +43,57 @@ class EventControllerTest {
 
     @MockitoBean
     private EventService eventService;
+
+    @MockitoBean
+    private AuthClient authClient;
+
+    @BeforeEach
+    void organizerWithEventManage() {
+        when(authClient.getPermissions(2L)).thenReturn(
+                new UserPermissionsResponse(2L, "ORGANIZER", Set.of("EVENT_SEARCH", "EVENT_MANAGE")));
+    }
+
+    @Test
+    void create_userWithoutEventManage_returns403AndDoesNotCreate() throws Exception {
+        when(authClient.getPermissions(2L)).thenReturn(
+                new UserPermissionsResponse(2L, "CLIENT", Set.of("EVENT_SEARCH", "TICKET_PURCHASE")));
+
+        mockMvc.perform(createRequest(VALID_EVENT))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("forbidden"))
+                .andExpect(jsonPath("$.message").value("El usuario 2 no tiene el permiso EVENT_MANAGE"));
+        verifyNoInteractions(eventService);
+    }
+
+    @Test
+    void create_withoutPermissionAndInvalidBody_returns403BeforeValidating() throws Exception {
+        when(authClient.getPermissions(2L)).thenReturn(
+                new UserPermissionsResponse(2L, "CLIENT", Set.of("EVENT_SEARCH")));
+        String body = VALID_EVENT.replace("\"Los Serranos en vivo\"", "\"  \"");
+
+        mockMvc.perform(createRequest(body))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("forbidden"));
+    }
+
+    @Test
+    void create_withNonNumericUserHeader_returns400WithoutCallingAuth() throws Exception {
+        mockMvc.perform(post("/api/events").header("X-Organization-Id", 1).header("X-User-Id", "abc")
+                        .contentType(MediaType.APPLICATION_JSON).content(VALID_EVENT))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("invalid_parameter"));
+        verifyNoInteractions(authClient, eventService);
+    }
+
+    @Test
+    void create_authServiceDownWhileCheckingPermissions_returns503() throws Exception {
+        when(authClient.getPermissions(2L)).thenThrow(new ResourceAccessException("Connection refused"));
+
+        mockMvc.perform(createRequest(VALID_EVENT))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error").value("service_unavailable"));
+        verifyNoInteractions(eventService);
+    }
 
     @Test
     void create_validEvent_returns201InDraft() throws Exception {
@@ -65,8 +120,9 @@ class EventControllerTest {
         mockMvc.perform(post("/api/events").header("X-Organization-Id", 1)
                         .contentType(MediaType.APPLICATION_JSON).content(VALID_EVENT))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("invalid_parameter"));
-        verifyNoInteractions(eventService);
+                .andExpect(jsonPath("$.error").value("invalid_parameter"))
+                .andExpect(jsonPath("$.message").value("Falta el header obligatorio 'X-User-Id'"));
+        verifyNoInteractions(authClient, eventService);
     }
 
     @Test

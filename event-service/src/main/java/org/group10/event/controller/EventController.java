@@ -11,6 +11,9 @@ import lombok.RequiredArgsConstructor;
 import org.group10.common.dto.ErrorDto;
 import org.group10.event.dto.EventCreateRequest;
 import org.group10.event.dto.EventResponse;
+import org.group10.event.security.Permission;
+import org.group10.event.security.PermissionInterceptor;
+import org.group10.event.security.RequiresPermission;
 import org.group10.event.service.EventService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,7 +25,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * En la Entrega 1 no hay JWT: quien llama se identifica con los headers {@value #USER_HEADER} y
- * {@value #ORGANIZATION_HEADER}, y el service los valida contra el auth-service.
+ * {@value #ORGANIZATION_HEADER}. {@code PermissionInterceptor} revisa los permisos de {@value #USER_HEADER} y el
+ * service valida la organización y el organizador contra el auth-service.
  */
 @RestController
 @RequestMapping("/api/events")
@@ -30,22 +34,25 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "Eventos", description = "Alta y gestión de eventos")
 public class EventController {
 
-    static final String USER_HEADER = "X-User-Id";
+    static final String USER_HEADER = PermissionInterceptor.USER_HEADER;
     static final String ORGANIZATION_HEADER = "X-Organization-Id";
 
     private final EventService eventService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @RequiresPermission(Permission.EVENT_MANAGE)
     @Operation(summary = "Crear un evento", description = """
-            Se crea en `DRAFT`, sin sectores ni participantes. El usuario de `X-User-Id` tiene que ser un \
-            organizador activo de la organización de `X-Organization-Id`.""")
+            Se crea en `DRAFT`, sin sectores ni participantes. El usuario de `X-User-Id` necesita el permiso \
+            `EVENT_MANAGE` y tiene que ser un organizador activo de la organización de `X-Organization-Id`. \
+            El permiso se revisa antes que el body: sin permiso la respuesta es 403 aunque el body sea inválido.""")
     @ApiResponse(responseCode = "201", description = "Evento creado en borrador")
     @ApiResponse(responseCode = "400", description = "validation_error / invalid_parameter / invalid_event_configuration",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    @ApiResponse(responseCode = "403", description = "organizer_not_in_organization",
+    @ApiResponse(responseCode = "403", description = "forbidden (sin EVENT_MANAGE) / organizer_not_in_organization",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    @ApiResponse(responseCode = "404", description = "venue_not_found / organization_not_found / organizer_not_found",
+    @ApiResponse(responseCode = "404",
+            description = "user_not_found / venue_not_found / organization_not_found / organizer_not_found",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "503", description = "service_unavailable: el auth-service no responde",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))

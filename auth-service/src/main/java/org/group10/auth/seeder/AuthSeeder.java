@@ -94,13 +94,13 @@ AuthSeeder implements ApplicationRunner {
                 user("client@ticketya.com", "Juan", "Pérez", "30111222", "Tandil", roles.get("CLIENT")),
                 user("organizer@ticketya.com", "María", "Gómez", "28333444", "Buenos Aires", roles.get("ORGANIZER")),
                 user("admin@ticketya.com", "Laura", "Fernández", "25555666", "Tandil", roles.get("ADMIN")),
-                user("staff@ticketya.com", "Diego", "López", "35777888", "Mar del Plata", roles.get("ACCESS_STAFF"))
+                user("staff@ticketya.com", "Diego", "López", "35777888", "Mar del Plata", roles.get("ACCESS_STAFF")),
+                user("organizer.serrana@ticketya.com", "Sofía", "Ruiz", "32999000", "Tandil", roles.get("ORGANIZER"))
         )).stream().collect(Collectors.toMap(User::getEmail, Function.identity()));
     }
 
     /**
-     * The first one (id 1) is the {@code ORGANIZATION_ID} the event-service's seeder uses. The second one has
-     * no organizers, so creating an event for it with organizer 2 gives {@code organizer_not_in_organization}.
+     * Ids 1 and 2 are the {@code ORGANIZATION_ID} and {@code OTHER_ORGANIZATION_ID} the event-service's seeder uses.
      */
     private List<Organization> seedOrganizations() {
         return organizationRepository.saveAll(List.of(
@@ -112,14 +112,21 @@ AuthSeeder implements ApplicationRunner {
     }
 
     /**
-     * Only {@code organizer@ticketya.com} (user 2, the {@code ORGANIZER_USER_ID} of the event-service's seeder)
-     * organizes, for the first organization.
+     * One organizer per organization: user 2 for the first and user 5 for the second, the {@code ORGANIZER_USER_ID}
+     * and {@code OTHER_ORGANIZER_USER_ID} of the event-service's seeder. Since user 2 doesn't organize for the
+     * second one, creating an event for it with user 2 gives {@code organizer_not_in_organization}.
      */
     private void seedOrganizers(Map<String, User> users, List<Organization> organizations) {
-        organizerRepository.save(Organizer.builder()
-                .user(users.get("organizer@ticketya.com"))
-                .organization(organizations.getFirst())
-                .build());
+        organizerRepository.saveAll(List.of(
+                Organizer.builder()
+                        .user(users.get("organizer@ticketya.com"))
+                        .organization(organizations.get(0))
+                        .build(),
+                Organizer.builder()
+                        .user(users.get("organizer.serrana@ticketya.com"))
+                        .organization(organizations.get(1))
+                        .build()
+        ));
     }
 
     private static Permission permission(String name, String description) {

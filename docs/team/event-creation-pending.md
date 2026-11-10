@@ -56,7 +56,9 @@
 
 ## Cancelación
 
-- [x] **`POST /api/events/{id}/cancel`:** solo administradores (`EVENT_ADMIN`), desde `PUBLISHED`, `SOLD_OUT` o `SUSPENDED`
+- [x] **`POST /api/events/{id}/cancel`:** el admin o el organizador que creó el evento, desde `PUBLISHED`, `SOLD_OUT` o `SUSPENDED`
+- [x] **Suspender y reanudar:** `POST /suspend` y `POST /resume` (con fecha nueva opcional), con la misma regla. Reanudar vuelve a `PUBLISHED` o `SOLD_OUT`, el que tenía
+- [ ] **Frenar la venta de un evento suspendido:** le toca al ticket-service (US-TKT-07, #49)
 - [ ] **Reintegros:** cancelar todavía no avisa al ticket-service (US-TKT-18, #61). Las entradas de un evento cancelado siguen válidas allá
 
 ## Resiliencia de `AuthClient`

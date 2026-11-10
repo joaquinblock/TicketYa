@@ -276,7 +276,7 @@ Las historias y sus criterios de aceptación están en [`user-stories.md`](../us
 
 ### Pendientes para la implementación
 
-- **Códigos nuevos en `TicketErrorCode`:** `order_not_payable`, `payment_window_closed`, `return_request_not_found`, `return_request_already_pending`, `invalid_queue_token`.
+- **Códigos nuevos en `TicketErrorCode`:** `return_request_not_found`, `return_request_already_pending`, `invalid_queue_token`.
 
 ### Endpoints
 

@@ -250,6 +250,11 @@ public class EventService {
         getEvent(id).changeStatus(EventStatus.SOLD_OUT, statusMachine);
     }
 
+    @Transactional
+    public void markBackOnSale(Long id) {
+        getEvent(id).changeStatus(EventStatus.PUBLISHED, statusMachine);
+    }
+
     /**
      * Replaces the participants of a draft event with the given ones. Repeated ids count once, and an empty list
      * removes them all.

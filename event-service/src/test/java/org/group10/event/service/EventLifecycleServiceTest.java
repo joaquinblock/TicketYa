@@ -400,6 +400,31 @@ class EventLifecycleServiceTest {
         assertError(() -> eventService.markSoldOut(EVENT_ID), EventErrorCode.INVALID_STATUS_TRANSITION);
     }
 
+    @Test
+    void markBackOnSale_soldOut_goesToPublished() {
+        Event event = givenEvent(EventStatus.SOLD_OUT);
+
+        eventService.markBackOnSale(EVENT_ID);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.PUBLISHED);
+    }
+
+    @Test
+    void markBackOnSale_alreadyPublished_changesNothing() {
+        Event event = givenEvent(EventStatus.PUBLISHED);
+
+        eventService.markBackOnSale(EVENT_ID);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.PUBLISHED);
+    }
+
+    @Test
+    void markBackOnSale_cancelled_throwsInvalidTransition() {
+        givenEvent(EventStatus.CANCELLED);
+
+        assertError(() -> eventService.markBackOnSale(EVENT_ID), EventErrorCode.INVALID_STATUS_TRANSITION);
+    }
+
     // ---- replaceSectors ----
 
     @Test

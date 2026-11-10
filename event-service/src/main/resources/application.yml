@@ -6,11 +6,12 @@ spring:
     name: event-service
   http:
     serviceclient:
-      # Sin timeouts, un servicio colgado deja el request esperando para siempre (ver microservices.md)
+      # Sin timeouts, un servicio colgado deja el request esperando para siempre (ver microservices.md).
+      # 5 s de lectura: un servicio recién levantado tarda más de 2 s en sus primeras respuestas.
       auth-service:
         base-url: ${AUTH_SERVICE_URL:http://localhost:8081}
         connect-timeout: 1s
-        read-timeout: 2s
+        read-timeout: 5s
       ticket-service:
         base-url: ${TICKET_SERVICE_URL:http://localhost:8083}
         connect-timeout: 1s

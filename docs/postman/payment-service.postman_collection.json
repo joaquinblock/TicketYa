@@ -422,40 +422,9 @@
           }
         },
         {
-          "name": "Pendiente: misma clave y mismos datos → 503",
-          "event": [{ "listen": "test", "script": { "exec": [
-            "pm.test('503 payment_gateway_unavailable', () => {",
-            "  pm.response.to.have.status(503);",
-            "  pm.expect(pm.response.json().error).to.eql('payment_gateway_unavailable');",
-            "});"
-          ] } }],
-          "request": {
-            "method": "POST",
-            "description": "Usa el pago PENDING de la orden 3 que carga PaymentSeeder.",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": "{{paymentUrl}}/internal/payments",
-            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{pendingOrderId}},\n  \"amount\": 70000.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{pendingKey}}\"\n}" }
-          }
-        },
-        {
-          "name": "Pendiente: reintentar otra vez → sigue 503",
-          "event": [{ "listen": "test", "script": { "exec": [
-            "pm.test('Sigue sin resultado y se puede reintentar', () => {",
-            "  pm.response.to.have.status(503);",
-            "  pm.expect(pm.response.json().error).to.eql('payment_gateway_unavailable');",
-            "});"
-          ] } }],
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": "{{paymentUrl}}/internal/payments",
-            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{pendingOrderId}},\n  \"amount\": 70000.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{pendingKey}}\"\n}" }
-          }
-        },
-        {
           "name": "Pendiente: misma clave con otros datos → 409",
           "event": [{ "listen": "test", "script": { "exec": [
-            "pm.test('409 data_conflict antes que 503', () => {",
+            "pm.test('409 data_conflict antes de reintentar el cobro', () => {",
             "  pm.response.to.have.status(409);",
             "  pm.expect(pm.response.json().error).to.eql('data_conflict');",
             "});"
@@ -481,6 +450,40 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "url": "{{paymentUrl}}/internal/payments",
             "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{pendingOrderId}},\n  \"amount\": 70000.00,\n  \"paymentMethod\": \"ACCOUNT_MONEY\",\n  \"idempotencyKey\": \"{{$guid}}\"\n}" }
+          }
+        },
+        {
+          "name": "Pendiente: misma clave y mismos datos → reintenta y cobra 201",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('201 con el pago aprobado', () => {",
+            "  pm.response.to.have.status(201);",
+            "  const body = pm.response.json();",
+            "  pm.expect(body.status).to.eql('APPROVED');",
+            "  pm.expect(body.gatewayId).to.be.a('string');",
+            "  pm.collectionVariables.set('pendingRetryAnswer', pm.response.text());",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "description": "Usa el pago PENDING de la orden 3 que carga PaymentSeeder.",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{pendingOrderId}},\n  \"amount\": 70000.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{pendingKey}}\"\n}" }
+          }
+        },
+        {
+          "name": "Pendiente: reintentar otra vez → mismo 201",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Repite el resultado guardado', () => {",
+            "  pm.response.to.have.status(201);",
+            "  pm.expect(pm.response.json()).to.eql(JSON.parse(pm.collectionVariables.get('pendingRetryAnswer')));",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{pendingOrderId}},\n  \"amount\": 70000.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{pendingKey}}\"\n}" }
           }
         }
       ]

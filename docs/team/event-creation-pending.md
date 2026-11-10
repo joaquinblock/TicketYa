@@ -7,7 +7,7 @@
 | Paso | Endpoint | Estado |
 |---|---|---|
 | 1. Crear el evento en borrador | `POST /api/events` | ✅ Hecho |
-| 2. Definir qué sectores se venden y a qué precio | `PUT /api/events/{id}/sectors` | ⬜ Falta |
+| 2. Definir qué sectores se venden y a qué precio | `PUT /api/events/{id}/sectors` | ✅ Hecho |
 | 3. Agregar participantes | `PUT /api/events/{id}/participants` | ✅ Hecho |
 | 4. Corregir datos mientras es borrador | `PUT /api/events/{id}` | ✅ Hecho |
 | 5. Publicar | `POST /api/events/{id}/publish` | ✅ Hecho (sin inventario) |
@@ -24,7 +24,7 @@
 
 ## Configuración del evento (mientras está en `DRAFT`)
 
-- [ ] **Sectores y precios** (`event_sector`): recibir `[{ sectorId, price }]`
+- [x] **Sectores y precios** (`event_sector`): `PUT /api/events/{id}/sectors` con `[{ sectorId, price }]`
   - Cada sector tiene que ser **del lugar del evento**: `404 sector_not_found` si no
   - Sin sectores repetidos (el unique `uk_event_sector` lo protege igual)
   - `price > 0` con dos decimales, como en `EventSector`

@@ -26,7 +26,7 @@ No se crea una clase por error. Cada servicio tiene su enum `<Servicio>ErrorCode
 | `AuthErrorCode` | auth-service | `user_not_found`, `email_duplicated`, `invalid_credentials`, `organization_not_found`, `organizer_not_found`, `staff_not_assigned` |
 | `EventErrorCode` | event-service | `event_not_found`, `venue_not_found`, `venue_in_use`, `sector_not_found`, `sector_name_duplicated`, `sector_in_use`, `sector_not_numbered`, `invalid_sector_configuration`, `seat_not_found`, `seat_row_duplicated`, `participant_not_found`, `invalid_status_transition`, `event_not_editable`, `invalid_event_configuration`, `organizer_not_in_organization` |
 | `TicketErrorCode` | ticket-service | `order_not_found`, `ticket_not_found`, `sale_not_started`, `seat_unavailable`, `sector_sold_out`, `ticket_limit_exceeded`, `reservation_expired`, `ticket_already_used`, `refund_not_allowed`, `invalid_qr` |
-| `PaymentErrorCode` | payment-service | `payment_not_found`, `payment_rejected`, `payment_gateway_unavailable`, `refund_failed` |
+| `PaymentErrorCode` | payment-service | `payment_not_found`, `payment_rejected`, `payment_gateway_unavailable`, `payment_not_refundable`, `refund_failed` |
 
 **`forbidden` es el error de permisos de todos los servicios.** Lo usa `PermissionInterceptor` cuando el rol del usuario no tiene el permiso que pide `@RequiresPermission`, con un mensaje que dice cuál faltó. Los `403` de negocio, como `organizer_not_in_organization`, llevan su propio código (ver [`permissions.md`](permissions.md)).
 

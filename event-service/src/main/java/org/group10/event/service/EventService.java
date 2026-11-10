@@ -9,8 +9,10 @@ import org.group10.event.dto.EventDetailResponse;
 import org.group10.event.dto.EventParticipantsRequest;
 import org.group10.event.dto.EventResponse;
 import org.group10.event.dto.EventSectorResponse;
+import org.group10.event.dto.EventSectorsRequest;
 import org.group10.event.dto.ParticipantResponse;
 import org.group10.event.entity.Event;
+import org.group10.event.entity.EventSector;
 import org.group10.event.entity.EventStatus;
 import org.group10.event.entity.Participant;
 import org.group10.event.entity.Sector;
@@ -22,6 +24,7 @@ import org.group10.event.repository.EventRepository;
 import org.group10.event.repository.EventSectorRepository;
 import org.group10.event.repository.ParticipantRepository;
 import org.group10.event.repository.SeatRepository;
+import org.group10.event.repository.SectorRepository;
 import org.group10.event.repository.SectorSeatCount;
 import org.group10.event.repository.VenueRepository;
 import org.group10.event.statemachine.EventStatusMachine;
@@ -30,6 +33,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionOperations;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -38,6 +42,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -49,6 +54,7 @@ public class EventService {
     private final VenueRepository venueRepository;
     private final ParticipantRepository participantRepository;
     private final EventSectorRepository eventSectorRepository;
+    private final SectorRepository sectorRepository;
     private final SeatRepository seatRepository;
     private final EventStatusMachine statusMachine;
     private final TransactionOperations transactions;
@@ -92,6 +98,68 @@ public class EventService {
             }
             EventMapper.update(managed, request, venueRepository.getReferenceById(request.venueId()));
             eventRepository.flush();
+            return toDetail(managed);
+        });
+    }
+
+    /**
+     * Replaces the sectors a draft event sells and their prices. Each one has to be a sector of the event's venue, and
+     * none can repeat, because it would have two prices. An empty list removes them all.
+     * <p>
+     * Updated in place: a sector that stays keeps its {@code event_sector} id and only its price changes, so the id
+     * stays stable if one day prices can change after publishing (the ticket-service refers to it).
+     *
+     * @throws TicketYaException {@code EVENT_NOT_FOUND}, {@code EVENT_NOT_EDITABLE},
+     *                           {@code INVALID_EVENT_CONFIGURATION} with the repeated ids in {@code detail},
+     *                           {@code ORGANIZER_NOT_IN_ORGANIZATION} or {@code SECTOR_NOT_FOUND} with the ids that
+     *                           aren't sectors of the venue in {@code detail}
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public EventDetailResponse replaceSectors(Long id, Long organizerId, EventSectorsRequest request) {
+        Event event = getEvent(id);
+        ensureDraft(event, "cambiar los sectores");
+        List<Long> repeated = request.sectors().stream()
+                .collect(Collectors.groupingBy(EventSectorsRequest.SectorPrice::sectorId, Collectors.counting()))
+                .entrySet().stream().filter(e -> e.getValue() > 1).map(Map.Entry::getKey).sorted().toList();
+        if (!repeated.isEmpty()) {
+            throw new TicketYaException(EventErrorCode.INVALID_EVENT_CONFIGURATION,
+                    "Cada sector va una sola vez, con un solo precio: se repiten %s".formatted(repeated),
+                    Map.of("repeatedSectorIds", repeated));
+        }
+        verifyOrganizer(event.getOrganizationId(), organizerId);
+
+        return transactions.execute(tx -> {
+            Event managed = getEvent(id);
+            ensureDraft(managed, "cambiar los sectores");
+            Long venueId = managed.getVenue().getId();
+            List<Long> ids = request.sectors().stream().map(EventSectorsRequest.SectorPrice::sectorId).toList();
+            Map<Long, Sector> sectors = sectorRepository.findAllById(ids).stream()
+                    .filter(s -> s.getVenue().getId().equals(venueId))
+                    .collect(Collectors.toMap(Sector::getId, Function.identity()));
+            List<Long> missing = ids.stream().filter(sectorId -> !sectors.containsKey(sectorId)).toList();
+            if (!missing.isEmpty()) {
+                throw new TicketYaException(EventErrorCode.SECTOR_NOT_FOUND,
+                        "Los sectores %s no son del lugar %d del evento".formatted(missing, venueId),
+                        Map.of("missingIds", missing));
+            }
+
+            Map<Long, EventSector> current = eventSectorRepository.findByEventId(id).stream()
+                    .collect(Collectors.toMap(es -> es.getSector().getId(), Function.identity()));
+            eventSectorRepository.deleteAll(current.values().stream()
+                    .filter(es -> !ids.contains(es.getSector().getId()))
+                    .toList());
+            List<EventSector> added = new ArrayList<>();
+            for (EventSectorsRequest.SectorPrice requested : request.sectors()) {
+                BigDecimal price = requested.price().setScale(2);   // @Digits allows at most 2 decimals
+                EventSector kept = current.get(requested.sectorId());
+                if (kept != null) {
+                    kept.setPrice(price);
+                } else {
+                    added.add(EventSector.builder().event(managed).sector(sectors.get(requested.sectorId()))
+                            .price(price).build());
+                }
+            }
+            eventSectorRepository.saveAll(added);
             return toDetail(managed);
         });
     }

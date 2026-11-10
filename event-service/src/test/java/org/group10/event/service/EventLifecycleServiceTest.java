@@ -6,6 +6,7 @@ import org.group10.event.client.dto.OrganizationResponse;
 import org.group10.event.client.dto.OrganizerResponse;
 import org.group10.event.dto.EventCreateRequest;
 import org.group10.event.dto.EventDetailResponse;
+import org.group10.event.dto.EventSectorsRequest;
 import org.group10.event.entity.Event;
 import org.group10.event.entity.EventSector;
 import org.group10.event.entity.EventStatus;
@@ -19,6 +20,7 @@ import org.group10.event.repository.EventRepository;
 import org.group10.event.repository.EventSectorRepository;
 import org.group10.event.repository.ParticipantRepository;
 import org.group10.event.repository.SeatRepository;
+import org.group10.event.repository.SectorRepository;
 import org.group10.event.repository.SectorSeatCount;
 import org.group10.event.repository.VenueRepository;
 import org.group10.event.statemachine.EventStatusMachine;
@@ -66,6 +68,8 @@ class EventLifecycleServiceTest {
     @Mock
     private EventSectorRepository eventSectorRepository;
     @Mock
+    private SectorRepository sectorRepository;
+    @Mock
     private SeatRepository seatRepository;
     @Mock
     private TransactionOperations transactions;
@@ -81,7 +85,7 @@ class EventLifecycleServiceTest {
     @BeforeEach
     void setUp() {
         eventService = new EventService(eventRepository, venueRepository, participantRepository, eventSectorRepository,
-                seatRepository, new EventStatusMachine(), transactions, authClient);
+                sectorRepository, seatRepository, new EventStatusMachine(), transactions, authClient);
         when(transactions.execute(any())).thenAnswer(invocation ->
                 invocation.<TransactionCallback<?>>getArgument(0).doInTransaction(null));
         when(seatRepository.countBySectorOfVenue(theater.getId())).thenReturn(List.of(new SectorSeatCount(3L, 50)));
@@ -299,6 +303,107 @@ class EventLifecycleServiceTest {
         assertThat(event.getStatus()).isEqualTo(EventStatus.CANCELLED);
     }
 
+    // ---- replaceSectors ----
+
+    @Test
+    void replaceSectors_newSectors_addsThemWithTheirPricesWithTwoDecimals() {
+        Event event = givenEvent(EventStatus.DRAFT);
+        when(sectorRepository.findAllById(List.of(3L, 4L))).thenReturn(List.of(stalls, field));
+
+        eventService.replaceSectors(EVENT_ID, ORGANIZER_ID, sectorsRequest(3L, "20000", 4L, "9500.5"));
+
+        org.mockito.ArgumentCaptor<List<EventSector>> saved = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(eventSectorRepository).saveAll(saved.capture());
+        assertThat(saved.getValue()).extracting(es -> es.getSector().getName() + "=" + es.getPrice())
+                .containsExactly("Platea=20000.00", "Campo=9500.50");
+        assertThat(saved.getValue()).allSatisfy(es -> assertThat(es.getEvent()).isSameAs(event));
+        verify(eventSectorRepository).deleteAll(List.of());
+    }
+
+    @Test
+    void replaceSectors_sectorThatStays_keepsItsRowAndOnlyChangesThePrice() {
+        Event event = givenEvent(EventStatus.DRAFT);
+        EventSector currentStalls = EventSector.builder().id(30L).event(event).sector(stalls)
+                .price(new BigDecimal("10000.00")).build();
+        EventSector currentField = EventSector.builder().id(31L).event(event).sector(field)
+                .price(new BigDecimal("5000.00")).build();
+        when(eventSectorRepository.findByEventId(EVENT_ID)).thenReturn(List.of(currentStalls, currentField));
+        when(sectorRepository.findAllById(List.of(3L))).thenReturn(List.of(stalls));
+
+        eventService.replaceSectors(EVENT_ID, ORGANIZER_ID, new EventSectorsRequest(List.of(price(3L, "12000"))));
+
+        assertThat(currentStalls.getId()).isEqualTo(30L);
+        assertThat(currentStalls.getPrice()).isEqualByComparingTo("12000.00");
+        verify(eventSectorRepository).deleteAll(List.of(currentField));
+        verify(eventSectorRepository).saveAll(List.of());
+    }
+
+    @Test
+    void replaceSectors_withAnEmptyList_removesThemAll() {
+        Event event = givenEvent(EventStatus.DRAFT);
+        EventSector currentStalls = EventSector.builder().id(30L).event(event).sector(stalls)
+                .price(new BigDecimal("10000.00")).build();
+        when(eventSectorRepository.findByEventId(EVENT_ID)).thenReturn(List.of(currentStalls));
+        when(sectorRepository.findAllById(List.of())).thenReturn(List.of());
+
+        eventService.replaceSectors(EVENT_ID, ORGANIZER_ID, new EventSectorsRequest(List.of()));
+
+        verify(eventSectorRepository).deleteAll(List.of(currentStalls));
+        verify(eventSectorRepository).saveAll(List.of());
+    }
+
+    @Test
+    void replaceSectors_repeatedSector_throwsInvalidConfigurationWithItsIdAndWithoutCallingAuth() {
+        givenEvent(EventStatus.DRAFT);
+
+        assertThatThrownBy(() -> eventService.replaceSectors(EVENT_ID, ORGANIZER_ID,
+                sectorsRequest(3L, "20000", 3L, "15000")))
+                .isInstanceOf(TicketYaException.class)
+                .satisfies(e -> {
+                    TicketYaException error = (TicketYaException) e;
+                    assertThat(error.getErrorCode()).isEqualTo(EventErrorCode.INVALID_EVENT_CONFIGURATION);
+                    assertThat(error.getDetail()).isEqualTo(Map.of("repeatedSectorIds", List.of(3L)));
+                });
+        verifyNoInteractions(authClient, transactions);
+    }
+
+    @Test
+    void replaceSectors_sectorOfAnotherVenue_throwsNotFoundWithItsIdAndKeepsTheOldOnes() {
+        givenEvent(EventStatus.DRAFT);
+        Sector stadiumField = Sector.builder().id(1L).venue(venue(1L, "Estadio del Sur")).name("Campo")
+                .numbered(false).capacity(5000).build();
+        when(sectorRepository.findAllById(List.of(3L, 1L, 99L))).thenReturn(List.of(stalls, stadiumField));
+
+        assertThatThrownBy(() -> eventService.replaceSectors(EVENT_ID, ORGANIZER_ID,
+                new EventSectorsRequest(List.of(price(3L, "1"), price(1L, "1"), price(99L, "1")))))
+                .isInstanceOf(TicketYaException.class)
+                .satisfies(e -> {
+                    TicketYaException error = (TicketYaException) e;
+                    assertThat(error.getErrorCode()).isEqualTo(EventErrorCode.SECTOR_NOT_FOUND);
+                    assertThat(error.getDetail()).isEqualTo(Map.of("missingIds", List.of(1L, 99L)));
+                });
+        verify(eventSectorRepository, never()).deleteAll(any());
+    }
+
+    @Test
+    void replaceSectors_publishedEvent_throwsNotEditable() {
+        givenEvent(EventStatus.PUBLISHED);
+
+        assertError(() -> eventService.replaceSectors(EVENT_ID, ORGANIZER_ID, sectorsRequest(3L, "1", 4L, "1")),
+                EventErrorCode.EVENT_NOT_EDITABLE);
+        verifyNoInteractions(authClient, transactions);
+    }
+
+    @Test
+    void replaceSectors_organizerOfAnotherOrganization_throwsForbidden() {
+        givenEvent(EventStatus.DRAFT);
+        when(authClient.getOrganizer(ORGANIZER_ID)).thenReturn(new OrganizerResponse(ORGANIZER_ID, 9L));
+
+        assertError(() -> eventService.replaceSectors(EVENT_ID, ORGANIZER_ID, sectorsRequest(3L, "1", 4L, "1")),
+                EventErrorCode.ORGANIZER_NOT_IN_ORGANIZATION);
+        verifyNoInteractions(transactions);
+    }
+
     // ---- helpers ----
 
     private Event givenEvent(EventStatus status) {
@@ -330,6 +435,14 @@ class EventLifecycleServiceTest {
                     assertThat(error.getDetail()).isEqualTo(Map.of("problems", List.of(problems)));
                 });
         assertThat(event.getStatus()).isEqualTo(EventStatus.DRAFT);
+    }
+
+    private static EventSectorsRequest sectorsRequest(Long first, String firstPrice, Long second, String secondPrice) {
+        return new EventSectorsRequest(List.of(price(first, firstPrice), price(second, secondPrice)));
+    }
+
+    private static EventSectorsRequest.SectorPrice price(Long sectorId, String price) {
+        return new EventSectorsRequest.SectorPrice(sectorId, new BigDecimal(price));
     }
 
     private static EventCreateRequest request(Long venueId, boolean highDemand, LocalDateTime saleStart) {

@@ -337,6 +337,46 @@ class EventControllerTest {
                 .andExpect(jsonPath("$.error").value("invalid_status_transition"));
     }
 
+    @Test
+    void replaceSectors_valid_returns200WithTheDetail() throws Exception {
+        when(eventService.replaceSectors(eq(10L), eq(2L), any())).thenReturn(detail(EventStatus.DRAFT));
+
+        mockMvc.perform(put("/api/events/10/sectors").header("X-User-Id", 2).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sectors\": [{\"sectorId\": 3, \"price\": 20000.00}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.capacity").value(5080));
+    }
+
+    @Test
+    void replaceSectors_withZeroOrTooManyDecimalsInThePrice_returns400() throws Exception {
+        mockMvc.perform(put("/api/events/10/sectors").header("X-User-Id", 2).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sectors\": [{\"sectorId\": 3, \"price\": 0}, {\"sectorId\": 4, \"price\": 10.555}]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("validation_error"))
+                .andExpect(jsonPath("$.detail['sectors[0].price']").exists())
+                .andExpect(jsonPath("$.detail['sectors[1].price']").exists());
+        verifyNoInteractions(eventService);
+    }
+
+    @Test
+    void replaceSectors_withoutTheList_returns400() throws Exception {
+        mockMvc.perform(put("/api/events/10/sectors").header("X-User-Id", 2).contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail.sectors").exists());
+    }
+
+    @Test
+    void replaceSectors_withoutEventManage_returns403() throws Exception {
+        when(authClient.getPermissions(1L)).thenReturn(
+                new UserPermissionsResponse(1L, "CLIENT", Set.of("EVENT_SEARCH")));
+
+        mockMvc.perform(put("/api/events/10/sectors").header("X-User-Id", 1).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sectors\": []}"))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(eventService);
+    }
+
     private static EventDetailResponse detail(EventStatus status) {
         return new EventDetailResponse(1L, "Los Serranos en vivo", "Presentación del nuevo disco", EventType.CONCERT, 1L,
                 2L, new VenueSummaryResponse(1L, "Estadio del Sur", "Av. del Estadio 1000", "Buenos Aires", -34.5453, -58.4498),

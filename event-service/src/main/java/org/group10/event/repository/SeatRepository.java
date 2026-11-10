@@ -17,6 +17,8 @@ public interface SeatRepository extends JpaRepository<Seat, Long> {
 
     long countBySectorId(Long sectorId);
 
+    List<Seat> findBySectorIdIn(Collection<Long> sectorIds);
+
     @Query("""
             select new org.group10.event.repository.SectorSeatCount(s.sector.id, count(s))
             from Seat s

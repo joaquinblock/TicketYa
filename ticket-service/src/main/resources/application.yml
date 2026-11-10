@@ -8,10 +8,18 @@ spring:
     serviceclient:
       event-service:
         base-url: ${EVENT_SERVICE_URL:http://localhost:8082}
+        connect-timeout: 1s
+        read-timeout: 2s
       payment-service:
         base-url: ${PAYMENT_SERVICE_URL:http://localhost:8084}
+        connect-timeout: 1s
+        read-timeout: 20s
       auth-service:
         base-url: ${AUTH_SERVICE_URL:http://localhost:8081}
+  task:
+    scheduling:
+      pool:
+        size: 3
   docker:
     compose:
       file: compose.yaml
@@ -20,6 +28,26 @@ spring:
     hibernate:
       ddl-auto: create
     open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 100
+        order_inserts: true
+  jackson:
+    deserialization:
+      accept-float-as-int: false
+    datatype:
+      enum:
+        fail-on-numbers-for-enums: true
+
+ticketya:
+  reservation:
+    hold: 10m
+    payment-margin: 1m
+    max-rejected-payments: 3
+    expiration-check: PT30S
+  cancellation:
+    refund-check: PT30S
 
 springdoc:
   swagger-ui:

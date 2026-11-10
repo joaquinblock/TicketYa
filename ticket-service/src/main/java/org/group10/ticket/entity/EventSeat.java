@@ -36,6 +36,9 @@ public class EventSeat {
     @Id
     private Long seatId;
 
+    @Column(nullable = false)
+    private Long eventSectorId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private EventSeatStatus status;
@@ -48,4 +51,15 @@ public class EventSeat {
 
     @Version
     private Long version;
+
+    public boolean isFreeAt(LocalDateTime moment) {
+        return status == EventSeatStatus.AVAILABLE
+                || (status == EventSeatStatus.RESERVED && !reservedUntil.isAfter(moment));
+    }
+
+    public void holdFor(Order reservingOrder) {
+        status = EventSeatStatus.RESERVED;
+        order = reservingOrder;
+        reservedUntil = reservingOrder.getExpiresAt();
+    }
 }

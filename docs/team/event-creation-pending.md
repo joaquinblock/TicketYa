@@ -55,8 +55,8 @@
 
 ## Resiliencia de `AuthClient`
 
-- [ ] **Timeouts:** no están configurados. Si el auth-service se cuelga, el create queda esperando
-- [ ] **Reintentos:** no hay. Para lecturas como estas se podrían reintentar una vez, el enunciado pide reintentos y timeouts ante fallos de otros servicios
+- [x] **Timeouts:** 1 s para conectar y 2 s para leer. Si el auth-service se cuelga, responde `503` en vez de esperar para siempre (ver *Timeouts y reintentos* en [`microservices.md`](../architecture/microservices.md))
+- [x] **Reintentos:** un reintento a los 200 ms, solo para `GET` y solo si no hubo respuesta (`RetryOnIoErrorInterceptor`)
 
 ## Decisiones abiertas
 

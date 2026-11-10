@@ -2,6 +2,47 @@
 
 > Arquitectura Web (TUDAI) — Díaz Pace/Yañez (2026)
 
+## Cómo ejecutar (Entrega 1)
+
+**Requisitos:** JDK 25 o superior y Docker Desktop corriendo. Maven no hace falta: el repo trae el wrapper `mvnw`.
+
+Cada microservicio levanta su propia base MySQL con Docker al arrancar (`compose.yaml` del módulo, vía `spring-boot-docker-compose`), carga datos de prueba con su seeder y recrea el esquema en cada arranque (`ddl-auto: create`).
+
+```bash
+./mvnw install -DskipTests          # una vez, para instalar el módulo common
+
+# Una terminal por servicio, en este orden
+cd auth-service    && ../mvnw spring-boot:run
+cd event-service   && ../mvnw spring-boot:run
+cd payment-service && ../mvnw spring-boot:run
+cd ticket-service  && ../mvnw spring-boot:run
+cd api-gateway     && ../mvnw spring-boot:run
+```
+
+En IntelliJ están las configuraciones de ejecución en `.run/`.
+
+Hay que usar `spring-boot:run`: con `java -jar` el servicio no arranca, porque `spring-boot-docker-compose` es una dependencia de desarrollo, no se empaqueta en el jar y sin ella no hay datasource. El despliegue con contenedores y un único `docker-compose.yml` es de la Entrega 2.
+
+| Servicio | Puerto | Base (Docker) |
+|---|---|---|
+| api-gateway (punto de entrada) | 8080 | — |
+| auth-service | 8081 | MySQL :3307 |
+| event-service | 8082 | MySQL :3308 |
+| ticket-service | 8083 | MySQL :3309 |
+| payment-service | 8084 | MySQL :3310 |
+
+- **Swagger unificado:** http://localhost:8080/swagger-ui.html, con un selector por servicio.
+- **Identidad (Entrega 1, sin JWT):** el usuario va en el header `X-User-Id`, y el organizador además en `X-Organization-Id` al crear un evento. Usuarios de prueba: 1 cliente, 2 organizador de la organización 1, 3 administrador, 4 personal de acceso, 5 y 6 organizadores de la organización 2.
+- **Pasarela simulada:** `DEBIT_CARD` siempre se rechaza; `CREDIT_CARD` y `ACCOUNT_MONEY` se aprueban.
+- **Colecciones de Postman:** en [`docs/postman`](docs/postman), con `baseUrl` = `http://localhost:8080`.
+- **Tests:** `./mvnw test`. Los tests de integración (`*MySqlIntegrationTest`) usan las mismas bases de Docker, así que conviene correrlos con los servicios apagados.
+
+**Documentación técnica:** microservicios y diagrama de módulos en [`microservices.md`](docs/architecture/microservices.md), secuencia de compra en [`purchase-sequence.md`](docs/architecture/purchase-sequence.md), modelo y decisiones de cada servicio en [`docs/architecture`](docs/architecture), atributos de calidad en [`docs/quality-attributes`](docs/quality-attributes) e historias de usuario en [`user-stories.md`](docs/user-stories.md).
+
+---
+
+*Lo que sigue es el enunciado del trabajo práctico.*
+
 ## Trabajo Práctico Grupal: TicketYa
 
 *TicketYa* es un startup que busca construir una plataforma de venta de entradas (ticketera virtual) para todo tipo de eventos: recitales, festivales, obras de teatro, partidos y conferencias. La misión es que cualquier organizador, desde un club de barrio hasta una gran productora, pueda publicar sus eventos y vender entradas en forma simple, segura y a bajo costo, y que el público pueda encontrar y comprar entradas desde su celular sin filas ni sobresaltos.

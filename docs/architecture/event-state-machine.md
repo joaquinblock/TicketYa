@@ -46,14 +46,21 @@ Es necesario agregarlo en el `HashMap` junto con los estados a los que puede pas
 
 | Endpoint | Transición | Quién |
 |---|---|---|
-| `POST /api/events/{id}/publish` | `DRAFT → PUBLISHED`, con precondiciones (ver `eventservice.md`) | Organizador de la organización (`EVENT_MANAGE`) |
+| `POST /api/events/{id}/publish` | `DRAFT → PUBLISHED`, con precondiciones (ver `event-service-api.md`) | Organizador de la organización (`EVENT_MANAGE`) |
 | `POST /api/events/{id}/cancel` | `PUBLISHED`, `SOLD_OUT` o `SUSPENDED → CANCELLED` | Administrador, o el organizador que creó el evento |
 | `POST /api/events/{id}/suspend` | `PUBLISHED` o `SOLD_OUT → SUSPENDED` (guarda cuál era en `status_before_suspension`) | Ídem |
 | `POST /api/events/{id}/resume` | `SUSPENDED →` el estado que tenía antes (`PUBLISHED` o `SOLD_OUT`), con fecha nueva opcional | Ídem |
 
-Un borrador no se cancela: se borra con `DELETE /api/events/{id}`. `SOLD_OUT` y `FINISHED` todavía no tienen endpoint: agotarlo le toca al ticket-service cuando vende el último lugar (US-TKT-13, #55).
+Un borrador no se cancela: se borra con `DELETE /api/events/{id}`. `SOLD_OUT` y `FINISHED` no tienen endpoint público: agotarlo le toca al ticket-service cuando vende el último lugar (US-TKT-13, #55), y finalizarlo, al job de abajo.
 
-## Pendiente
+## Finalización automática (`FINISHED`)
 
-- **Reintegros al cancelar.** Publicar y cancelar ya sincronizan la venta con el ticket-service. Si esa llamada falla, el estado no cambia. Falta reintegrar las entradas vendidas al llegar a `CANCELLED` (US-TKT-18, #61).
-- **Avisos del resto de las transiciones.** Suspender, reanudar y agotar tienen que usar la misma sincronización cuando tengan endpoint. El ticket-service solo vende en `PUBLISHED`, y durante la suspensión se aceptan devoluciones con la regla de 72 horas (ver US-TKT-14 en `user-stories.md`).
+`FinishedEventsJob` corre cada `ticketya.events.finish-check` (1 minuto) y llama a `EventService.finishEventsThatAlreadyHappened()`:
+
+1. Busca los eventos en `PUBLISHED` o `SOLD_OUT` cuya `date_time` ya pasó.
+2. Por cada uno, **primero** le avisa al ticket-service (`PUT /internal/event-sales/{id}` con `FINISHED`) y **después** hace el `UPDATE`.
+3. El `UPDATE` filtra por estado y fecha (`WHERE id = ? AND status IN (PUBLISHED, SOLD_OUT) AND date_time <= now`). Correrlo dos veces, o desde dos instancias de event-service a la vez, no rompe nada: la segunda no encuentra filas. No pasa por `changeStatus` porque es un `UPDATE` masivo, pero solo toca los dos estados desde los que la tabla permite ir a `FINISHED`.
+4. Si el aviso falla, se loguea y el evento queda como estaba hasta el próximo ciclo, que lo reintenta. Mientras tanto no se vende igual: el ticket-service rechaza reservas de eventos cuya fecha ya pasó (`event_not_on_sale`), aunque su copia diga `PUBLISHED`.
+
+**Zona horaria.** Las fechas se guardan como `LocalDateTime` en hora de Argentina. Los dos servicios toman "ahora" de un `Clock` con zona fija (`ticketya.time-zone: America/Argentina/Buenos_Aires`), no de la zona del sistema operativo, así que una máquina o contenedor en UTC no corre el chequeo 3 horas.
+

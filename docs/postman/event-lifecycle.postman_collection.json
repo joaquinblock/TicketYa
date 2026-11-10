@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "TicketYa - Ciclo de vida del evento",
-    "description": "Ver, editar, borrar, publicar y cancelar eventos. Necesita auth-service (8081), event-service (8082) y api-gateway (8080) recién levantados: los requests cambian los datos del seeder y van en orden. El evento 3 es un borrador publicable, el 10 un borrador sin sectores, el 12 un borrador de la organización 2 y el 9 está finalizado. Ver docs/architecture/eventservice.md.",
+    "description": "Ver, editar, borrar, publicar y cancelar eventos. Necesita auth-service (8081), event-service (8082) y api-gateway (8080) recién levantados: los requests cambian los datos del seeder y van en orden. El evento 3 es un borrador publicable, el 10 un borrador sin sectores, el 12 un borrador de la organización 2 y el 9 está finalizado. Ver docs/architecture/event-service-api.md.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [

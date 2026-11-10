@@ -29,7 +29,7 @@
   - Sin sectores repetidos (el unique `uk_event_sector` lo protege igual)
   - `price > 0` con dos decimales, como en `EventSector`
   - Reemplaza la lista completa en vez de agregar de a uno: es más simple de validar y de explicar
-- [x] **Participantes:** ABM en `/api/participants` y `PUT /api/events/{id}/participants` (ver *Participantes* en [`eventservice.md`](../architecture/eventservice.md))
+- [x] **Participantes:** ABM en `/api/participants` y `PUT /api/events/{id}/participants` (ver *Participantes* en [`event-service-api.md`](../architecture/event-service-api.md))
 - [x] **Capacidad del evento:** la calcula `GET /api/events/{id}`. Σ de los sectores que se venden (asientos si es numerado, `capacity` si no). Misma regla que `VenueMapper.toDetail`, pero solo con los sectores de `event_sector` (ver *Capacidades* en `event-service.md`)
 - [x] **Modificar el evento:** `PUT /api/events/{id}`, solo en `DRAFT`. Si cambia el lugar, se borran los sectores del lugar anterior
 - [x] **Que solo lo toque su organización:** editar, borrar, publicar y asignar participantes comparan `event.organizationId` con el del organizador de `X-User-Id`
@@ -75,5 +75,5 @@
 
 ## Documentación
 
-- [ ] Agregar la sección de eventos (endpoints, reglas, errores) a `eventservice.md`
+- [ ] Agregar la sección de eventos (endpoints, reglas, errores) a `event-service-api.md`
 - [x] Sumar `invalid_event_configuration` y `organizer_not_in_organization` a la tabla de `EventErrorCode` en `error-handling.md`

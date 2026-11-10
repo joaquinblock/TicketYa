@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.group10.ticket.dto.EventSaleRequest;
 import org.group10.ticket.dto.EventSaleRequest.SectorSale;
 import org.group10.ticket.entity.EventSale;
+import org.group10.ticket.entity.EventSaleStatus;
 import org.group10.ticket.entity.EventSeat;
 import org.group10.ticket.entity.EventSeatStatus;
 import org.group10.ticket.entity.EventSectorPrice;
@@ -27,6 +28,7 @@ public class EventSaleService {
     private final EventSectorPriceRepository eventSectorPriceRepository;
     private final EventSectorStockRepository eventSectorStockRepository;
     private final EventSeatRepository eventSeatRepository;
+    private final EventCancellationService eventCancellationService;
 
     @Transactional
     public void synchronizeEventSale(Long eventId, EventSaleRequest request) {
@@ -36,6 +38,10 @@ public class EventSaleService {
                 .toList());
         createMissingSectorStocks(eventId, request.sectors());
         createMissingSeats(eventId, request.sectors());
+
+        if (request.status() == EventSaleStatus.CANCELLED) {
+            eventCancellationService.closeOpenPurchasesOfTheEvent(eventId);
+        }
     }
 
     private void createMissingSectorStocks(Long eventId, List<SectorSale> sectors) {

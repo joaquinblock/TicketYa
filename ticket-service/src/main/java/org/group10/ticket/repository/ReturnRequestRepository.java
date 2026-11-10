@@ -27,4 +27,12 @@ public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Lo
             where r.id = :id and r.status = org.group10.ticket.entity.ReturnRequestStatus.PENDING
             """)
     int resolvePendingRequest(Long id, ReturnRequestStatus nextStatus, Long resolvedBy, LocalDateTime resolvedAt);
+
+    @Modifying
+    @Query("""
+            update ReturnRequest r set r.status = org.group10.ticket.entity.ReturnRequestStatus.CANCELLED
+            where r.status = org.group10.ticket.entity.ReturnRequestStatus.PENDING
+              and r.ticket.id in (select t.id from Ticket t where t.order.eventId = :eventId)
+            """)
+    int cancelPendingRequestsOfEvent(Long eventId);
 }

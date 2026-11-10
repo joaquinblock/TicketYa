@@ -53,6 +53,12 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             """)
     List<Long> findIdsOfPendingOrdersOverdueAt(LocalDateTime moment);
 
+    @Query("""
+            select o.id from Order o
+            where o.eventId = :eventId and o.status = org.group10.ticket.entity.OrderStatus.PENDING
+            """)
+    List<Long> findIdsOfPendingOrdersOfEvent(Long eventId);
+
     @Modifying
     @Query("""
             update Order o set o.status = :nextStatus

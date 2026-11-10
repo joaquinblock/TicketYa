@@ -19,6 +19,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.group10.event.statemachine.EventStatusMachine;
 
 import java.time.LocalDateTime;
 import java.util.HashSet;
@@ -57,8 +58,10 @@ public class Event {
     @Column(nullable = false)
     private LocalDateTime dateTime;
 
+    /** No setter: it only changes through {@link #changeStatus}, so nobody can skip the state machine. */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
+    @Setter(AccessLevel.NONE)
     private EventStatus status;
 
     @Column(nullable = false)
@@ -79,4 +82,13 @@ public class Event {
     )
     @Builder.Default
     private Set<Participant> participants = new HashSet<>();
+
+    /**
+     * Changes the status through the state machine.
+     *
+     * @throws org.group10.common.exception.TicketYaException {@code INVALID_STATUS_TRANSITION} if not allowed
+     */
+    public void changeStatus(EventStatus next, EventStatusMachine machine) {
+        this.status = machine.transition(status, next);
+    }
 }

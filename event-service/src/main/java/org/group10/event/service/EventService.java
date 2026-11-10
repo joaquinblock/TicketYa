@@ -3,6 +3,8 @@ package org.group10.event.service;
 import lombok.RequiredArgsConstructor;
 import org.group10.common.exception.TicketYaException;
 import org.group10.event.client.AuthClient;
+import org.group10.event.client.TicketClient;
+import org.group10.event.client.dto.EventSaleRequest;
 import org.group10.event.client.dto.OrganizerResponse;
 import org.group10.event.dto.EventCreateRequest;
 import org.group10.event.dto.EventDetailResponse;
@@ -15,6 +17,7 @@ import org.group10.event.entity.Event;
 import org.group10.event.entity.EventSector;
 import org.group10.event.entity.EventStatus;
 import org.group10.event.entity.Participant;
+import org.group10.event.entity.Seat;
 import org.group10.event.entity.Sector;
 import org.group10.event.entity.Venue;
 import org.group10.event.exception.EventErrorCode;
@@ -59,6 +62,7 @@ public class EventService {
     private final EventStatusMachine statusMachine;
     private final TransactionOperations transactions;
     private final AuthClient authClient;
+    private final TicketClient ticketClient;
 
     /**
      * The event with its venue, the sectors it sells with their price and capacity, and its participants.
@@ -198,19 +202,23 @@ public class EventService {
         ensureStatus(event, EventStatus.DRAFT, "Solo se publica un borrador");
         verifyOrganizer(event.getOrganizationId(), organizerId);
 
-        return transactions.execute(tx -> {
+        EventSaleRequest sale = transactions.execute(tx -> {
             Event managed = getEvent(id);
             ensureStatus(managed, EventStatus.DRAFT, "Solo se publica un borrador");
-            List<EventSectorResponse> sectors = sectorsOf(managed);
-            List<String> problems = publishProblems(managed, sectors);
+            List<String> problems = publishProblems(managed, sectorsOf(managed));
             if (!problems.isEmpty()) {
                 throw new TicketYaException(EventErrorCode.EVENT_NOT_PUBLISHABLE,
                         "El evento %d todavía no se puede publicar".formatted(id), Map.of("problems", problems));
             }
+            return saleSnapshotOf(managed, EventStatus.PUBLISHED);
+        });
+        ticketClient.synchronizeEventSale(id, sale);
+
+        return transactions.execute(tx -> {
+            Event managed = getEvent(id);
+            ensureStatus(managed, EventStatus.DRAFT, "Solo se publica un borrador");
             managed.changeStatus(EventStatus.PUBLISHED, statusMachine);
-            // TODO: ask the ticket-service to create the inventory (one event_seat per seat and one
-            //  event_sector_stock per general admission sector) once that endpoint exists (US-TKT-01, #42).
-            return EventMapper.toDetail(managed, sectors);
+            return toDetail(managed);
         });
     }
 
@@ -220,15 +228,21 @@ public class EventService {
      * @throws TicketYaException {@code EVENT_NOT_FOUND} or {@code INVALID_STATUS_TRANSITION} for a draft (it's
      *                           deleted instead) or a finished event
      */
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public EventDetailResponse cancel(Long id) {
         Event event = getEvent(id);
         ensureNotStatus(event, EventStatus.DRAFT, "Un borrador no se cancela: se borra con DELETE /api/events/%d"
                 .formatted(id));
-        event.changeStatus(EventStatus.CANCELLED, statusMachine);
-        // TODO: tell the ticket-service, so every sold ticket goes to refund and the buyers are notified
-        //  (US-TKT-18, #61). Until then the tickets of a cancelled event stay valid in the ticket-service.
-        return toDetail(event);
+        statusMachine.transition(event.getStatus(), EventStatus.CANCELLED);
+
+        ticketClient.synchronizeEventSale(id, transactions.execute(tx ->
+                saleSnapshotOf(getEvent(id), EventStatus.CANCELLED)));
+
+        return transactions.execute(tx -> {
+            Event managed = getEvent(id);
+            managed.changeStatus(EventStatus.CANCELLED, statusMachine);
+            return toDetail(managed);
+        });
     }
 
     /**
@@ -345,6 +359,32 @@ public class EventService {
             problems.add("saleStart tiene que ser anterior a la fecha del evento");
         }
         return problems;
+    }
+
+    private EventSaleRequest saleSnapshotOf(Event event, EventStatus status) {
+        List<EventSector> sectors = eventSectorRepository.findByEventId(event.getId());
+        List<Long> numberedSectorIds = sectors.stream()
+                .map(EventSector::getSector)
+                .filter(Sector::isNumbered)
+                .map(Sector::getId)
+                .toList();
+        Map<Long, List<Long>> seatIdsBySector = seatRepository.findBySectorIdIn(numberedSectorIds).stream()
+                .collect(Collectors.groupingBy(seat -> seat.getSector().getId(),
+                        Collectors.mapping(Seat::getId, Collectors.toList())));
+
+        return new EventSaleRequest(status, event.getDateTime(), event.getSaleStart(), event.isHighDemand(),
+                event.getMaxTicketsPerCustomer(), sectors.stream()
+                .map(eventSector -> saleOfSector(eventSector, seatIdsBySector))
+                .toList());
+    }
+
+    private static EventSaleRequest.SectorSale saleOfSector(EventSector eventSector,
+                                                            Map<Long, List<Long>> seatIdsBySector) {
+        Sector sector = eventSector.getSector();
+        return sector.isNumbered()
+                ? new EventSaleRequest.SectorSale(eventSector.getId(), eventSector.getPrice(), null,
+                        seatIdsBySector.getOrDefault(sector.getId(), List.of()))
+                : new EventSaleRequest.SectorSale(eventSector.getId(), eventSector.getPrice(), sector.getCapacity(), null);
     }
 
     private EventDetailResponse toDetail(Event event) {

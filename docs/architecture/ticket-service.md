@@ -188,6 +188,8 @@ No hay una transacción que abarque las dos bases, así que aprobar se hace en t
 
 Si el payment-service no responde, la solicitud sigue `PENDING` y el administrador reintenta. Ante un timeout no se sabe si el reintegro se procesó, por eso el reintento tiene que ser seguro: para el mismo `ticket_id`, el payment-service devuelve el reintegro existente. El mismo reintento completa el paso 3 si el ticket-service se cayó después del paso 2.
 
+El paso 3 usa `UPDATE` condicionales, y solo libera el lugar quien efectivamente pasó la entrada de `ISSUED` a `REFUNDED`, así dos aprobaciones simultáneas no lo liberan dos veces. Si la solicitud se resolvió por otro camino mientras se pedía el reintegro, la entrada igual queda `REFUNDED`, porque el dinero ya se devolvió, y el administrador recibe 409 `refund_not_allowed`.
+
 ### Una sola transición desde `PENDING`
 
 Una orden en `PENDING` puede terminar por varios caminos a la vez: se confirma el pago, llega al tope de rechazos, vence, el cliente la abandona o se cancela el evento. Cada salida se aplica con un `UPDATE orders SET status = :next WHERE id = :id AND status = 'PENDING'`. La base ejecuta esa operación de a una por fila, así que solo una actualiza la fila. Las demás ven 0 filas afectadas y no modifican nada. `orders` no tiene `@Version` porque este `UPDATE` condicional alcanza.
@@ -238,7 +240,13 @@ Un `event_seat` con `reserved_until` vencido se trata como libre, así que otro 
 
 ### Evento agotado
 
-Después de emitir, y en otra transacción para ver las compras simultáneas ya confirmadas, se revisa si queda algún lugar libre o reservado. Si no queda, `event_sale` pasa a `SOLD_OUT` y se anota el aviso pendiente. El job lo envía al event-service con `PUT /internal/events/{id}/sold-out` y lo reintenta hasta que se aplique, sin deshacer la compra. Si el event-service lo rechaza con un 4xx, se deja de reintentar. La vuelta a `PUBLISHED` llega con la aprobación de devoluciones (#59).
+Después de emitir, y en otra transacción para ver las compras simultáneas ya confirmadas, se revisa si queda algún lugar libre o reservado. Si no queda, `event_sale` pasa a `SOLD_OUT` y se anota el aviso pendiente. El job lo envía al event-service con `PUT /internal/events/{id}/sold-out` y lo reintenta hasta que se aplique, sin deshacer la compra. Si el event-service lo rechaza con un 4xx, se deja de reintentar.
+
+Aprobar una devolución libera un lugar, así que en esa misma transacción `event_sale` vuelve de `SOLD_OUT` a `PUBLISHED` y se anota el aviso. El job manda el estado que tiene la venta en ese momento, con `PUT /internal/events/{id}/sold-out` o `PUT /internal/events/{id}/back-on-sale`. El aviso solo se limpia si la venta sigue en el estado que se avisó: si cambió mientras tanto, la siguiente corrida avisa el estado nuevo.
+
+### Una sola solicitud pendiente por entrada
+
+`return_request.pending_ticket_id` es una columna generada que vale `ticket_id` mientras la solicitud está `PENDING` y `NULL` si no, con UNIQUE. Es el mismo recurso que `payment.active_order_id`: dos pedidos simultáneos no pueden crear dos solicitudes pendientes, y después de un rechazo se puede volver a solicitar.
 
 ## Limitaciones conocidas
 
@@ -280,7 +288,7 @@ Las historias y sus criterios de aceptación están en [`user-stories.md`](../us
 
 ### Pendientes para la implementación
 
-- **Códigos nuevos en `TicketErrorCode`:** `return_request_not_found`, `return_request_already_pending`, `invalid_queue_token`.
+- **Códigos nuevos en `TicketErrorCode`:** `invalid_queue_token`.
 
 ### Endpoints
 
@@ -290,6 +298,10 @@ Las historias y sus criterios de aceptación están en [`user-stories.md`](../us
 | `GET /api/availability?eventId=` | Disponibilidad por sector | 404 `resource_not_found` |
 | `POST /api/orders` | Reserva asientos (`seatIds`) o lugares (`eventSectorId` y `quantity`). Header `X-User-Id` | 400 `validation_error`, 404 `resource_not_found`, 409 `seat_unavailable`, `sector_sold_out`, `ticket_limit_exceeded`, `event_not_on_sale`, `sale_not_started`, `data_conflict` |
 | `POST /api/orders/{id}/cancel` | Abandona una reserva. Repetirlo responde 200. Header `X-User-Id` | 404 `order_not_found`, 409 `payment_in_progress`, `reservation_expired`, `order_not_cancellable` |
+| `POST /api/tickets/{ticketId}/return-requests` | Solicita la devolución de una entrada. Header `X-User-Id` | 404 `ticket_not_found`, 409 `refund_not_allowed`, `return_request_already_pending` |
+| `GET /api/return-requests?status=&page=&size=` | Lista paginada, primero las más antiguas. Por defecto, `PENDING` | 400 si un parámetro es inválido |
+| `POST /api/return-requests/{id}/approve` | Pide el reintegro, marca la entrada `REFUNDED` y libera el lugar. Header `X-User-Id` | 404 `return_request_not_found`, 409 `refund_not_allowed`, `ticket_already_used`, 503 `service_unavailable` |
+| `POST /api/return-requests/{id}/reject` | Rechaza la solicitud y la entrada sigue vigente. Header `X-User-Id` | 404 `return_request_not_found`, 409 `refund_not_allowed` |
 
 ### Dependencias con otros servicios
 

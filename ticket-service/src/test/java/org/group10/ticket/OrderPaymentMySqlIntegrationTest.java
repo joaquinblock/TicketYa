@@ -1,18 +1,22 @@
 package org.group10.ticket;
 
 import org.group10.common.dto.ErrorDto;
+import org.group10.ticket.client.EventClient;
 import org.group10.ticket.client.PaymentClient;
 import org.group10.ticket.client.dto.ChargeRequest;
 import org.group10.ticket.client.dto.RefundRequest;
+import org.group10.ticket.entity.EventSaleStatus;
 import org.group10.ticket.entity.EventSeat;
 import org.group10.ticket.entity.EventSeatId;
 import org.group10.ticket.entity.EventSeatStatus;
 import org.group10.ticket.entity.Order;
 import org.group10.ticket.entity.OrderStatus;
 import org.group10.ticket.entity.PaymentMethod;
+import org.group10.ticket.repository.EventSaleRepository;
 import org.group10.ticket.repository.EventSeatRepository;
 import org.group10.ticket.repository.EventSectorStockRepository;
 import org.group10.ticket.repository.OrderRepository;
+import org.group10.ticket.service.SoldOutService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -29,6 +33,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
@@ -82,6 +87,14 @@ class OrderPaymentMySqlIntegrationTest {
 
     @MockitoSpyBean
     private Clock clock;
+
+    @MockitoBean
+    private EventClient eventClient;
+
+    @Autowired
+    private SoldOutService soldOutService;
+    @Autowired
+    private EventSaleRepository eventSaleRepository;
 
     @Autowired
     private OrderRepository orderRepository;
@@ -331,6 +344,61 @@ class OrderPaymentMySqlIntegrationTest {
         post("/api/orders/%d/cancel".formatted(orderId), CUSTOMER, "");
 
         assertThat(pay(CUSTOMER, orderId, newKey()).error()).isEqualTo("order_not_payable");
+    }
+
+    @Test
+    void pay_lastPlaces_marksTheSaleSoldOutAndTheJobNotifiesIt() {
+        sellEverything();
+
+        assertThat(eventSaleRepository.findById(eventId).orElseThrow().getStatus()).isEqualTo(EventSaleStatus.SOLD_OUT);
+
+        soldOutService.notifyPendingSoldOutEvents();
+        soldOutService.notifyPendingSoldOutEvents();
+
+        verify(eventClient, times(1)).markEventSoldOut(eventId);
+    }
+
+    @Test
+    void pay_withAReservationInProgress_doesNotSellOut() {
+        long seatsOrderId = reserveSeats(CUSTOMER, 1, 2, 3, 4);
+        reservePlaces(ANOTHER_CUSTOMER, 5);
+
+        pay(CUSTOMER, seatsOrderId, newKey());
+
+        assertThat(eventSaleRepository.findById(eventId).orElseThrow().getStatus()).isEqualTo(EventSaleStatus.PUBLISHED);
+    }
+
+    @Test
+    void notifyPendingSoldOutEvents_eventServiceDown_retriesOnTheNextRun() {
+        sellEverything();
+        doThrow(new ResourceAccessException("event-service caído")).when(eventClient).markEventSoldOut(eventId);
+
+        soldOutService.notifyPendingSoldOutEvents();
+
+        assertThat(eventSaleRepository.findById(eventId).orElseThrow().isSoldOutNotificationPending()).isTrue();
+
+        doNothing().when(eventClient).markEventSoldOut(eventId);
+        soldOutService.notifyPendingSoldOutEvents();
+
+        assertThat(eventSaleRepository.findById(eventId).orElseThrow().isSoldOutNotificationPending()).isFalse();
+    }
+
+    @Test
+    void notifyPendingSoldOutEvents_eventServiceRejectsIt_stopsRetrying() {
+        sellEverything();
+        doThrow(HttpClientErrorException.create(HttpStatus.CONFLICT, "conflict", new HttpHeaders(), new byte[0],
+                StandardCharsets.UTF_8)).when(eventClient).markEventSoldOut(eventId);
+
+        soldOutService.notifyPendingSoldOutEvents();
+
+        assertThat(eventSaleRepository.findById(eventId).orElseThrow().isSoldOutNotificationPending()).isFalse();
+    }
+
+    private void sellEverything() {
+        long seatsOrderId = reserveSeats(CUSTOMER, 1, 2, 3, 4);
+        long placesOrderId = reservePlaces(CUSTOMER, 5);
+        pay(CUSTOMER, seatsOrderId, newKey());
+        pay(CUSTOMER, placesOrderId, newKey());
     }
 
     @Test

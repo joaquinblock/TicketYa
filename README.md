@@ -120,6 +120,7 @@ Están en [`docs/postman/`](docs/postman/). Se importan en Postman y cada una tr
 | Diagrama de módulos | [`docs/architecture/modules.md`](docs/architecture/modules.md) |
 | Diagrama de secuencia de la compra de una entrada numerada | [`docs/architecture/purchase-sequence.md`](docs/architecture/purchase-sequence.md) |
 | DER de cada servicio, con las relaciones entre servicios y los datos solapados | [`auth-service.md`](docs/architecture/auth-service.md), [`event-service.md`](docs/architecture/event-service.md), [`ticket-service.md`](docs/architecture/ticket-service.md), [`payment-service.md`](docs/architecture/payment-service.md) |
+| DER general de todo el sistema, agrupado por base (draw.io) | [`docs/architecture/diagrams/ticketya-data-model.drawio`](docs/architecture/diagrams/ticketya-data-model.drawio) |
 | Listado de endpoints | [`docs/architecture/endpoints.md`](docs/architecture/endpoints.md) y Swagger |
 | Errores y sus códigos | [`docs/architecture/error-handling.md`](docs/architecture/error-handling.md) |
 | Permisos | [`docs/architecture/permissions.md`](docs/architecture/permissions.md) |

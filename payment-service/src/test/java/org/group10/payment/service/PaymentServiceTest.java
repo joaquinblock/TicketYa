@@ -7,14 +7,17 @@ import org.group10.payment.dto.PaymentResponse;
 import org.group10.payment.entity.Payment;
 import org.group10.payment.entity.PaymentMethod;
 import org.group10.payment.entity.PaymentStatus;
+import org.group10.payment.exception.PaymentErrorCode;
 import org.group10.payment.gateway.ChargeResult;
 import org.group10.payment.gateway.PaymentGateway;
 import org.group10.payment.repository.PaymentRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -24,7 +27,9 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -76,6 +81,78 @@ class PaymentServiceTest {
         paymentService.charge(request);
 
         assertThat(savedStatuses).containsExactly(PaymentStatus.PENDING, PaymentStatus.APPROVED);
+    }
+
+    @Test
+    void charge_rejectedByTheGateway_failsWithTheReasonAndTheRejectedAttempts() {
+        when(paymentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(paymentGateway.charge(any())).thenReturn(ChargeResult.rejected("MOCK-1", "Fondos insuficientes"));
+        when(paymentRepository.countByOrderIdAndStatus(ORDER_ID, PaymentStatus.REJECTED)).thenReturn(2L);
+
+        assertThatThrownBy(() -> paymentService.charge(request))
+                .isInstanceOfSatisfying(TicketYaException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(PaymentErrorCode.PAYMENT_REJECTED);
+                    assertThat(ex.getDetail()).containsEntry("reason", "Fondos insuficientes")
+                            .containsEntry("rejectedAttempts", 2L);
+                });
+    }
+
+    @Test
+    void charge_rejectedByTheGateway_storesThePaymentAsRejectedWithItsReason() {
+        List<Payment> savedPayments = new ArrayList<>();
+        when(paymentRepository.save(any())).thenAnswer(invocation -> {
+            savedPayments.add(invocation.getArgument(0));
+            return invocation.getArgument(0);
+        });
+        when(paymentGateway.charge(any())).thenReturn(ChargeResult.rejected("MOCK-1", "Fondos insuficientes"));
+
+        assertThatThrownBy(() -> paymentService.charge(request)).isInstanceOf(TicketYaException.class);
+
+        Payment lastSavedPayment = savedPayments.getLast();
+        assertThat(lastSavedPayment.getStatus()).isEqualTo(PaymentStatus.REJECTED);
+        assertThat(lastSavedPayment.getFailureReason()).isEqualTo("Fondos insuficientes");
+        assertThat(lastSavedPayment.getGatewayId()).isEqualTo("MOCK-1");
+    }
+
+    @Test
+    void charge_rejectedByTheGateway_countsTheAttemptsAfterStoringTheCurrentRejection() {
+        when(paymentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(paymentGateway.charge(any())).thenReturn(ChargeResult.rejected("MOCK-1", "Fondos insuficientes"));
+
+        assertThatThrownBy(() -> paymentService.charge(request)).isInstanceOf(TicketYaException.class);
+
+        InOrder inOrder = inOrder(paymentRepository);
+        inOrder.verify(paymentRepository, times(2)).save(any());
+        inOrder.verify(paymentRepository).countByOrderIdAndStatus(ORDER_ID, PaymentStatus.REJECTED);
+    }
+
+    @Test
+    void charge_approvedByTheGateway_doesNotCountRejectedAttempts() {
+        when(paymentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(paymentGateway.charge(any())).thenReturn(APPROVED_CHARGE);
+
+        paymentService.charge(request);
+
+        verify(paymentRepository, never()).countByOrderIdAndStatus(any(), any());
+    }
+
+    @Test
+    void charge_idempotencyKeyAlreadyStored_failsWithoutCallingTheGateway() {
+        when(paymentRepository.save(any())).thenThrow(new DataIntegrityViolationException("duplicate idempotency key"));
+
+        assertThatThrownBy(() -> paymentService.charge(request)).isInstanceOf(DataIntegrityViolationException.class);
+
+        verifyNoInteractions(paymentGateway);
+    }
+
+    @Test
+    void charge_gatewayFails_leavesThePaymentPendingAndPropagatesTheFailure() {
+        when(paymentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(paymentGateway.charge(any())).thenThrow(new IllegalStateException("gateway down"));
+
+        assertThatThrownBy(() -> paymentService.charge(request)).isInstanceOf(IllegalStateException.class);
+
+        verify(paymentRepository, times(1)).save(any());
     }
 
     @Test

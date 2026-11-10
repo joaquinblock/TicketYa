@@ -34,6 +34,8 @@ public class PaymentController {
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "409", description = "data_conflict: la orden ya tiene otro pago PENDING o APPROVED",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "422", description = "payment_rejected, con reason y rejectedAttempts en detail",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     public PaymentResponse charge(@Valid @RequestBody PaymentRequest request) {
         return paymentService.charge(request);
     }

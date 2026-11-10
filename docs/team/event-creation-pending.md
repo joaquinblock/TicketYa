@@ -7,10 +7,10 @@
 | Paso | Endpoint | Estado |
 |---|---|---|
 | 1. Crear el evento en borrador | `POST /api/events` | ✅ Hecho |
-| 2. Definir qué sectores se venden y a qué precio | `PUT /api/events/{id}/sectors` | ⬜ Falta |
-| 3. Agregar participantes | `PUT /api/events/{id}/participants` | ⬜ Falta |
-| 4. Corregir datos mientras es borrador | `PUT /api/events/{id}` | ⬜ Falta |
-| 5. Publicar | `POST /api/events/{id}/publish` | ⬜ Falta |
+| 2. Definir qué sectores se venden y a qué precio | `PUT /api/events/{id}/sectors` | ✅ Hecho |
+| 3. Agregar participantes | `PUT /api/events/{id}/participants` | ✅ Hecho |
+| 4. Corregir datos mientras es borrador | `PUT /api/events/{id}` | ✅ Hecho |
+| 5. Publicar | `POST /api/events/{id}/publish` | ✅ Hecho (sin inventario) |
 | 6. Que el ticket-service arme el inventario | `TicketClient` | ⬜ Falta |
 
 ## Para poder probar lo que ya está
@@ -19,28 +19,28 @@
 - [x] **Seeder del event-service:** eventos en todos los estados, tipos y ciudades, de las dos organizaciones (ver *Datos de prueba* en [`event-service.md`](../architecture/event-service.md))
 - [x] **Ruta del gateway:** `api-gateway` ya enruta `/api/organizers/**` al auth-service
 - [x] **Permisos:** `POST /api/events` exige `EVENT_MANAGE` con `@RequiresPermission` (ver [`permissions.md`](../architecture/permissions.md))
-- [ ] **Correr los tests:** `EventServiceTest` y `EventControllerTest` todavía no se ejecutaron. Maven desde la terminal usa JDK 24 y el proyecto pide 25
+- [x] **Correr los tests:** corren con `mvn -o -Djava.version=24 -pl event-service test` (Maven de la terminal usa JDK 24 y el proyecto pide 25)
 - [ ] **Colección de Postman:** importar [`docs/postman/event-creation.postman_collection.json`](../postman/event-creation.postman_collection.json) y correrla con los tres servicios levantados
 
 ## Configuración del evento (mientras está en `DRAFT`)
 
-- [ ] **Sectores y precios** (`event_sector`): recibir `[{ sectorId, price }]`
+- [x] **Sectores y precios** (`event_sector`): `PUT /api/events/{id}/sectors` con `[{ sectorId, price }]`
   - Cada sector tiene que ser **del lugar del evento**: `404 sector_not_found` si no
   - Sin sectores repetidos (el unique `uk_event_sector` lo protege igual)
   - `price > 0` con dos decimales, como en `EventSector`
   - Reemplaza la lista completa en vez de agregar de a uno: es más simple de validar y de explicar
-- [ ] **Participantes:** recibir `participantIds` y validar que existan (`404 participant_not_found`, el código ya existe). No hay ABM de participantes ni ruta `/api/participants`, aunque el gateway ya la tiene
-- [ ] **Capacidad del evento:** Σ de los sectores que se venden (asientos si es numerado, `capacity` si no). Misma regla que `VenueMapper.toDetail`, pero solo con los sectores de `event_sector` (ver *Capacidades* en `event-service.md`)
-- [ ] **Modificar el evento:** solo en `DRAFT`, si no `409 event_not_editable` (el código ya existe). Si cambia el lugar, los sectores cargados dejan de valer y hay que borrarlos
-- [ ] **Que solo lo toque su organización:** en editar, configurar y publicar, comparar `event.organizationId` con el del organizador de `X-User-Id`. Hoy solo se valida al crear
+- [x] **Participantes:** ABM en `/api/participants` y `PUT /api/events/{id}/participants` (ver *Participantes* en [`eventservice.md`](../architecture/eventservice.md))
+- [x] **Capacidad del evento:** la calcula `GET /api/events/{id}`. Σ de los sectores que se venden (asientos si es numerado, `capacity` si no). Misma regla que `VenueMapper.toDetail`, pero solo con los sectores de `event_sector` (ver *Capacidades* en `event-service.md`)
+- [x] **Modificar el evento:** `PUT /api/events/{id}`, solo en `DRAFT`. Si cambia el lugar, se borran los sectores del lugar anterior
+- [x] **Que solo lo toque su organización:** editar, borrar, publicar y asignar participantes comparan `event.organizationId` con el del organizador de `X-User-Id`
 
 ## Publicación (`DRAFT` → `PUBLISHED`)
 
-- [ ] **Usar la máquina de estados:** nadie llama a `EventStatusMachine`
+- [x] **Usar la máquina de estados:** publicar y cancelar pasan por `Event.changeStatus`, que la usa. Ya no hay `setStatus`
   - Que lance `TicketYaException(INVALID_STATUS_TRANSITION)` en vez de `RuntimeException`, para que responda `409` y no `500`
   - Sacar el `@Setter` de `status` en `Event` y exponer `changeStatus(next)`, como propone `event-state-machine.md`. Hoy cualquiera puede saltearla con `setStatus`
   - Hacerla `@Component` o dejarla estática, para poder inyectarla o mockearla en los tests
-- [ ] **Precondiciones para publicar:** si falla alguna, `409` con un código nuevo (p. ej. `event_not_publishable`)
+- [x] **Precondiciones para publicar:** si falla alguna, `409 event_not_publishable` con todas en `detail.problems`
   - Al menos un sector con precio
   - Ningún sector numerado sin asientos (se vendería un sector de capacidad 0)
   - `dateTime` todavía futura
@@ -49,10 +49,17 @@
 
 ## Lectura y baja
 
-- [ ] **`GET /api/events/{id}`:** con lugar, sectores y precios, participantes y capacidad
+- [x] **`GET /api/events/{id}`:** con lugar, sectores y precios, participantes y capacidad
 - [ ] **`GET /api/events`:** filtros simples (`organizationId`, `status`). La búsqueda de la consigna 9 (tipo, organizador, participante, ciudad, fechas, ordenamiento) es otra tarea
-- [ ] **`DELETE /api/events/{id}`:** solo en `DRAFT`. En borrador no hay tickets, porque el inventario nace al publicar, así que no hace falta cascada. Un evento publicado se cancela, no se borra
+- [x] **`DELETE /api/events/{id}`:** solo en `DRAFT`. En borrador no hay tickets, porque el inventario nace al publicar, así que no hace falta cascada. Un evento publicado se cancela, no se borra
 - [ ] **Nombre de la organización:** las páginas de eventos tienen que mostrar `publicName`. [`RFC-004`](../rfc/RFC-004-cross-service-relations.md) eligió la referencia por id, así que para mostrar el nombre hay que sumarle composición (B) o snapshot (D)
+
+## Cancelación
+
+- [x] **`POST /api/events/{id}/cancel`:** el admin o el organizador que creó el evento, desde `PUBLISHED`, `SOLD_OUT` o `SUSPENDED`
+- [x] **Suspender y reanudar:** `POST /suspend` y `POST /resume` (con fecha nueva opcional), con la misma regla. Reanudar vuelve a `PUBLISHED` o `SOLD_OUT`, el que tenía
+- [ ] **Frenar la venta de un evento suspendido:** le toca al ticket-service (US-TKT-07, #49)
+- [ ] **Reintegros:** cancelar todavía no avisa al ticket-service (US-TKT-18, #61). Las entradas de un evento cancelado siguen válidas allá
 
 ## Resiliencia de `AuthClient`
 

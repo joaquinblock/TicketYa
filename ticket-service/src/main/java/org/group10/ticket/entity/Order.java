@@ -51,6 +51,11 @@ public class Order {
     @Column(nullable = false, unique = true)
     private String idempotencyKey;
 
+    @Enumerated(EnumType.STRING)
+    private PaymentMethod paymentMethod;
+
+    private String paymentAttemptKey;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

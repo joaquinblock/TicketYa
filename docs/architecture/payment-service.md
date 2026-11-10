@@ -61,6 +61,7 @@ erDiagram
 |---|---|
 | `idempotency_key` UNIQUE | `payment` |
 | `active_order_id` generada y UNIQUE: un solo pago `PENDING` o `APPROVED` por orden | `payment` |
+| Índice en `order_id`, para consultar los pagos de una orden | `payment` |
 | `ticket_id` UNIQUE | `refund` |
 | `reason` (enum), en vez de deducir el motivo de que `return_request_id` sea NULL | `refund` |
 | `gateway_id` UNIQUE | `refund` (en `payment` ya lo era) |
@@ -195,6 +196,7 @@ REST síncrono en la Entrega 1. **payment-service nunca llama a ticket-service**
 
 - **Reintento de un cobro:** con la misma clave y los mismos datos responde con el mismo status y cuerpo que la primera vez. Si fue rechazado, vuelve a dar 422 `payment_rejected`, sin llamar a la pasarela. Si todavía no tiene resultado, vuelve a llamar a la pasarela con la misma clave y responde como un cobro normal, o con 503 `payment_gateway_unavailable` si la pasarela falla otra vez. La pasarela no cobra dos veces la misma clave, aunque reciba dos reintentos simultáneos.
 - **Reintento de un reintegro:** si está `CREDITED`, se devuelve el existente con 200. Si sigue `REQUESTED`, se vuelve a llamar a la pasarela y responde 200, o 502 `refund_failed` si falla. Si falló, se reintenta sobre la misma fila y responde 201 o 502.
+- **Consulta de pagos:** las dos rutas `GET` devuelven los pagos de la orden del más antiguo al más nuevo, con `id`, `orderId`, `amount`, `paymentMethod`, `status`, `failureReason`, `gatewayId` y `createdAt`. Es una respuesta aparte de la del cobro, porque el `POST` tiene que repetir exactamente el mismo cuerpo. Sin `orderId`, o si no es un número: 400 `invalid_parameter`. Si no es positivo: 400 `validation_error`.
 - **Errores:** los resuelve `GlobalExceptionHandler` de `common`: los 4xx se reenvían tal cual y los 5xx llegan a ticket como 503.
 
 ## Datos de prueba

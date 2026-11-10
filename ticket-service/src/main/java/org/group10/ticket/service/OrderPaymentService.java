@@ -41,6 +41,7 @@ public class OrderPaymentService {
     private final EventSeatRepository eventSeatRepository;
     private final OrderQueryService orderQueryService;
     private final OrderClosingService orderClosingService;
+    private final SoldOutService soldOutService;
     private final PaymentClient paymentClient;
     private final TransactionOperations transactions;
     private final ReservationProperties reservationProperties;
@@ -114,6 +115,7 @@ public class OrderPaymentService {
 
     private OrderResponse issueTicketsOrCompensate(Order order, PaymentMethod paymentMethod) {
         if (issueTicketsIfThePlacesAreStillHeld(order, paymentMethod)) {
+            soldOutService.markEventSoldOutIfNothingIsLeft(order.getEventId());
             return orderQueryService.toResponse(findOrder(order.getId()));
         }
 

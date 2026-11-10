@@ -41,6 +41,9 @@ public class EventSale {
 
     private Integer maxTicketsPerCustomer;
 
+    @Column(nullable = false)
+    private boolean soldOutNotificationPending;
+
     public boolean hasNotOpenedAt(LocalDateTime moment) {
         return saleStart != null && saleStart.isAfter(moment);
     }

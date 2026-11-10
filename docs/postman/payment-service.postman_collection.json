@@ -1,0 +1,492 @@
+{
+  "info": {
+    "name": "TicketYa - payment-service",
+    "description": "Una carpeta por funcionalidad. Necesita payment-service (8084) levantado. Las rutas /internal/** se llaman directo al servicio porque el gateway no las reenvía.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "paymentUrl", "value": "http://localhost:8084" },
+    { "key": "orderId", "value": "" },
+    { "key": "rejectedOrderId", "value": "" },
+    { "key": "retryOrderId", "value": "" },
+    { "key": "retryKey", "value": "" },
+    { "key": "retryApprovedAnswer", "value": "" },
+    { "key": "retryRejectedOrderId", "value": "" },
+    { "key": "retryRejectedKey", "value": "" },
+    { "key": "retryRejectedAnswer", "value": "" },
+    { "key": "pendingOrderId", "value": "3" },
+    { "key": "pendingKey", "value": "seed-pending-order-3" }
+  ],
+  "item": [
+    {
+      "name": "US-PAY-01: Cobrar una orden",
+      "item": [
+        {
+          "name": "Cobro aprobado → 201",
+          "event": [
+            { "listen": "prerequest", "script": { "exec": [
+              "pm.collectionVariables.set('orderId', String(Date.now()));"
+            ] } },
+            { "listen": "test", "script": { "exec": [
+              "pm.test('201 aprobado', () => {",
+              "  pm.response.to.have.status(201);",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.status).to.eql('APPROVED');",
+              "  pm.expect(body.paymentMethod).to.eql('CREDIT_CARD');",
+              "  pm.expect(body.amount).to.eql(25000.00);",
+              "  pm.expect(body.gatewayId).to.be.a('string').and.not.empty;",
+              "});",
+              "pm.test('No expone datos de la tarjeta', () => {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body).to.not.have.any.keys('cardNumber', 'cvv', 'expirationDate');",
+              "});"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{orderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{$guid}}\"\n}" }
+          }
+        },
+        {
+          "name": "Orden con un pago aprobado → 409",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('409 data_conflict', () => {",
+            "  pm.response.to.have.status(409);",
+            "  pm.expect(pm.response.json().error).to.eql('data_conflict');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "description": "Usa la orden que aprobó el request anterior, con otra clave.",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{orderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"ACCOUNT_MONEY\",\n  \"idempotencyKey\": \"{{$guid}}\"\n}" }
+          }
+        },
+        {
+          "name": "Falta un campo → 400",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('400 validation_error con el campo', () => {",
+            "  pm.response.to.have.status(400);",
+            "  const body = pm.response.json();",
+            "  pm.expect(body.error).to.eql('validation_error');",
+            "  pm.expect(body.detail).to.have.property('idempotencyKey');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": 1,\n  \"amount\": 100.00,\n  \"paymentMethod\": \"CREDIT_CARD\"\n}" }
+          }
+        },
+        {
+          "name": "Medio de pago inexistente → 400",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('400 validation_error', () => {",
+            "  pm.response.to.have.status(400);",
+            "  pm.expect(pm.response.json().error).to.eql('validation_error');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": 1,\n  \"amount\": 100.00,\n  \"paymentMethod\": \"CASH\",\n  \"idempotencyKey\": \"{{$guid}}\"\n}" }
+          }
+        },
+        {
+          "name": "Monto en cero → 400",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('400 validation_error con el campo', () => {",
+            "  pm.response.to.have.status(400);",
+            "  const body = pm.response.json();",
+            "  pm.expect(body.error).to.eql('validation_error');",
+            "  pm.expect(body.detail).to.have.property('amount');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": 1,\n  \"amount\": 0,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{$guid}}\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "US-PAY-02: Saber por qué se rechazó un pago",
+      "description": "Necesita payment.mock.rejected-method en DEBIT_CARD, el valor por defecto.",
+      "item": [
+        {
+          "name": "Primer rechazo → 422",
+          "event": [
+            { "listen": "prerequest", "script": { "exec": [
+              "pm.collectionVariables.set('rejectedOrderId', String(Date.now()));"
+            ] } },
+            { "listen": "test", "script": { "exec": [
+              "pm.test('422 con el motivo y un rechazo', () => {",
+              "  pm.response.to.have.status(422);",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.error).to.eql('payment_rejected');",
+              "  pm.expect(body.detail.reason).to.be.a('string').and.not.empty;",
+              "  pm.expect(body.detail.rejectedAttempts).to.eql(1);",
+              "});"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{rejectedOrderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"DEBIT_CARD\",\n  \"idempotencyKey\": \"{{$guid}}\"\n}" }
+          }
+        },
+        {
+          "name": "Segundo rechazo con otra clave → 422",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('422 con dos rechazos', () => {",
+            "  pm.response.to.have.status(422);",
+            "  pm.expect(pm.response.json().detail.rejectedAttempts).to.eql(2);",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{rejectedOrderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"DEBIT_CARD\",\n  \"idempotencyKey\": \"{{$guid}}\"\n}" }
+          }
+        },
+        {
+          "name": "Otro medio después de los rechazos → 201",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('201 aprobado en la misma orden', () => {",
+            "  pm.response.to.have.status(201);",
+            "  pm.expect(pm.response.json().status).to.eql('APPROVED');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "description": "Una orden admite otro pago si los anteriores fueron rechazados (US-PAY-01).",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{rejectedOrderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{$guid}}\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "US-PAY-03: No pagar dos veces si se reintenta",
+      "description": "Correr la carpeta completa y en orden. Necesita payment.mock.rejected-method en DEBIT_CARD y el pago PENDING de la orden 3 que carga el seeder.",
+      "item": [
+        {
+          "name": "Aprobado: primer cobro → 201",
+          "event": [
+            { "listen": "prerequest", "script": { "exec": [
+              "pm.collectionVariables.set('retryOrderId', String(Date.now() + 1000));",
+              "pm.collectionVariables.set('retryKey', pm.variables.replaceIn('{{$guid}}'));"
+            ] } },
+            { "listen": "test", "script": { "exec": [
+              "pm.test('201 aprobado', () => {",
+              "  pm.response.to.have.status(201);",
+              "  pm.expect(pm.response.json().status).to.eql('APPROVED');",
+              "});",
+              "pm.collectionVariables.set('retryApprovedAnswer', pm.response.text());"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{retryOrderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{retryKey}}\"\n}" }
+          }
+        },
+        {
+          "name": "Aprobado: misma clave y mismos datos → mismo 201",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Mismo status y cuerpo, mismo pago', () => {",
+            "  pm.response.to.have.status(201);",
+            "  pm.expect(pm.response.json()).to.eql(JSON.parse(pm.collectionVariables.get('retryApprovedAnswer')));",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{retryOrderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{retryKey}}\"\n}" }
+          }
+        },
+        {
+          "name": "Aprobado: mismo monto sin decimales → mismo 201",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('25000 y 25000.00 son el mismo monto', () => {",
+            "  pm.response.to.have.status(201);",
+            "  pm.expect(pm.response.json()).to.eql(JSON.parse(pm.collectionVariables.get('retryApprovedAnswer')));",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{retryOrderId}},\n  \"amount\": 25000,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{retryKey}}\"\n}" }
+          }
+        },
+        {
+          "name": "Aprobado: misma clave con otra orden → 409",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('409 data_conflict', () => {",
+            "  pm.response.to.have.status(409);",
+            "  pm.expect(pm.response.json().error).to.eql('data_conflict');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": 999999,\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{retryKey}}\"\n}" }
+          }
+        },
+        {
+          "name": "Aprobado: misma clave con otro monto → 409",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('409 data_conflict', () => {",
+            "  pm.response.to.have.status(409);",
+            "  pm.expect(pm.response.json().error).to.eql('data_conflict');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{retryOrderId}},\n  \"amount\": 25000.01,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{retryKey}}\"\n}" }
+          }
+        },
+        {
+          "name": "Aprobado: misma clave con otro medio → 409",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('409 data_conflict', () => {",
+            "  pm.response.to.have.status(409);",
+            "  pm.expect(pm.response.json().error).to.eql('data_conflict');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{retryOrderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"ACCOUNT_MONEY\",\n  \"idempotencyKey\": \"{{retryKey}}\"\n}" }
+          }
+        },
+        {
+          "name": "Aprobado: repetir después de los conflictos → mismo 201",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Los conflictos no cambiaron el pago', () => {",
+            "  pm.response.to.have.status(201);",
+            "  pm.expect(pm.response.json()).to.eql(JSON.parse(pm.collectionVariables.get('retryApprovedAnswer')));",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{retryOrderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{retryKey}}\"\n}" }
+          }
+        },
+        {
+          "name": "Aprobado: otra clave en la misma orden → 409",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('409 data_conflict', () => {",
+            "  pm.response.to.have.status(409);",
+            "  pm.expect(pm.response.json().error).to.eql('data_conflict');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{retryOrderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{$guid}}\"\n}" }
+          }
+        },
+        {
+          "name": "Rechazado: primer rechazo → 422",
+          "event": [
+            { "listen": "prerequest", "script": { "exec": [
+              "pm.collectionVariables.set('retryRejectedOrderId', String(Date.now() + 2000));",
+              "pm.collectionVariables.set('retryRejectedKey', pm.variables.replaceIn('{{$guid}}'));"
+            ] } },
+            { "listen": "test", "script": { "exec": [
+              "pm.test('422 con un rechazo', () => {",
+              "  pm.response.to.have.status(422);",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.error).to.eql('payment_rejected');",
+              "  pm.expect(body.detail.rejectedAttempts).to.eql(1);",
+              "});",
+              "pm.collectionVariables.set('retryRejectedAnswer', pm.response.text());"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{retryRejectedOrderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"DEBIT_CARD\",\n  \"idempotencyKey\": \"{{retryRejectedKey}}\"\n}" }
+          }
+        },
+        {
+          "name": "Rechazado: misma clave → mismo 422 sin sumar",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Mismo status y cuerpo, sigue en un rechazo', () => {",
+            "  pm.response.to.have.status(422);",
+            "  pm.expect(pm.response.json()).to.eql(JSON.parse(pm.collectionVariables.get('retryRejectedAnswer')));",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{retryRejectedOrderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"DEBIT_CARD\",\n  \"idempotencyKey\": \"{{retryRejectedKey}}\"\n}" }
+          }
+        },
+        {
+          "name": "Rechazado: misma clave con otros datos → 409",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('409 data_conflict antes que repetir el rechazo', () => {",
+            "  pm.response.to.have.status(409);",
+            "  pm.expect(pm.response.json().error).to.eql('data_conflict');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{retryRejectedOrderId}},\n  \"amount\": 1.00,\n  \"paymentMethod\": \"DEBIT_CARD\",\n  \"idempotencyKey\": \"{{retryRejectedKey}}\"\n}" }
+          }
+        },
+        {
+          "name": "Rechazado: otra clave → 422 con dos rechazos",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Los reintentos anteriores no sumaron rechazos', () => {",
+            "  pm.response.to.have.status(422);",
+            "  pm.expect(pm.response.json().detail.rejectedAttempts).to.eql(2);",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{retryRejectedOrderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"DEBIT_CARD\",\n  \"idempotencyKey\": \"{{$guid}}\"\n}" }
+          }
+        },
+        {
+          "name": "Rechazado: repetir el primero tras otro rechazo → mismo 422",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Conserva rejectedAttempts en 1', () => {",
+            "  pm.response.to.have.status(422);",
+            "  pm.expect(pm.response.json()).to.eql(JSON.parse(pm.collectionVariables.get('retryRejectedAnswer')));",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{retryRejectedOrderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"DEBIT_CARD\",\n  \"idempotencyKey\": \"{{retryRejectedKey}}\"\n}" }
+          }
+        },
+        {
+          "name": "Rechazado: otro medio con clave nueva → 201",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('201 aprobado en la misma orden', () => {",
+            "  pm.response.to.have.status(201);",
+            "  pm.expect(pm.response.json().status).to.eql('APPROVED');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{retryRejectedOrderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{$guid}}\"\n}" }
+          }
+        },
+        {
+          "name": "Rechazado: repetir con la orden ya aprobada → mismo 422",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('La clave conserva su propio resultado', () => {",
+            "  pm.response.to.have.status(422);",
+            "  pm.expect(pm.response.json()).to.eql(JSON.parse(pm.collectionVariables.get('retryRejectedAnswer')));",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{retryRejectedOrderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"DEBIT_CARD\",\n  \"idempotencyKey\": \"{{retryRejectedKey}}\"\n}" }
+          }
+        },
+        {
+          "name": "Pendiente: misma clave con otros datos → 409",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('409 data_conflict antes de reintentar el cobro', () => {",
+            "  pm.response.to.have.status(409);",
+            "  pm.expect(pm.response.json().error).to.eql('data_conflict');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{pendingOrderId}},\n  \"amount\": 1.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{pendingKey}}\"\n}" }
+          }
+        },
+        {
+          "name": "Pendiente: otra clave en la misma orden → 409",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('409 data_conflict sin cobrar', () => {",
+            "  pm.response.to.have.status(409);",
+            "  pm.expect(pm.response.json().error).to.eql('data_conflict');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "description": "Otra tarjeta mientras el intento anterior sigue sin resultado.",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{pendingOrderId}},\n  \"amount\": 70000.00,\n  \"paymentMethod\": \"ACCOUNT_MONEY\",\n  \"idempotencyKey\": \"{{$guid}}\"\n}" }
+          }
+        },
+        {
+          "name": "Pendiente: misma clave y mismos datos → reintenta y cobra 201",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('201 con el pago aprobado', () => {",
+            "  pm.response.to.have.status(201);",
+            "  const body = pm.response.json();",
+            "  pm.expect(body.status).to.eql('APPROVED');",
+            "  pm.expect(body.gatewayId).to.be.a('string');",
+            "  pm.collectionVariables.set('pendingRetryAnswer', pm.response.text());",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "description": "Usa el pago PENDING de la orden 3 que carga PaymentSeeder.",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{pendingOrderId}},\n  \"amount\": 70000.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{pendingKey}}\"\n}" }
+          }
+        },
+        {
+          "name": "Pendiente: reintentar otra vez → mismo 201",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Repite el resultado guardado', () => {",
+            "  pm.response.to.have.status(201);",
+            "  pm.expect(pm.response.json()).to.eql(JSON.parse(pm.collectionVariables.get('pendingRetryAnswer')));",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{pendingOrderId}},\n  \"amount\": 70000.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{pendingKey}}\"\n}" }
+          }
+        }
+      ]
+    }
+  ]
+}

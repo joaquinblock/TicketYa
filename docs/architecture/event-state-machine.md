@@ -47,9 +47,11 @@ Es necesario agregarlo en el `HashMap` junto con los estados a los que puede pas
 | Endpoint | Transición | Quién |
 |---|---|---|
 | `POST /api/events/{id}/publish` | `DRAFT → PUBLISHED`, con precondiciones (ver `eventservice.md`) | Organizador de la organización (`EVENT_MANAGE`) |
-| `POST /api/events/{id}/cancel` | `PUBLISHED`, `SOLD_OUT` o `SUSPENDED → CANCELLED` | Administrador (`EVENT_ADMIN`) |
+| `POST /api/events/{id}/cancel` | `PUBLISHED`, `SOLD_OUT` o `SUSPENDED → CANCELLED` | Administrador, o el organizador que creó el evento |
+| `POST /api/events/{id}/suspend` | `PUBLISHED` o `SOLD_OUT → SUSPENDED` (guarda cuál era en `status_before_suspension`) | Ídem |
+| `POST /api/events/{id}/resume` | `SUSPENDED →` el estado que tenía antes (`PUBLISHED` o `SOLD_OUT`), con fecha nueva opcional | Ídem |
 
-Un borrador no se cancela: se borra con `DELETE /api/events/{id}`. El resto de las transiciones (suspender, reanudar, agotar, finalizar) todavía no tiene endpoint.
+Un borrador no se cancela: se borra con `DELETE /api/events/{id}`. `SOLD_OUT` y `FINISHED` todavía no tienen endpoint: agotarlo le toca al ticket-service cuando vende el último lugar (US-TKT-13, #55).
 
 ## Pendiente
 

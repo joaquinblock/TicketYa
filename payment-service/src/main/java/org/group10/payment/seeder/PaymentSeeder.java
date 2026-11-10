@@ -23,6 +23,7 @@ public class PaymentSeeder implements ApplicationRunner {
     private static final Long PAID_FIELD_ORDER_ID = 1L;
     private static final Long PAID_SEAT_ORDER_ID = 2L;
     private static final Long PENDING_SEAT_ORDER_ID = 3L;
+    private static final String PENDING_ATTEMPT_KEY = "seed-pending-order-3";
 
     private final PaymentRepository paymentRepository;
 
@@ -58,7 +59,9 @@ public class PaymentSeeder implements ApplicationRunner {
     }
 
     private static Payment pending(Long orderId, PaymentMethod method, String amount) {
-        return payment(orderId, method, amount, PaymentStatus.PENDING).build();
+        return payment(orderId, method, amount, PaymentStatus.PENDING)
+                .idempotencyKey(PENDING_ATTEMPT_KEY)
+                .build();
     }
 
     private static Payment.PaymentBuilder payment(Long orderId, PaymentMethod method, String amount, PaymentStatus status) {

@@ -11,6 +11,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+import java.util.Arrays;
+import java.util.stream.Collectors;
+
 /**
  * Checks {@link RequiresPermission} before the controller runs, so it also runs before {@code @Valid}: a user
  * without the permission gets 403 even if the body is invalid.
@@ -24,6 +27,9 @@ import org.springframework.web.servlet.HandlerInterceptor;
 public class PermissionInterceptor implements HandlerInterceptor {
 
     public static final String USER_HEADER = "X-User-Id";
+
+    /** Request attribute with the {@link Caller}; a controller reads it with {@code @RequestAttribute}. */
+    public static final String CALLER_ATTRIBUTE = "ticketya.caller";
 
     private final AuthClient authClient;
 
@@ -39,11 +45,19 @@ public class PermissionInterceptor implements HandlerInterceptor {
 
         Long userId = readUserId(request);
         UserPermissionsResponse user = authClient.getPermissions(userId);
-        if (!user.permissions().contains(required.value().name())) {
-            throw new TicketYaException(CommonErrorCode.FORBIDDEN,
-                    "El usuario %d no tiene el permiso %s".formatted(userId, required.value()));
+        Caller caller = new Caller(userId, user.permissions());
+        if (Arrays.stream(required.value()).noneMatch(caller::has)) {
+            throw new TicketYaException(CommonErrorCode.FORBIDDEN, missingPermissionMessage(userId, required.value()));
         }
+        request.setAttribute(CALLER_ATTRIBUTE, caller);
         return true;
+    }
+
+    private static String missingPermissionMessage(Long userId, Permission[] required) {
+        return required.length == 1
+                ? "El usuario %d no tiene el permiso %s".formatted(userId, required[0])
+                : "El usuario %d no tiene ninguno de los permisos %s".formatted(userId,
+                Arrays.stream(required).map(Enum::name).collect(Collectors.joining(", ")));
     }
 
     /**

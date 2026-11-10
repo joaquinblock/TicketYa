@@ -126,7 +126,8 @@ class EventSeederTest {
         Event festival = eventRepository.findAll().stream()
                 .filter(e -> e.getName().equals("Festival de Verano")).findFirst().orElseThrow();
 
-        assertThat(festival).hasNoNullFieldsOrPropertiesExcept("participants");
+        // statusBeforeSuspension only has a value while the event is suspended
+        assertThat(festival).hasNoNullFieldsOrPropertiesExcept("participants", "statusBeforeSuspension");
         assertThat(festival.isHighDemand()).isTrue();
         assertThat(festival.getParticipants()).hasSizeGreaterThan(1);
         assertThat(eventSectorRepository.findAll())

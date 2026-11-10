@@ -2,46 +2,124 @@
 
 > Arquitectura Web (TUDAI) — Díaz Pace/Yañez (2026)
 
-## Cómo ejecutar (Entrega 1)
+[Consigna completa](#trabajo-práctico-grupal-ticketya).
 
-**Requisitos:** JDK 25 o superior y Docker Desktop corriendo. Maven no hace falta: el repo trae el wrapper `mvnw`.
+## Cómo ejecutarlo
 
-Cada microservicio levanta su propia base MySQL con Docker al arrancar (`compose.yaml` del módulo, vía `spring-boot-docker-compose`), carga datos de prueba con su seeder y recrea el esquema en cada arranque (`ddl-auto: create`).
+### Requisitos
+
+| Herramienta | Versión | Para qué |
+|---|---|---|
+| JDK | 25 | Compilar y correr los servicios (`<java.version>25</java.version>` en el `pom.xml` raíz) |
+| Maven | El wrapper del repo (`./mvnw`) | No hace falta instalarlo |
+| Docker | Docker Desktop corriendo | Cada servicio levanta su propia base con su `compose.yaml` |
+
+> **Si la terminal tiene un JDK más viejo** (por ejemplo, 24), se puede compilar igual con `-Djava.version=24`: el código no usa nada propio del 25. Desde IntelliJ, con el JDK 25 del proyecto, no hace falta.
+
+### Servicios y puertos
+
+| Servicio | Puerto | Base (puerto local) | Entrega |
+|---|---|---|---|
+| `api-gateway` | **8080** | — | 1 |
+| `auth-service` | 8081 | MySQL (3307) | 1 |
+| `event-service` | 8082 | MySQL (3308) | 1 |
+| `ticket-service` | 8083 | MySQL (3309) | 1 |
+| `payment-service` | 8084 | MySQL (3310) | 1 |
+| `queue-service` | 8085 | Redis (6379) | 2 (esqueleto) |
+| `notification-service` | 8086 | MySQL (3311) | 2 (esqueleto) |
+| `recommendation-service` | 8087 | MongoDB (27017) | 2 (esqueleto) |
+
+**Para la Entrega 1 alcanza con el gateway y los cuatro primeros servicios.** Cada servicio arranca su base con Docker la primera vez (`spring.docker.compose`). No hace falta levantarlas a mano.
+
+### Levantarlo
+
+La primera vez, instalar el módulo `common`, del que dependen todos los servicios:
 
 ```bash
-./mvnw install -DskipTests          # una vez, para instalar el módulo common
-
-# Una terminal por servicio, en este orden
-cd auth-service    && ../mvnw spring-boot:run
-cd event-service   && ../mvnw spring-boot:run
-cd payment-service && ../mvnw spring-boot:run
-cd ticket-service  && ../mvnw spring-boot:run
-cd api-gateway     && ../mvnw spring-boot:run
+./mvnw install -DskipTests
 ```
 
-En IntelliJ están las configuraciones de ejecución en `.run/`.
+Después, en cinco terminales, desde la raíz del repo y en este orden:
+
+```bash
+./mvnw -pl auth-service spring-boot:run
+./mvnw -pl event-service spring-boot:run
+./mvnw -pl ticket-service spring-boot:run
+./mvnw -pl payment-service spring-boot:run
+./mvnw -pl api-gateway spring-boot:run
+```
+
+En IntelliJ es lo mismo: se corre la clase `*Application` de cada módulo (las configuraciones están en `.run/`).
 
 Hay que usar `spring-boot:run`: con `java -jar` el servicio no arranca, porque `spring-boot-docker-compose` es una dependencia de desarrollo, no se empaqueta en el jar y sin ella no hay datasource. El despliegue con contenedores y un único `docker-compose.yml` es de la Entrega 2.
 
-| Servicio | Puerto | Base (Docker) |
-|---|---|---|
-| api-gateway (punto de entrada) | 8080 | — |
-| auth-service | 8081 | MySQL :3307 |
-| event-service | 8082 | MySQL :3308 |
-| ticket-service | 8083 | MySQL :3309 |
-| payment-service | 8084 | MySQL :3310 |
+- **Todo entra por el gateway (`http://localhost:8080`).** Las rutas `/internal/**` (llamadas entre servicios) no pasan por el gateway: se usan directo contra el puerto de cada servicio.
+- **Swagger de todo el sistema:** http://localhost:8080/swagger-ui.html. Arriba a la derecha se elige el servicio.
+- **La identidad va en el header `X-User-Id`**, y al crear un evento el organizador manda además `X-Organization-Id`. La Entrega 1 no tiene autenticación (ver *Modalidad de entrega*). Los permisos se verifican contra el auth-service (ver [`permissions.md`](docs/architecture/permissions.md)).
+- **El primer request a un servicio recién levantado puede tardar unos segundos**, mientras se calienta.
+- **La primera vez que se crea el contenedor de una base, MySQL tarda en inicializarse**, y el servicio puede fallar al arrancar con `Communications link failure`. El contenedor queda levantado igual: alcanza con volver a arrancar el servicio.
 
-- **Swagger unificado:** http://localhost:8080/swagger-ui.html, con un selector por servicio.
-- **Identidad (Entrega 1, sin JWT):** el usuario va en el header `X-User-Id`, y el organizador además en `X-Organization-Id` al crear un evento. Usuarios de prueba: 1 cliente, 2 organizador de la organización 1, 3 administrador, 4 personal de acceso, 5 y 6 organizadores de la organización 2.
-- **Pasarela simulada:** `DEBIT_CARD` siempre se rechaza; `CREDIT_CARD` y `ACCOUNT_MONEY` se aprueban.
-- **Colecciones de Postman:** en [`docs/postman`](docs/postman), con `baseUrl` = `http://localhost:8080`.
-- **Tests:** `./mvnw test`. Los tests de integración (`*MySqlIntegrationTest`) usan las mismas bases de Docker, así que conviene correrlos con los servicios apagados.
+### Datos de prueba
 
-**Documentación técnica:** microservicios y diagrama de módulos en [`microservices.md`](docs/architecture/microservices.md), secuencia de compra en [`purchase-sequence.md`](docs/architecture/purchase-sequence.md), modelo y decisiones de cada servicio en [`docs/architecture`](docs/architecture), atributos de calidad en [`docs/quality-attributes`](docs/quality-attributes) e historias de usuario en [`user-stories.md`](docs/user-stories.md).
+Cada servicio recrea su base al arrancar (`ddl-auto: create`) y su seeder la vuelve a cargar. **Para empezar de cero alcanza con reiniciar el servicio.**
 
----
+| Seeder | Qué carga |
+|---|---|
+| `AuthSeeder` | 9 permisos, 4 roles y 6 usuarios: `1` cliente, `2` organizador de la org 1, `3` admin, `4` personal de acceso, `5` organizador de la org 2 y `6` organizador de la org 1 sin eventos propios. Organizaciones `1` *Del Sur Producciones* y `2` *Cultura Serrana* |
+| `EventSeeder` | 5 lugares en 5 ciudades, 239 asientos, 11 participantes y 12 eventos en todos los estados, con fechas relativas al día de arranque (ver *Datos de prueba* en [`event-service.md`](docs/architecture/event-service.md)) |
+| `TicketSeeder` | El inventario de todos los eventos del seeder, dos compras pagadas (una con una devolución pendiente) y una reserva en curso (ver [`ticket-service.md`](docs/architecture/ticket-service.md)) |
+| `PaymentSeeder` | Los pagos de esas órdenes: aprobados, uno rechazado y uno pendiente |
 
-*Lo que sigue es el enunciado del trabajo práctico.*
+Los ids entre servicios coinciden (por ejemplo, el evento 1 del event-service es el evento 1 del ticket-service), porque cada seeder asume los ids de los otros.
+
+### Tests
+
+```bash
+./mvnw test                      # todos los módulos
+./mvnw -pl ticket-service test   # uno solo
+```
+
+- **Necesitan Docker:** varios tests corren contra el MySQL real de cada servicio. Usan las mismas bases que los servicios, así que conviene correrlos con los servicios apagados. Dejan la base recreada: después hay que reiniciar el servicio.
+- **Si la primera corrida falla con `Communications link failure`**, es MySQL inicializando un contenedor recién creado: alcanza con volver a correrlos.
+- **La prueba de no doble venta** que pide la consigna es `ReservationMySqlIntegrationTest`: muchos hilos compran a la vez el mismo asiento, o el último lugar de un sector, y solo uno lo consigue. El mecanismo está en [`concurrency-and-idempotency.md`](docs/quality-attributes/concurrency-and-idempotency.md).
+
+### Colecciones de Postman
+
+Están en [`docs/postman/`](docs/postman/). Se importan en Postman y cada una trae sus variables. Para correr una entera: clic derecho → *Run collection*.
+
+| Colección | Qué cubre | Apunta a | ¿Cambia datos? |
+|---|---|---|---|
+| `event-search` | Búsqueda de eventos y visibilidad del detalle | Gateway | No: se puede repetir |
+| `event-creation` | Alta de eventos y permisos | Gateway | Sí |
+| `participants` | ABM de participantes y asignación a un evento | Gateway | Sí |
+| `event-lifecycle` | Ver, editar, borrar, publicar y cancelar | Gateway | Sí: **reiniciar el event-service antes** |
+| `event-sectors` | Sectores y precios de un borrador | Gateway | Sí: **reiniciar el event-service antes** |
+| `event-suspension` | Suspender, reanudar y quién puede hacerlo | Gateway | Sí: **reiniciar el event-service antes** |
+| `ticket-service` | Inventario, reserva, pago, compras y devoluciones | Gateway, y `:8083` para `/internal/**` (necesita también el payment-service y el auth-service) | Crea su propio evento: se puede repetir |
+| `payment-service` | Cobros, rechazos, reintentos y reintegros | `:8084` | Crea sus propias órdenes: se puede repetir |
+
+## Documentación
+
+| Tema | Dónde |
+|---|---|
+| Features y user stories de todo el sistema, con criterios de aceptación | [`docs/user-stories.md`](docs/user-stories.md) |
+| Microservicios, responsabilidades y comunicación | [`docs/architecture/microservices.md`](docs/architecture/microservices.md) |
+| Diagrama de módulos | [`docs/architecture/modules.md`](docs/architecture/modules.md) |
+| Diagrama de secuencia de la compra de una entrada numerada | [`docs/architecture/purchase-sequence.md`](docs/architecture/purchase-sequence.md) |
+| DER de cada servicio, con las relaciones entre servicios y los datos solapados | [`auth-service.md`](docs/architecture/auth-service.md), [`event-service.md`](docs/architecture/event-service.md), [`ticket-service.md`](docs/architecture/ticket-service.md), [`payment-service.md`](docs/architecture/payment-service.md) |
+| Listado de endpoints | [`docs/architecture/endpoints.md`](docs/architecture/endpoints.md) y Swagger |
+| Errores y sus códigos | [`docs/architecture/error-handling.md`](docs/architecture/error-handling.md) |
+| Permisos | [`docs/architecture/permissions.md`](docs/architecture/permissions.md) |
+| Atributos de calidad (concurrencia, idempotencia, comunicación, persistencia, gateway) | [`docs/quality-attributes/`](docs/quality-attributes/) |
+| Decisiones de diseño discutidas | [`docs/rfc/`](docs/rfc/) |
+
+### Especificaciones
+
+No usamos OpenSpec. Cada funcionalidad empezó por una especificación escrita y revisada en un PR antes de implementarse, como pide la *Metodología sugerida*, y esa especificación quedó versionada en el repo:
+
+1. **Requisitos y escenarios:** la user story y sus criterios de aceptación, en `docs/user-stories.md`. Cada una enlaza la consigna que cubre.
+2. **Diseño:** el doc del servicio en `docs/architecture/`, y un RFC en `docs/rfc/` cuando había varias opciones para discutir.
+3. **Tareas:** las issues de GitHub, agrupadas por épica, y un PR por funcionalidad que las cierra.
 
 ## Trabajo Práctico Grupal: TicketYa
 

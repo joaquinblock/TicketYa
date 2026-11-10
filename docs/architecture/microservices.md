@@ -24,48 +24,9 @@
 | **notification-service** | 2 | 🔴 `notificacion` | Email y push por compra, cancelación, cambios y artistas favoritos | Asíncrono (fire-and-forget o mensajería): si el proveedor de email falla, una compra no debe fallar |
 | **recommendation-service** | 2 | ⚪ `preferencia_tipo_evento`, `participante_favorito` | Preferencias del cliente y sugerencias ("quienes compraron esto también…") | Datos flexibles por usuario, el otro candidato a MongoDB. Lo de "quienes compraron" se arma con eventos de compra que manda el ticket-service |
 
-## Diagrama de módulos (Entrega 1)
+## Diagrama de módulos
 
-Los clientes externos solo hablan con el gateway. Las rutas `/internal/**` son entre servicios y el gateway no las reenvía. Cada servicio tiene su propia base MySQL y las referencias entre bases van por ID.
-
-```mermaid
-flowchart LR
-    client["Apps de clientes y organizadores<br/>Backoffice · Postman"]
-    gateway["api-gateway :8080<br/>ruteo por path + Swagger unificado"]
-
-    subgraph services["Microservicios Spring Boot"]
-        auth["auth-service :8081<br/>usuarios, roles, permisos,<br/>organizaciones y organizadores"]
-        event["event-service :8082<br/>lugares, sectores, asientos,<br/>eventos, publicación y búsqueda"]
-        ticket["ticket-service :8083<br/>inventario por evento, reserva,<br/>compra, QR, devoluciones"]
-        payment["payment-service :8084<br/>cobros y reintegros"]
-    end
-
-    gatewayMock[["Pasarela de pagos<br/>(MockPaymentGateway)"]]
-
-    authDb[("auth_db :3307")]
-    eventDb[("event_db :3308")]
-    ticketDb[("ticket_db :3309")]
-    paymentDb[("payment_db :3310")]
-
-    client -->|"/api/**"| gateway
-    gateway --> auth
-    gateway --> event
-    gateway --> ticket
-    gateway --> payment
-
-    event -->|"permisos, organizador"| auth
-    event -->|"PUT /internal/event-sales/{id}<br/>publicar, suspender, cancelar"| ticket
-    ticket -->|"PUT /internal/events/{id}/sold-out<br/>y /back-on-sale"| event
-    ticket -->|"POST /internal/payments<br/>POST /internal/refunds"| payment
-    payment --> gatewayMock
-
-    auth --- authDb
-    event --- eventDb
-    ticket --- ticketDb
-    payment --- paymentDb
-```
-
-El flujo de compra completo, con pago rechazado y reserva vencida, está en [`purchase-sequence.md`](purchase-sequence.md).
+Está en [`modules.md`](modules.md), para la Entrega 1 y la 2.
 
 ## Preguntas frecuentes
 

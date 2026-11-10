@@ -1,6 +1,6 @@
 # Features y user stories
 
-> Por ahora contiene las historias de ticket-service y payment-service. Los demás servicios se agregan con el mismo formato y su propio prefijo (`US-EVT`, etc.).
+> Contiene las historias de todo el sistema, de las dos entregas. Cada servicio tiene su prefijo: `US-EVT` (event-service), `US-AUTH` (auth-service), `US-TKT` (ticket-service), `US-PAY` (payment-service), `US-QUE` (queue-service), `US-NOT` (notification-service) y `US-REC` (recommendation-service). Las de la Entrega 2 todavía no tienen diseño: los criterios describen qué se espera ver, y el diseño se hace en esa entrega.
 
 Cada historia tiene un servicio responsable y, si hace falta, los servicios que también participan. Indica además la consigna del enunciado (NF = consideraciones no funcionales), la épica de GitHub y la entrega, según la tabla de *Modalidad de entrega* del enunciado.
 
@@ -59,6 +59,21 @@ Las decisiones de diseño y las dependencias entre servicios están en la docume
 | [US-PAY-13](#us-pay-13-reintentar-los-reintegros-fallidos) | Reintentar los reintegros fallidos | F15. Resiliencia | payment-service | — | 2 | #10 |
 | [US-PAY-14](#us-pay-14-autenticar-las-llamadas-internas-y-restringir-la-consulta-a-administradores) | Autenticar las llamadas internas y restringir la consulta a administradores (técnica) | F16. Seguridad y trazabilidad de pagos | payment-service | ticket-service, api-gateway, auth-service | 2 | #9 |
 | [US-PAY-15](#us-pay-15-registrar-cobros-y-reintegros) | Registrar cobros y reintegros | F16. Seguridad y trazabilidad de pagos | payment-service | — | 2 | #10 |
+| [US-EVT-01](#us-evt-01-administrar-lugares-con-sectores-numerados-y-no-numerados) | Administrar lugares con sectores numerados y no numerados | F17. Lugares | event-service | — | 1 | #3 |
+| [US-EVT-02](#us-evt-02-configurar-y-publicar-eventos-en-borrador) | Configurar y publicar eventos en borrador | F18. Eventos | event-service | auth-service, ticket-service | 1 | #3 |
+| [US-EVT-03](#us-evt-03-suspender-y-cancelar-eventos) | Suspender y cancelar eventos | F18. Eventos | event-service | auth-service, ticket-service | 1 | #3 |
+| [US-EVT-04](#us-evt-04-buscar-eventos-con-filtros-y-ordenamiento) | Buscar eventos con filtros y ordenamiento | F18. Eventos | event-service | — | 1 | #3 |
+| [US-EVT-06](#us-evt-06-administrar-artistas-equipos-y-disertantes) | Administrar artistas, equipos y disertantes | F19. Participantes | event-service | — | 1 | #3 |
+| [US-AUTH-01](#us-auth-01-consultar-organizaciones-y-organizadores) | Consultar organizaciones y organizadores (técnica) | F20. Identidad y permisos | auth-service | — | 1 | #3 |
+| [US-AUTH-02](#us-auth-02-verificar-los-permisos-de-cada-request) | Verificar los permisos de cada request (técnica) | F20. Identidad y permisos | auth-service | event-service | 1 | #9 |
+| [US-AUTH-03](#us-auth-03-iniciar-sesión-y-operar-con-un-token) | Iniciar sesión y operar con un token | F20. Identidad y permisos | auth-service | api-gateway, todos los servicios | 2 | #9 |
+| [US-AUTH-04](#us-auth-04-asignar-personal-de-acceso-a-un-evento) | Asignar personal de acceso a un evento | F20. Identidad y permisos | auth-service | event-service | 2 | #7 |
+| [US-QUE-01](#us-que-01-hacer-la-fila-virtual-en-un-evento-de-alta-demanda) | Hacer la fila virtual en un evento de alta demanda | F21. Fila virtual | queue-service | event-service, ticket-service | 2 | #7 |
+| [US-NOT-01](#us-not-01-recibir-la-confirmación-de-la-compra) | Recibir la confirmación de la compra | F22. Notificaciones | notification-service | ticket-service, auth-service | 2 | #8 |
+| [US-NOT-02](#us-not-02-enterarme-si-un-evento-se-cancela-o-cambia) | Enterarme si un evento se cancela o cambia | F22. Notificaciones | notification-service | event-service, ticket-service | 2 | #8 |
+| [US-NOT-03](#us-not-03-saber-cuándo-un-artista-favorito-toca-en-mi-ciudad) | Saber cuándo un artista favorito toca en mi ciudad | F22. Notificaciones | notification-service | recommendation-service, event-service | 2 | #8 |
+| [US-REC-01](#us-rec-01-registrar-mis-preferencias) | Registrar mis preferencias | F23. Preferencias y recomendaciones | recommendation-service | event-service | 2 | #8 |
+| [US-REC-02](#us-rec-02-recibir-sugerencias-de-eventos) | Recibir sugerencias de eventos | F23. Preferencias y recomendaciones | recommendation-service | event-service, ticket-service | 2 | #8 |
 
 ## F1. Inventario
 
@@ -706,3 +721,221 @@ Servicio: payment-service · Sirve a: US-TKT-27 · Consigna: NF · Épica: #10 �
 - Cada cobro y cada reintegro se registra en el log centralizado con su resultado.
 - El registro usa el identificador de correlación recibido, así se sigue la misma operación desde ticket-service.
 - En el log no se registran datos del medio de pago, salvo su tipo.
+
+## F17. Lugares
+
+### US-EVT-01: Administrar lugares con sectores numerados y no numerados
+
+Como administrador quiero cargar los lugares con sus sectores para que los organizadores puedan armar eventos en ellos.
+
+Servicio: event-service · Consigna: 2 · Épica: #3 · Entrega 1
+
+**Criterios de aceptación**
+- Se crea un lugar con nombre, dirección, ciudad, latitud y longitud. Se lista por nombre, se filtra por ciudad sin distinguir mayúsculas, y se ve con sus sectores y su capacidad total.
+- Un sector numerado se crea con sus filas (`[{ row, seats }]`), y su capacidad es la cantidad de asientos. Un sector no numerado lleva `capacity` y no tiene asientos.
+- Un sector numerado con `capacity`, o uno no numerado sin ella: 400 `invalid_sector_configuration`.
+- Dos sectores con el mismo nombre en un lugar, sin distinguir mayúsculas: 409 `sector_name_duplicated`. Una fila repetida en un sector: 409 `seat_row_duplicated`.
+- Un sector pedido con un `venueId` que no es el suyo: 404 `sector_not_found`.
+- No se puede borrar un lugar con eventos (409 `venue_in_use`). Un sector que vende algún evento no se puede borrar, y su capacidad no cambia si ese evento ya salió de borrador (409 `sector_in_use`).
+
+**Notas técnicas:** ver [`event-service-api.md`](architecture/event-service-api.md). Quién puede administrar el catálogo queda para decidir en el [RFC-005](rfc/RFC-005-catalog-permissions.md).
+
+## F18. Eventos
+
+### US-EVT-02: Configurar y publicar eventos en borrador
+
+Como organizador quiero crear mi evento en borrador, configurarlo y publicarlo cuando esté listo para empezar a vender.
+
+Servicio: event-service · Involucra: auth-service, ticket-service · Consigna: 1, 2, 3 · Épica: #3 · Entrega 1
+
+**Criterios de aceptación**
+- Un organizador activo de la organización (`X-User-Id`, con el permiso `EVENT_MANAGE`) crea el evento en `DRAFT`, con nombre, tipo, lugar y fecha futura. Sin el permiso: 403 `forbidden`. De otra organización: 403 `organizer_not_in_organization`.
+- Un evento de alta demanda necesita `saleStart`, que siempre es anterior a la fecha: si no, 400 `invalid_event_configuration`.
+- En `DRAFT`, el organizador edita los datos, define qué sectores del lugar vende y a qué precio, y elige los participantes. Fuera de `DRAFT`: 409 `event_not_editable`.
+- Cada sector tiene que ser del lugar del evento (404 `sector_not_found`) y aparecer una sola vez (400 `invalid_event_configuration`). El precio es mayor a 0 y tiene hasta dos decimales.
+- Si al editar cambia el lugar, se quitan los sectores que vendía.
+- Se puede borrar un borrador, que todavía no tiene entradas. Un evento publicado no se borra.
+- Al publicar, el evento pasa a `PUBLISHED` si tiene al menos un sector a la venta, ningún sector numerado sin asientos y la fecha en el futuro. Si no: 409 `event_not_publishable`, con todos los problemas en `detail.problems`.
+- Al publicar, el inventario queda disponible en el ticket-service (US-TKT-01).
+- Un borrador solo lo ve un organizador de su organización: para cualquier otro, 404 `event_not_found`.
+
+**Notas técnicas:** el estado solo cambia por la máquina de estados ([`event-state-machine.md`](architecture/event-state-machine.md)). La organización y el organizador se guardan por id, sin FK ([RFC-004](rfc/RFC-004-cross-service-relations.md)).
+
+### US-EVT-03: Suspender y cancelar eventos
+
+Como administrador, o como organizador que creó el evento, quiero suspender o cancelar un evento cuando no se puede realizar.
+
+Servicio: event-service · Involucra: auth-service, ticket-service · Consigna: 3, 7 · Épica: #3 · Entrega 1
+
+**Criterios de aceptación**
+- Un administrador (`EVENT_ADMIN`) suspende o cancela cualquier evento. Un organizador (`EVENT_MANAGE`), solo los que creó, y mientras siga siendo organizador de su organización. Cualquier otro organizador, aunque sea de la misma organización: 403 `not_event_creator`.
+- Suspender pasa un evento `PUBLISHED` o `SOLD_OUT` a `SUSPENDED`, y frena la venta.
+- Reanudar devuelve el evento al estado que tenía antes de suspenderse (`PUBLISHED` o `SOLD_OUT`). Opcionalmente recibe una fecha nueva para reprogramarlo, que tiene que ser futura y posterior a `saleStart`.
+- Cancelar es definitivo, desde `PUBLISHED`, `SOLD_OUT` o `SUSPENDED`, y las entradas vendidas pasan a reintegro (US-TKT-18).
+- Un borrador no se suspende ni se cancela: 409 `invalid_status_transition`. Repetir una suspensión o una cancelación no cambia nada.
+
+**Notas técnicas:** el estado anterior a la suspensión se guarda en `event.status_before_suspension`. Delegar la suspensión a otro organizador queda afuera ([`permissions.md`](architecture/permissions.md)).
+
+### US-EVT-04: Buscar eventos con filtros y ordenamiento
+
+Como cliente quiero buscar eventos por varios criterios para encontrar a cuál ir.
+
+Servicio: event-service · Consigna: 9 · Épica: #3 · Entrega 1
+
+**Criterios de aceptación**
+- La búsqueda muestra los eventos `PUBLISHED` y `SOLD_OUT` con fecha futura. Los suspendidos, cancelados, finalizados y borradores no aparecen.
+- Se filtra por texto libre (nombre, descripción o participante), tipo, ciudad (sin distinguir mayúsculas ni acentos), participante, organización y rango de fechas. Los filtros se combinan.
+- Se ordena por fecha (por defecto), por precio desde (el sector más barato) o por relevancia (con texto: primero si coincide en el nombre, después en un participante y después en la descripción).
+- Los resultados vienen paginados, de 1 a 50 por página. `from` posterior a `to`: 400 `invalid_parameter`.
+- Cada resultado trae el lugar y la ciudad, los participantes y el precio desde.
+- Un evento se ve por id en cualquier estado salvo `DRAFT`, con sus sectores, precios, participantes y capacidad.
+
+**Notas técnicas:** las decisiones sobre qué estados se muestran, y cómo revertirlas, están en [`event-search.md`](architecture/event-search.md).
+
+## F19. Participantes
+
+### US-EVT-06: Administrar artistas, equipos y disertantes
+
+Como organizador quiero cargar a los participantes de los eventos para mostrar quién se presenta.
+
+Servicio: event-service · Consigna: 1 · Épica: #3 · Entrega 1
+
+**Criterios de aceptación**
+- Se crea, modifica, lista y borra un participante con nombre y tipo (`ARTIST`, `TEAM` o `SPEAKER`). El listado se filtra por tipo y por parte del nombre.
+- No puede haber dos participantes con el mismo nombre y tipo, sin distinguir mayúsculas: 409 `participant_duplicated`. Un artista y un equipo sí pueden llamarse igual.
+- Un participante que está en algún evento no se puede borrar: 409 `participant_in_use`.
+- Los participantes de un evento en `DRAFT` se reemplazan con una lista de ids. Los repetidos cuentan una vez. Si falta alguno: 404 `participant_not_found` con los ids que faltan, y no se cambia nada.
+
+**Notas técnicas:** `US-EVT-05` corresponde a la issue #56, que es una tarea técnica (seeder y tests) y no una historia ([`user-story-naming.md`](team/user-story-naming.md)).
+
+## F20. Identidad y permisos
+
+### US-AUTH-01: Consultar organizaciones y organizadores
+
+El event-service necesita saber a qué organización pertenece un organizador para validar sus eventos. El valor para el organizador está en la US-EVT-02.
+
+Tipo: técnica · Servicio: auth-service · Sirve a: US-EVT-02, US-EVT-03 · Consigna: 3 · Épica: #3 · Entrega 1
+
+**Criterios de aceptación**
+- Una organización activa se consulta por id, sin exponer el CUIT ni la cuenta bancaria. Si no existe o está dada de baja: 404 `organization_not_found`.
+- Un organizador se consulta por su id de usuario, con el id de su organización. Si no es organizador, o está dado de baja él, su usuario o su organización: 404 `organizer_not_found`.
+
+**Notas técnicas:** nada se borra: las bajas son lógicas (`deleted_at`). Ver [`auth-service.md`](architecture/auth-service.md).
+
+### US-AUTH-02: Verificar los permisos de cada request
+
+Cada servicio tiene que saber qué puede hacer el usuario que llama. El valor está en todas las historias con un permiso.
+
+Tipo: técnica · Servicio: auth-service · Involucra: event-service · Sirve a: US-EVT-02, US-EVT-03 · Consigna: NF · Épica: #9 · Entrega 1
+
+**Criterios de aceptación**
+- Se consultan el rol y los permisos de un usuario activo. Un usuario inexistente o dado de baja: 404 `user_not_found`.
+- Un endpoint que pide un permiso responde 403 `forbidden` si el rol del usuario no lo tiene, antes de validar el body.
+- Los permisos se cargan por rol: cliente, organizador, administrador y personal de acceso.
+
+**Notas técnicas:** en la Entrega 1 el usuario llega en el header `X-User-Id` y se confía en él. Ver [`permissions.md`](architecture/permissions.md).
+
+### US-AUTH-03: Iniciar sesión y operar con un token
+
+Como usuario quiero iniciar sesión para que el sistema sepa quién soy sin mandar mi id a mano.
+
+Servicio: auth-service · Involucra: api-gateway, todos los servicios · Consigna: NF · Épica: #9 · Entrega 2
+
+**Criterios de aceptación**
+- Con credenciales válidas se obtiene un JWT con el usuario, su rol y sus permisos. Con credenciales inválidas: 401 `invalid_credentials`.
+- Sin token, o con uno vencido o adulterado, un endpoint protegido responde 401 `unauthorized`. Con un rol que no corresponde: 403 `forbidden`.
+- El usuario se toma del token y ya no del header `X-User-Id`.
+
+**Notas técnicas:** la modalidad (auth propio o proveedor externo) se discute en el [RFC-001](rfc/RFC-001-auth-modality.md). Con el token, el interceptor de permisos se reemplaza por `@PreAuthorize`.
+
+### US-AUTH-04: Asignar personal de acceso a un evento
+
+Como organizador quiero asignar al personal que va a escanear las entradas en mi evento.
+
+Servicio: auth-service · Involucra: event-service · Sirve a: US-TKT-19 · Consigna: 8 · Épica: #7 · Entrega 2
+
+**Criterios de aceptación**
+- El organizador asigna personal de acceso de su organización a uno de sus eventos.
+- Un personal de acceso de otra organización: 403 `forbidden`.
+- El personal asignado puede validar entradas de ese evento y no de otros: 403 `staff_not_assigned`.
+
+## F21. Fila virtual
+
+### US-QUE-01: Hacer la fila virtual en un evento de alta demanda
+
+Como cliente quiero entrar a una fila virtual cuando abre la venta de un evento masivo, para comprar en el orden en que llegué.
+
+Servicio: queue-service · Involucra: event-service, ticket-service · Sirve a: US-TKT-21 · Consigna: 6 · Épica: #7 · Entrega 2
+
+**Criterios de aceptación**
+- En un evento de alta demanda, a partir de `saleStart`, el cliente entra a la fila y recibe su posición.
+- El cliente consulta su posición, que baja a medida que avanza la fila.
+- Los clientes se habilitan por tandas, en el orden de llegada. Al habilitarse, recibe un turno con vencimiento para comprar.
+- Entrar dos veces a la fila del mismo evento devuelve la misma posición.
+- En un evento que no es de alta demanda, o antes de `saleStart`: 409.
+
+**Notas técnicas:** la fila vive en Redis. La consigna permite una versión simplificada, justificando las simplificaciones.
+
+## F22. Notificaciones
+
+### US-NOT-01: Recibir la confirmación de la compra
+
+Como cliente quiero recibir un aviso cuando se confirma mi compra, con mis entradas.
+
+Servicio: notification-service · Involucra: ticket-service, auth-service · Consigna: 11 · Épica: #8 · Entrega 2
+
+**Criterios de aceptación**
+- Al pagarse una orden, el cliente recibe un email (o push) con el evento y sus entradas.
+- Si el envío falla, la compra no se ve afectada y el envío se reintenta.
+- Un aviso de la misma compra no se envía dos veces.
+
+**Notas técnicas:** consume el evento de compra que publica el ticket-service (US-TKT-24).
+
+### US-NOT-02: Enterarme si un evento se cancela o cambia
+
+Como cliente quiero recibir un aviso si un evento al que voy a ir se cancela, se suspende o cambia de fecha.
+
+Servicio: notification-service · Involucra: event-service, ticket-service · Consigna: 7, 11 · Épica: #8 · Entrega 2
+
+**Criterios de aceptación**
+- Al cancelarse un evento, cada comprador recibe un aviso que dice que sus entradas pasan a reintegro.
+- Al suspenderse o reprogramarse, cada comprador recibe un aviso con el estado o la fecha nueva.
+- Cada comprador recibe un solo aviso por cambio, aunque tenga varias entradas.
+
+### US-NOT-03: Saber cuándo un artista favorito toca en mi ciudad
+
+Como cliente quiero que me avisen cuando un artista que sigo publica un evento en mi ciudad.
+
+Servicio: notification-service · Involucra: recommendation-service, event-service · Consigna: 11 · Épica: #8 · Entrega 2
+
+**Criterios de aceptación**
+- Al publicarse un evento, los clientes que tienen como favorito a uno de sus participantes y viven en la ciudad del lugar reciben un aviso.
+- Un cliente sin ese artista como favorito, o de otra ciudad, no recibe nada.
+
+## F23. Preferencias y recomendaciones
+
+### US-REC-01: Registrar mis preferencias
+
+Como cliente quiero guardar los tipos de eventos, los artistas que me gustan y mi ciudad, para recibir sugerencias a mi medida.
+
+Servicio: recommendation-service · Involucra: event-service · Consigna: 10 · Épica: #8 · Entrega 2
+
+**Criterios de aceptación**
+- El cliente consulta y reemplaza sus preferencias: tipos de evento, participantes favoritos y ciudad.
+- Un participante o un tipo de evento inexistente: 404.
+
+**Notas técnicas:** las preferencias se guardan en MongoDB. Los participantes se referencian por id del event-service.
+
+### US-REC-02: Recibir sugerencias de eventos
+
+Como cliente quiero ver eventos sugeridos según mis preferencias y lo que compraron otros como yo.
+
+Servicio: recommendation-service · Involucra: event-service, ticket-service · Consigna: 10 · Épica: #8 · Entrega 2
+
+**Criterios de aceptación**
+- Las sugerencias son eventos que se pueden comprar, como los de la búsqueda (US-EVT-04).
+- Se priorizan los de los tipos y artistas favoritos del cliente, y los de su ciudad.
+- Se suman los que compraron los clientes que compraron entradas para los mismos eventos que él (*"quienes compraron entradas para este evento también compraron…"*).
+- No se sugieren eventos para los que el cliente ya compró.
+
+**Notas técnicas:** usa el historial que expone el ticket-service (US-TKT-25) y los eventos de compra (US-TKT-24). La consigna permite una versión simplificada.

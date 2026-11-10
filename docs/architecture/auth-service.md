@@ -97,7 +97,11 @@ Todos usan el `ErrorDto` común (ver [`error-handling.md`](error-handling.md)). 
 | `service` | `OrganizationService`, `OrganizerService` |
 | `controller` | `OrganizationController`, `OrganizerController` |
 
-- **Datos de prueba.** `AuthSeeder` carga la organización `1` (*Del Sur Producciones*), con `organizer@ticketya.com` (user `2`) como organizador, que son los ids que asume `EventSeeder`. Carga además la organización `2` (*Cultura Serrana*), sin organizadores, para probar `organizer_not_in_organization`.
+- **Datos de prueba.** `AuthSeeder` carga dos organizaciones con un organizador cada una, que son los ids que asume `EventSeeder`:
+  - la `1` (*Del Sur Producciones*), con `organizer@ticketya.com` (user `2`);
+  - la `2` (*Cultura Serrana*), con `organizer.serrana@ticketya.com` (user `5`).
+
+  El user `2` no organiza para la `2`, así que crear un evento de la org `2` con `X-User-Id: 2` sigue dando `organizer_not_in_organization`.
 - **El organizador se busca en una sola query.** `OrganizerRepository.findWithUserAndOrganizationByUserId` usa `@EntityGraph` para traer también el `user` y la `organization`, que son lazy. Sin eso, armar la respuesta haría una query más por cada relación, y fuera de la transacción tiraría `LazyInitializationException`.
 
 ## Pendiente

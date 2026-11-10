@@ -15,7 +15,8 @@
 
 ## Para poder probar lo que ya está
 
-- [x] **Seeder del auth-service:** `AuthSeeder` carga la organización `1` con el organizador `2` (`organizer@ticketya.com`), que son los ids que asume `EventSeeder`, y la organización `2` sin organizadores para probar el `403` (PR #37)
+- [x] **Seeder del auth-service:** `AuthSeeder` carga la organización `1` con el organizador `2` (`organizer@ticketya.com`), que son los ids que asume `EventSeeder`, y la organización `2` con el organizador `5`. El `403` se prueba con el organizador `2` contra la organización `2` (PR #37 y #56)
+- [x] **Seeder del event-service:** eventos en todos los estados, tipos y ciudades, de las dos organizaciones (ver *Datos de prueba* en [`event-service.md`](../architecture/event-service.md))
 - [ ] **Ruta del gateway:** `api-gateway` enruta `/api/organizations/**` al auth-service, pero no `/api/organizers/**`. El event-service no la necesita (llama directo a `:8081`), pero sin ella el endpoint no se puede usar desde `:8080`
 - [ ] **Correr los tests:** `EventServiceTest` y `EventControllerTest` todavía no se ejecutaron. Maven desde la terminal usa JDK 24 y el proyecto pide 25
 - [ ] **Colección de Postman:** importar [`docs/postman/event-creation.postman_collection.json`](../postman/event-creation.postman_collection.json) y correrla con los tres servicios levantados

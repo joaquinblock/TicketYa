@@ -7,6 +7,8 @@ import org.group10.ticket.exception.TicketErrorCode;
 import org.group10.ticket.service.AvailabilityService;
 import org.group10.ticket.service.EventSaleService;
 import org.group10.ticket.service.OrderClosingService;
+import org.group10.ticket.service.OrderPaymentService;
+import org.group10.ticket.service.OrderQueryService;
 import org.group10.ticket.service.ReservationService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -44,6 +46,12 @@ class ReservationControllersTest {
 
     @MockitoBean
     private OrderClosingService orderClosingService;
+
+    @MockitoBean
+    private OrderPaymentService orderPaymentService;
+
+    @MockitoBean
+    private OrderQueryService orderQueryService;
 
     @MockitoBean
     private AvailabilityService availabilityService;
@@ -191,6 +199,51 @@ class ReservationControllersTest {
     }
 
     @Test
+    void pay_validBody_returnsTheOrder() throws Exception {
+        when(orderPaymentService.pay(eq(7L), eq(5L), any())).thenReturn(pendingOrder());
+
+        mockMvc.perform(post("/api/orders/5/pay").header(USER_HEADER, 7)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"paymentMethod": "CREDIT_CARD", "idempotencyKey": "attempt-1"}"""))
+                .andExpect(status().isOk());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "{}",
+            "{\"paymentMethod\": \"CREDIT_CARD\"}",
+            "{\"paymentMethod\": \"CREDIT_CARD\", \"idempotencyKey\": \"  \"}",
+            "{\"idempotencyKey\": \"k\"}"
+    })
+    void pay_invalidBody_returnsValidationErrorWithoutCharging(String body) throws Exception {
+        mockMvc.perform(post("/api/orders/5/pay").header(USER_HEADER, 7)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("validation_error"));
+        verifyNoInteractions(orderPaymentService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"CASH", "credit_card", "0"})
+    void pay_unknownPaymentMethod_returnsBadRequestWithoutCharging(String method) throws Exception {
+        mockMvc.perform(post("/api/orders/5/pay").header(USER_HEADER, 7)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"paymentMethod": "%s", "idempotencyKey": "k"}""".formatted(method)))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(orderPaymentService);
+    }
+
+    @Test
+    void findMyOrders_withoutUserHeader_returnsBadRequest() throws Exception {
+        mockMvc.perform(get("/api/orders"))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(orderQueryService);
+    }
+
+    @Test
     void findAvailability_withoutEventId_returnsBadRequest() throws Exception {
         mockMvc.perform(get("/api/availability"))
                 .andExpect(status().isBadRequest());
@@ -238,6 +291,6 @@ class ReservationControllersTest {
 
     private static OrderResponse pendingOrder() {
         return new OrderResponse(1L, 1L, OrderStatus.PENDING, LocalDateTime.now().plusMinutes(10),
-                new BigDecimal("2000"), List.of());
+                new BigDecimal("2000"), null, List.of());
     }
 }

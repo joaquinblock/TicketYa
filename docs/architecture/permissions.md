@@ -5,7 +5,7 @@
 ## Idea general
 
 - **Se chequean permisos, no roles.** Un endpoint pide `EVENT_MANAGE`, no "ser `ORGANIZER`". Qué permisos tiene cada rol lo dice `role_permission` en el auth-service. Si mañana un rol gana o pierde un permiso, se cambia el seeder y el código queda igual.
-- **El header dice quién sos, pero no se le cree.** Cualquiera puede mandar `X-User-Id: 2`. El permiso lo confirma siempre el auth-service, que es el dueño del dato.
+- **Se confía en la identidad del header, no en lo que dice poder hacer.** El servicio no verifica que quien llama sea de verdad el usuario de `X-User-Id`: eso llega con el JWT (ver *Limitaciones*). Lo que sí confirma siempre el auth-service, que es el dueño del dato, es qué puede hacer ese usuario.
 - **Cada endpoint declara lo que pide.** Con la anotación `@RequiresPermission` sobre el método del controller. Un endpoint sin anotación no chequea nada.
 
 ## Flujo
@@ -133,10 +133,32 @@ Cada request a un endpoint protegido hace **una llamada más al auth-service**. 
 - que la respuesta traiga también el `organizationId`, y así se ahorran las otras dos;
 - cachear los permisos unos segundos.
 
+## Qué cambia en la aplicación
+
+- **Antes:** el event-service decidía solo con reglas de negocio: "¿es organizador de esta organización?".
+- **Ahora:** primero pregunta si el usuario puede hacer la acción (el permiso) y después si puede hacerla sobre ese recurso (la regla de negocio). El auth-service decide qué puede hacer cada usuario en todos los servicios, como propone `microservices.md`.
+- **Para el usuario, lo único que cambia es el error.** Con los datos de prueba, quien podía crear eventos sigue pudiendo y quien no podía sigue sin poder. Un cliente que intenta crear un evento recibe `403 forbidden` en vez de `404 organizer_not_found`.
+
+## Limitaciones y riesgos
+
+- **No es seguridad real todavía.** Cualquiera puede mandar `X-User-Id: 2` y actuar como la organizadora. El chequeo es de autorización (qué puede hacer el usuario que dice ser), no de autenticación (si lo es). La consigna lo acepta para la Entrega 1, y el JWT lo resuelve.
+- **El permiso se compara por nombre entre servicios.** Si alguien renombra un permiso en `AuthSeeder`, todos los requests a ese endpoint dan `403`. Ningún test lo detecta, porque los tests del event-service mockean al auth-service. Antes de renombrar un permiso, buscar sus usos en el enum `Permission` de cada servicio.
+
+| Riesgo | Gravedad | Detalle |
+|---|---|---|
+| Sin timeouts en `AuthClient` | Media | Si el auth-service se cuelga, el request queda esperando. Si se cae del todo, en cambio, da `503`. Ya pasaba antes del chequeo de permisos, pero ahora crear un evento hace tres llamadas seguidas a auth |
+| `/api/users/{id}/permissions` expuesto en el gateway | Baja | No tiene protección, así que cualquiera puede ver el rol de un id o saber si el usuario existe (`200` o `404`) |
+| Contrato con el front | Baja | Cambiaron los errores de `POST /api/events` (`403 forbidden`, `404 user_not_found`). La colección de Postman ya está actualizada |
+
+**Tests:**
+- `AuthServiceApplicationTests` levanta el MySQL de `compose.yaml` con `ddl-auto: create-drop`, así que correr `mvn test` en auth-service **borra la base local de auth**. El seeder vuelve a cargarla al arrancar el servicio.
+- `SectorController` y `SeatController` no tienen tests. Si se les agrega un `@WebMvcTest`, necesita `@MockitoBean AuthClient`.
+
 ## Pendiente
 
 | Tema | Detalle |
 |---|---|
 | Lugares | `POST`/`PUT`/`DELETE` de `/api/venues` no están protegidos. Hace falta decidir qué permiso los cubre (p. ej. un `VENUE_MANAGE` para el admin) |
 | Otros servicios | ticket-service y los demás no tienen interceptor. Si lo necesitan, se puede mover `RequiresPermission` y `PermissionInterceptor` a `common` |
+| Timeouts | Configurar timeouts (y quizá un reintento) en el grupo `auth-service` de los clients HTTP |
 | `organizationId` en la respuesta | Ahorraría dos llamadas al crear eventos y permitiría sacar `X-Organization-Id` (ver `event-creation-pending.md`) |

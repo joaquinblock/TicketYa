@@ -2,6 +2,7 @@ package org.group10.payment.gateway;
 
 import org.group10.payment.entity.Payment;
 import org.group10.payment.entity.PaymentMethod;
+import org.group10.payment.entity.Refund;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -16,6 +17,7 @@ public class MockPaymentGateway implements PaymentGateway {
 
     private static final String GATEWAY_ID_PREFIX = "MOCK-";
     private static final String REJECTION_REASON = "Fondos insuficientes";
+    private static final String REFUND_SOURCE_PREFIX = "refund-ticket-";
 
     private final PaymentMethod rejectedMethod;
 
@@ -31,7 +33,12 @@ public class MockPaymentGateway implements PaymentGateway {
                 : ChargeResult.approved(gatewayId);
     }
 
-    private String gatewayIdDerivedFrom(String idempotencyKey) {
-        return GATEWAY_ID_PREFIX + UUID.nameUUIDFromBytes(idempotencyKey.getBytes(StandardCharsets.UTF_8));
+    @Override
+    public RefundResult refund(Refund refund) {
+        return RefundResult.credited(gatewayIdDerivedFrom(REFUND_SOURCE_PREFIX + refund.getTicketId()));
+    }
+
+    private String gatewayIdDerivedFrom(String source) {
+        return GATEWAY_ID_PREFIX + UUID.nameUUIDFromBytes(source.getBytes(StandardCharsets.UTF_8));
     }
 }

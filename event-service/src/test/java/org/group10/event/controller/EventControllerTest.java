@@ -5,6 +5,7 @@ import org.group10.event.client.AuthClient;
 import org.group10.event.client.dto.UserPermissionsResponse;
 import org.group10.event.dto.EventDetailResponse;
 import org.group10.event.dto.EventResponse;
+import org.group10.event.dto.EventResumeRequest;
 import org.group10.event.dto.EventSectorResponse;
 import org.group10.event.dto.ParticipantResponse;
 import org.group10.event.dto.VenueSummaryResponse;
@@ -12,6 +13,7 @@ import org.group10.event.entity.EventStatus;
 import org.group10.event.entity.EventType;
 import org.group10.event.entity.ParticipantType;
 import org.group10.event.exception.EventErrorCode;
+import org.group10.event.security.Caller;
 import org.group10.event.service.EventService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,6 +33,7 @@ import java.util.Set;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -307,34 +310,86 @@ class EventControllerTest {
     }
 
     @Test
-    void cancel_byAnAdmin_returns200() throws Exception {
-        when(authClient.getPermissions(3L)).thenReturn(
-                new UserPermissionsResponse(3L, "ADMIN", Set.of("EVENT_SEARCH", "EVENT_ADMIN")));
-        when(eventService.cancel(1L)).thenReturn(detail(EventStatus.CANCELLED));
+    void cancel_byAnAdmin_passesItsPermissionsToTheService() throws Exception {
+        givenAdmin();
+        when(eventService.cancel(eq(1L), any())).thenReturn(detail(EventStatus.CANCELLED));
 
         mockMvc.perform(post("/api/events/1/cancel").header("X-User-Id", 3))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("CANCELLED"));
+        verify(eventService).cancel(1L, new Caller(3L, Set.of("EVENT_SEARCH", "EVENT_ADMIN")));
     }
 
     @Test
-    void cancel_byAnOrganizer_returns403BecauseOnlyAdminsCancel() throws Exception {
+    void cancel_byAnOrganizer_reachesTheServiceThatChecksTheCreator() throws Exception {
+        when(eventService.cancel(eq(1L), any())).thenThrow(new TicketYaException(EventErrorCode.NOT_EVENT_CREATOR,
+                "Solo el organizador que creó el evento 1, o un administrador, puede cancelarlo"));
+
         mockMvc.perform(post("/api/events/1/cancel").header("X-User-Id", 2))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.message").value("El usuario 2 no tiene el permiso EVENT_ADMIN"));
+                .andExpect(jsonPath("$.error").value("not_event_creator"));
+        verify(eventService).cancel(1L, new Caller(2L, Set.of("EVENT_SEARCH", "EVENT_MANAGE")));
+    }
+
+    @Test
+    void cancel_byAClient_returns403ListingBothPermissions() throws Exception {
+        when(authClient.getPermissions(1L)).thenReturn(
+                new UserPermissionsResponse(1L, "CLIENT", Set.of("EVENT_SEARCH")));
+
+        mockMvc.perform(post("/api/events/1/cancel").header("X-User-Id", 1))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("El usuario 1 no tiene ninguno de los permisos EVENT_ADMIN, EVENT_MANAGE"));
         verifyNoInteractions(eventService);
     }
 
     @Test
     void cancel_draft_returns409() throws Exception {
-        when(authClient.getPermissions(3L)).thenReturn(
-                new UserPermissionsResponse(3L, "ADMIN", Set.of("EVENT_ADMIN")));
-        when(eventService.cancel(10L)).thenThrow(new TicketYaException(EventErrorCode.INVALID_STATUS_TRANSITION,
+        givenAdmin();
+        when(eventService.cancel(eq(10L), any())).thenThrow(new TicketYaException(EventErrorCode.INVALID_STATUS_TRANSITION,
                 "Un borrador no se cancela: se borra con DELETE /api/events/10"));
 
         mockMvc.perform(post("/api/events/10/cancel").header("X-User-Id", 3))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error").value("invalid_status_transition"));
+    }
+
+    @Test
+    void suspend_byAnAdmin_returns200() throws Exception {
+        givenAdmin();
+        when(eventService.suspend(eq(1L), any())).thenReturn(detail(EventStatus.SUSPENDED));
+
+        mockMvc.perform(post("/api/events/1/suspend").header("X-User-Id", 3))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SUSPENDED"));
+    }
+
+    @Test
+    void resume_withoutBody_passesNullAndKeepsTheDate() throws Exception {
+        when(eventService.resume(eq(7L), any(), isNull())).thenReturn(detail(EventStatus.PUBLISHED));
+
+        mockMvc.perform(post("/api/events/7/resume").header("X-User-Id", 2))
+                .andExpect(status().isOk());
+        verify(eventService).resume(eq(7L), any(), isNull());
+    }
+
+    @Test
+    void resume_withANewDate_passesIt() throws Exception {
+        when(eventService.resume(eq(7L), any(), any())).thenReturn(detail(EventStatus.PUBLISHED));
+
+        mockMvc.perform(post("/api/events/7/resume").header("X-User-Id", 2)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"dateTime\": \"2099-02-20T21:00:00\"}"))
+                .andExpect(status().isOk());
+        verify(eventService).resume(7L, new Caller(2L, Set.of("EVENT_SEARCH", "EVENT_MANAGE")),
+                new EventResumeRequest(LocalDateTime.of(2099, 2, 20, 21, 0)));
+    }
+
+    @Test
+    void resume_withAPastDate_returns400() throws Exception {
+        mockMvc.perform(post("/api/events/7/resume").header("X-User-Id", 2)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"dateTime\": \"2020-02-20T21:00:00\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail.dateTime").exists());
+        verifyNoInteractions(eventService);
     }
 
     @Test
@@ -375,6 +430,11 @@ class EventControllerTest {
                         .content("{\"sectors\": []}"))
                 .andExpect(status().isForbidden());
         verifyNoInteractions(eventService);
+    }
+
+    private void givenAdmin() {
+        when(authClient.getPermissions(3L)).thenReturn(
+                new UserPermissionsResponse(3L, "ADMIN", Set.of("EVENT_SEARCH", "EVENT_ADMIN")));
     }
 
     private static EventDetailResponse detail(EventStatus status) {

@@ -13,6 +13,7 @@ erDiagram
     payment {
         bigint id PK
         bigint order_id "ticket-service, by ID"
+        bigint active_order_id UK "generated: order_id while PENDING or APPROVED, else NULL"
         varchar idempotency_key UK
         enum payment_method "CREDIT_CARD | DEBIT_CARD | ACCOUNT_MONEY"
         decimal amount
@@ -59,6 +60,7 @@ erDiagram
 | Cambio | Tabla |
 |---|---|
 | `idempotency_key` UNIQUE | `payment` |
+| `active_order_id` generada y UNIQUE: un solo pago `PENDING` o `APPROVED` por orden | `payment` |
 | `ticket_id` UNIQUE | `refund` |
 | `reason` (enum), en vez de deducir el motivo de que `return_request_id` sea NULL | `refund` |
 | `gateway_id` UNIQUE | `refund` (en `payment` ya lo era) |
@@ -81,7 +83,7 @@ Consigna 5: *"una entrada nunca puede venderse dos veces, aun cuando […] un cl
 
 Con `idempotency_key`:
 - El cliente genera una clave por cada intento de pago y la repite en todos los reintentos de ese intento. El ticket-service se la pasa al payment-service. Probar con otra tarjeta es un intento nuevo, con otra clave.
-- Si la clave ya existe, el payment-service devuelve el `payment` que ya tiene, sin volver a llamar a la pasarela. Si fue rechazado, vuelve a responder el mismo rechazo. Si dos reintentos llegan a la vez, el UNIQUE hace que solo uno inserte; el otro falla y lee el existente.
+- Si la clave ya existe y el `payment` tiene resultado, el payment-service lo devuelve sin volver a llamar a la pasarela. Si fue rechazado, vuelve a responder el mismo rechazo. Si sigue `PENDING`, vuelve a llamar a la pasarela con la misma clave, sobre la misma fila. Si dos reintentos llegan a la vez, el UNIQUE hace que solo uno inserte; el otro falla y lee el existente.
 - La clave se reenvía a la pasarela, que también la usa para no cobrar dos veces (las pasarelas reales lo aceptan; Mercado Pago, por ejemplo, con el header `X-Idempotency-Key`). Así está cubierto incluso el caso de que el payment-service se caiga entre cobrar y guardar la respuesta.
 
 La `orders.idempotency_key` del ticket-service no reemplaza a esta: protege la creación de la orden (que no se reserve dos veces), no el cobro.
@@ -92,12 +94,14 @@ La relación `orders → payment` es de uno a muchos, así que `payment.order_id
 
 La clave de idempotencia no alcanza para evitar un doble cobro entre intentos, porque dos tarjetas distintas tienen claves distintas. La protección principal es el bloqueo atómico de la orden en el ticket-service, que deja un solo intento sin resultado por orden. Como segunda barrera, antes de llamar a la pasarela el payment-service rechaza con 409 `data_conflict` una clave nueva si la orden ya tiene otro pago `PENDING` o `APPROVED`.
 
+Esa revisión sola no alcanza con intentos simultáneos, porque todos pueden pasarla antes de que alguno inserte. Por eso la base lo hace cumplir con `active_order_id`, una columna generada que vale `order_id` si el pago está `PENDING` o `APPROVED` y `NULL` si no, con UNIQUE. Es el equivalente a un índice parcial, que MySQL no tiene. El segundo insert falla y también responde 409 `data_conflict`.
+
 ### Los pagos rechazados se guardan
 
 La fila se inserta en `PENDING` antes de llamar a la pasarela, y el rechazo solo le cambia el estado. Se conserva porque:
 
-- **Cuenta para el tope de 3 rechazos.** El 422 informa `rejectedAttempts` en `detail`, y el ticket-service decide con ese número. Un contador en `orders` sumaría de más cuando se repite una misma clave; contando filas, misma clave es misma fila.
-- **Permite repetir la respuesta** de una clave ya usada sin volver a llamar a la pasarela.
+- **Cuenta para el tope de 3 rechazos.** El 422 informa `rejectedAttempts` en `detail`, y el ticket-service decide con ese número. Un contador en `orders` sumaría de más cuando se repite una misma clave; contando filas, misma clave es misma fila. Se cuentan los rechazos de la orden hasta ese pago (`id` menor o igual), así un rechazo repetido devuelve el número original aunque después haya habido otros.
+- **Permite repetir la respuesta** de un intento rechazado sin volver a llamar a la pasarela.
 - **Registra el motivo** (`failure_reason`) para el cliente y para resolver reclamos.
 
 Nunca se guardan datos de la tarjeta, solo el tipo de medio, el monto y el motivo.
@@ -150,13 +154,24 @@ Con texto libre aparecerían variantes del mismo medio ("tarjeta", "TC", "credit
 
 ### Pasarela mock
 
-Decide por medio de pago, con una propiedad (`payment.mock.rejected-method: DEBIT_CARD`). En la Entrega 2 suma propiedades para simular lentitud y caída (`payment.mock.delay-ms` y otra para la caída).
+La pasarela de pagos es el sistema externo que mueve el dinero, como Mercado Pago. No tiene relación con el `api-gateway`. El payment-service no cobra por su cuenta: le pide el cobro a la pasarela y guarda lo que ella responde.
+
+El enunciado pide que en la Entrega 1 sea simulada, así que `MockPaymentGateway` hace de ese sistema externo. No mueve dinero ni se conecta a nada:
+
+| Qué simula | Cómo |
+|---|---|
+| Aprobar un cobro | Devuelve `APPROVED` con un `gatewayId` |
+| No cobrar dos veces con la misma clave | El `gatewayId` se deriva de la `idempotency_key`, así que repetirla da el mismo resultado |
+| Rechazar un cobro | Decide por medio de pago, con una propiedad (`payment.mock.rejected-method: DEBIT_CARD`) |
+| Lentitud y caída (Entrega 2) | Propiedades `payment.mock.delay-ms` y otra para la caída |
+
+`PaymentService` solo conoce la interfaz `PaymentGateway` y recibe la respuesta como `ChargeResult`. Ahí quedan nuestras reglas, separadas de la simulación. Para conectar una pasarela real alcanza con otra implementación de la interfaz.
 
 ### Rutas internas
 
 Cobrar, reintegrar y anular van en `/internal/**`, que el gateway no reenvía. La protección es por etapas:
 
-- **Entrega 1:** `/internal/payments` a través del gateway responde 404, con un test que lo verifique.
+- **Entrega 1:** `/internal/payments` a través del gateway responde 404, con un test que lo verifique. El puerto 8084 del servicio sigue accesible de forma directa, así que esa ruta no tiene protección si se llega sin pasar por el gateway.
 - **Entrega 2:** el `docker-compose` general no publica el puerto de payment-service, y las llamadas entre servicios se autentican con una credencial de servicio (sin ella, 401). `GET /api/payments` exige rol administrador.
 
 ## Contrato con ticket-service
@@ -171,7 +186,7 @@ REST síncrono en la Entrega 1. **payment-service nunca llama a ticket-service**
 | `GET /internal/payments?orderId=` | | 200 con los pagos de la orden; 404 `payment_not_found` |
 | `GET /api/payments?orderId=` | Solo administrador, por el gateway | 200 con los pagos de la orden; 404 `payment_not_found` |
 
-- **Reintento de un cobro:** con la misma clave y los mismos datos responde con el mismo status y cuerpo que la primera vez. Si fue rechazado, vuelve a dar 422 `payment_rejected`, sin llamar a la pasarela. Si todavía no tiene resultado, responde 503 `payment_gateway_unavailable`, sin cobrar de nuevo.
+- **Reintento de un cobro:** con la misma clave y los mismos datos responde con el mismo status y cuerpo que la primera vez. Si fue rechazado, vuelve a dar 422 `payment_rejected`, sin llamar a la pasarela. Si todavía no tiene resultado, vuelve a llamar a la pasarela con la misma clave y responde como un cobro normal, o con 503 `payment_gateway_unavailable` si la pasarela falla otra vez. La pasarela no cobra dos veces la misma clave, aunque reciba dos reintentos simultáneos.
 - **Reintento de un reintegro:** si existe y no falló, se devuelve el existente. Si falló, se reintenta sobre la misma fila.
 - **Errores:** los resuelve `GlobalExceptionHandler` de `common`: los 4xx se reenvían tal cual y los 5xx llegan a ticket como 503.
 
@@ -187,11 +202,9 @@ El `PaymentSeeder` usa las órdenes que crea el `TicketSeeder`:
 
 No hay reintegros: la única devolución del `TicketSeeder` está pendiente, así que todavía no corresponde devolver dinero.
 
-La clave del pago `PENDING` de la orden 3 tiene que coincidir con `orders.payment_attempt_key` de esa orden en el `TicketSeeder`.
+La clave del pago `PENDING` de la orden 3 es `seed-pending-order-3` y tiene que coincidir con `orders.payment_attempt_key` de esa orden en el `TicketSeeder`.
 
 ## Pendientes para la implementación
 
 - Código nuevo `payment_not_refundable` en `PaymentErrorCode`.
 - `CANCELLED` en el estado de `Payment` (Entrega 2).
-- Clave fija en el pago `PENDING` del `PaymentSeeder`, hoy generada al azar.
-- Adaptador de pasarela, para cambiar el mock por una real sin tocar el resto.

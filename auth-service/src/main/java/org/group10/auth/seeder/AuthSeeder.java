@@ -95,7 +95,8 @@ AuthSeeder implements ApplicationRunner {
                 user("organizer@ticketya.com", "María", "Gómez", "28333444", "Buenos Aires", roles.get("ORGANIZER")),
                 user("admin@ticketya.com", "Laura", "Fernández", "25555666", "Tandil", roles.get("ADMIN")),
                 user("staff@ticketya.com", "Diego", "López", "35777888", "Mar del Plata", roles.get("ACCESS_STAFF")),
-                user("organizer.serrana@ticketya.com", "Sofía", "Ruiz", "32999000", "Tandil", roles.get("ORGANIZER"))
+                user("organizer.serrana@ticketya.com", "Sofía", "Ruiz", "32999000", "Tandil", roles.get("ORGANIZER")),
+                user("organizer.delsur@ticketya.com", "Tomás", "Acosta", "33444555", "Buenos Aires", roles.get("ORGANIZER"))
         )).stream().collect(Collectors.toMap(User::getEmail, Function.identity()));
     }
 
@@ -112,9 +113,11 @@ AuthSeeder implements ApplicationRunner {
     }
 
     /**
-     * One organizer per organization: user 2 for the first and user 5 for the second, the {@code ORGANIZER_USER_ID}
-     * and {@code OTHER_ORGANIZER_USER_ID} of the event-service's seeder. Since user 2 doesn't organize for the
-     * second one, creating an event for it with user 2 gives {@code organizer_not_in_organization}.
+     * User 2 and user 6 organize for the first organization, and user 5 for the second. Users 2 and 5 are the
+     * {@code ORGANIZER_USER_ID} and {@code OTHER_ORGANIZER_USER_ID} of the event-service's seeder, which creates every
+     * event with one of them. Since user 2 doesn't organize for the second one, creating an event for it with user 2
+     * gives {@code organizer_not_in_organization}. User 6 created no event, so they show that only the creator (or an
+     * admin) can suspend or cancel one: they get {@code not_event_creator} even within the same organization.
      */
     private void seedOrganizers(Map<String, User> users, List<Organization> organizations) {
         organizerRepository.saveAll(List.of(
@@ -125,6 +128,10 @@ AuthSeeder implements ApplicationRunner {
                 Organizer.builder()
                         .user(users.get("organizer.serrana@ticketya.com"))
                         .organization(organizations.get(1))
+                        .build(),
+                Organizer.builder()
+                        .user(users.get("organizer.delsur@ticketya.com"))
+                        .organization(organizations.get(0))
                         .build()
         ));
     }

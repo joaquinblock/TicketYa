@@ -1,0 +1,405 @@
+{
+  "info": {
+    "name": "TicketYa - Suspender, reanudar y cancelar",
+    "description": "Quién puede suspender, reanudar y cancelar un evento, y a qué estado vuelve al reanudar. Necesita auth-service (8081), event-service (8082) y api-gateway (8080) recién levantados: cambia los datos del seeder y va en orden. El evento 1 está publicado, el 6 agotado, el 7 suspendido y el 3 es un borrador; todos los creó el organizador 2. El 6 del auth-service es otro organizador de la misma organización, sin eventos propios.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "organizerId",
+      "value": "2"
+    },
+    {
+      "key": "sameOrgOrganizerId",
+      "value": "6"
+    },
+    {
+      "key": "otherOrganizerId",
+      "value": "5"
+    },
+    {
+      "key": "adminId",
+      "value": "3"
+    },
+    {
+      "key": "clientId",
+      "value": "1"
+    }
+  ],
+  "item": [
+    {
+      "name": "Quién puede",
+      "item": [
+        {
+          "name": "Otro organizador de la misma organización → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('403 not_event_creator', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error).to.eql('not_event_creator');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/events/1/suspend",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{sameOrgOrganizerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Organizador de otra organización → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('403 not_event_creator', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error).to.eql('not_event_creator');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/events/1/suspend",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{otherOrganizerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Cliente → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('403 forbidden', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error).to.eql('forbidden');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/events/1/suspend",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{clientId}}"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Suspender y reanudar",
+      "item": [
+        {
+          "name": "El creador suspende un publicado → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Queda SUSPENDED', () => pm.expect(pm.response.json().status).to.eql('SUSPENDED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/events/1/suspend",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{organizerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "El creador lo reanuda → vuelve a PUBLISHED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Queda PUBLISHED', () => pm.expect(pm.response.json().status).to.eql('PUBLISHED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/events/1/resume",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{organizerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "El admin suspende uno agotado → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Queda SUSPENDED', () => pm.expect(pm.response.json().status).to.eql('SUSPENDED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/events/6/suspend",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "El admin lo reanuda → vuelve a SOLD_OUT",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Queda SOLD_OUT', () => pm.expect(pm.response.json().status).to.eql('SOLD_OUT'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/events/6/resume",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Reanudar con fecha nueva → reprogramado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Queda PUBLISHED', () => pm.expect(pm.response.json().status).to.eql('PUBLISHED'));",
+                  "pm.test('Fecha nueva', () => pm.expect(pm.response.json().dateTime).to.eql('2099-03-01T21:00:00'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/events/7/resume",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{organizerId}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dateTime\": \"2099-03-01T21:00:00\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Errores y cancelar",
+      "item": [
+        {
+          "name": "Reanudar uno que no está suspendido → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409 invalid_status_transition', () => {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error).to.eql('invalid_status_transition');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/events/1/resume",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{organizerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Suspender un borrador → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409 invalid_status_transition', () => {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error).to.eql('invalid_status_transition');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/events/3/suspend",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{organizerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Reanudar con fecha pasada → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 validation_error', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error).to.eql('validation_error');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/events/7/resume",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{organizerId}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dateTime\": \"2020-01-01T21:00:00\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Otro organizador de la misma organización cancela → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('403 not_event_creator', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error).to.eql('not_event_creator');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/events/5/cancel",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{sameOrgOrganizerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "El creador cancela → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Queda CANCELLED', () => pm.expect(pm.response.json().status).to.eql('CANCELLED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/events/5/cancel",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{organizerId}}"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

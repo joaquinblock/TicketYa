@@ -453,6 +453,30 @@ class EventLifecycleServiceTest {
     }
 
     @Test
+    void markSoldOut_suspended_staysSuspendedAndResumesAsSoldOut() {
+        Event event = givenEvent(EventStatus.PUBLISHED);
+        eventService.suspend(EVENT_ID, ADMIN);
+
+        eventService.markSoldOut(EVENT_ID);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.SUSPENDED);
+        eventService.resume(EVENT_ID, ADMIN, null);
+        assertThat(event.getStatus()).isEqualTo(EventStatus.SOLD_OUT);
+    }
+
+    @Test
+    void markBackOnSale_suspendedWhileSoldOut_staysSuspendedAndResumesAsPublished() {
+        Event event = givenEvent(EventStatus.SOLD_OUT);
+        eventService.suspend(EVENT_ID, ADMIN);
+
+        eventService.markBackOnSale(EVENT_ID);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.SUSPENDED);
+        eventService.resume(EVENT_ID, ADMIN, null);
+        assertThat(event.getStatus()).isEqualTo(EventStatus.PUBLISHED);
+    }
+
+    @Test
     void markBackOnSale_cancelled_throwsInvalidTransition() {
         givenEvent(EventStatus.CANCELLED);
 

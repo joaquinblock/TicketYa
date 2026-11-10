@@ -253,12 +253,12 @@ public class EventService {
 
     @Transactional
     public void markSoldOut(Long id) {
-        getEvent(id).changeStatus(EventStatus.SOLD_OUT, statusMachine);
+        getEvent(id).changeAvailabilityTo(EventStatus.SOLD_OUT, statusMachine);
     }
 
     @Transactional
     public void markBackOnSale(Long id) {
-        getEvent(id).changeStatus(EventStatus.PUBLISHED, statusMachine);
+        getEvent(id).changeAvailabilityTo(EventStatus.PUBLISHED, statusMachine);
     }
 
     /**

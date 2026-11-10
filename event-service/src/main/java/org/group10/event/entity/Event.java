@@ -122,6 +122,14 @@ public class Event {
         changeStatus(statusToResumeTo(), machine);
     }
 
+    public void changeAvailabilityTo(EventStatus availability, EventStatusMachine machine) {
+        if (status == EventStatus.SUSPENDED) {
+            statusBeforeSuspension = availability;
+        } else {
+            changeStatus(availability, machine);
+        }
+    }
+
     public EventStatus statusToResumeTo() {
         return statusBeforeSuspension == null ? EventStatus.PUBLISHED : statusBeforeSuspension;
     }

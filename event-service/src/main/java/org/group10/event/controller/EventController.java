@@ -8,18 +8,22 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.group10.common.dto.ErrorDto;
 import org.group10.event.dto.EventCreateRequest;
 import org.group10.event.dto.EventDetailResponse;
+import org.group10.event.dto.EventPageResponse;
 import org.group10.event.dto.EventParticipantsRequest;
 import org.group10.event.dto.EventResponse;
 import org.group10.event.dto.EventResumeRequest;
+import org.group10.event.dto.EventSearchRequest;
 import org.group10.event.dto.EventSectorsRequest;
 import org.group10.event.dto.ParticipantResponse;
 import org.group10.event.security.Caller;
 import org.group10.event.security.Permission;
 import org.group10.event.security.PermissionInterceptor;
 import org.group10.event.security.RequiresPermission;
+import org.group10.event.service.EventSearchService;
 import org.group10.event.service.EventService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -51,6 +55,7 @@ public class EventController {
     static final String ORGANIZATION_HEADER = "X-Organization-Id";
 
     private final EventService eventService;
+    private final EventSearchService eventSearchService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -101,6 +106,17 @@ public class EventController {
             @RequestHeader(USER_HEADER) Long organizerId,
             @Valid @RequestBody EventParticipantsRequest request) {
         return eventService.replaceParticipants(id, organizerId, request);
+    }
+
+    @GetMapping
+    @Operation(summary = "Buscar eventos", description = """
+            Público. Devuelve los eventos que se pueden comprar o que podrían volver a tener lugar: `PUBLISHED` y             `SOLD_OUT` con fecha futura. Los suspendidos, cancelados y finalizados no aparecen (se ven por id). Todos             los filtros son opcionales y se combinan. Orden: `DATE` (por defecto), `PRICE` (precio desde) o             `RELEVANCE` (con `q`: coincide en el nombre, después en un participante y después en la descripción).""")
+    @ApiResponse(responseCode = "200", description = "Página de resultados (puede venir vacía)")
+    @ApiResponse(responseCode = "400", description = "validation_error (size fuera de 1..50, tipo u orden inexistente) / "
+            + "invalid_parameter (from posterior a to)",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    public EventPageResponse search(@Valid @ParameterObject EventSearchRequest request) {
+        return eventSearchService.search(request);
     }
 
     @GetMapping("/{id}")

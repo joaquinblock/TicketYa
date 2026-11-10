@@ -4,8 +4,11 @@ import org.group10.common.exception.TicketYaException;
 import org.group10.event.client.AuthClient;
 import org.group10.event.client.dto.UserPermissionsResponse;
 import org.group10.event.dto.EventDetailResponse;
+import org.group10.event.dto.EventPageResponse;
 import org.group10.event.dto.EventResponse;
 import org.group10.event.dto.EventResumeRequest;
+import org.group10.event.dto.EventSearchRequest;
+import org.group10.event.dto.EventSort;
 import org.group10.event.dto.EventSectorResponse;
 import org.group10.event.dto.ParticipantResponse;
 import org.group10.event.dto.VenueSummaryResponse;
@@ -14,6 +17,7 @@ import org.group10.event.entity.EventType;
 import org.group10.event.entity.ParticipantType;
 import org.group10.event.exception.EventErrorCode;
 import org.group10.event.security.Caller;
+import org.group10.event.service.EventSearchService;
 import org.group10.event.service.EventService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -60,6 +64,9 @@ class EventControllerTest {
 
     @MockitoBean
     private AuthClient authClient;
+
+    @MockitoBean
+    private EventSearchService eventSearchService;
 
     @BeforeEach
     void organizerWithEventManage() {
@@ -240,6 +247,44 @@ class EventControllerTest {
                         .contentType(MediaType.APPLICATION_JSON).content("{\"participantIds\": [1]}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error").value("event_not_editable"));
+    }
+
+    @Test
+    void search_bindsEveryFilterAndDoesNotCallAuth() throws Exception {
+        when(eventSearchService.search(any())).thenReturn(new EventPageResponse(List.of(), 0, 20, 0, 0));
+
+        mockMvc.perform(get("/api/events").param("q", "serranos").param("type", "CONCERT").param("city", "Rosario")
+                        .param("participant", "serr").param("organizationId", "1").param("from", "2026-12-01")
+                        .param("to", "2027-01-31").param("sort", "PRICE").param("page", "1").param("size", "5"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0));
+        verify(eventSearchService).search(new EventSearchRequest("serranos", EventType.CONCERT, "Rosario", "serr", 1L,
+                java.time.LocalDate.of(2026, 12, 1), java.time.LocalDate.of(2027, 1, 31), EventSort.PRICE, 1, 5));
+        verifyNoInteractions(authClient);
+    }
+
+    @Test
+    void search_withoutFilters_passesThemAllAsNull() throws Exception {
+        when(eventSearchService.search(any())).thenReturn(new EventPageResponse(List.of(), 0, 20, 0, 0));
+
+        mockMvc.perform(get("/api/events")).andExpect(status().isOk());
+        verify(eventSearchService).search(new EventSearchRequest(null, null, null, null, null, null, null, null, null, null));
+    }
+
+    @Test
+    void search_withSizeOver50_returns400() throws Exception {
+        mockMvc.perform(get("/api/events").param("size", "51"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail.size").exists());
+        verifyNoInteractions(eventSearchService);
+    }
+
+    @Test
+    void search_withUnknownSort_returns400() throws Exception {
+        mockMvc.perform(get("/api/events").param("sort", "POPULARITY"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail.sort").exists());
+        verifyNoInteractions(eventSearchService);
     }
 
     @Test

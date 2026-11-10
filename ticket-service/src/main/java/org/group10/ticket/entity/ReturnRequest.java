@@ -37,6 +37,11 @@ public class ReturnRequest {
     @JoinColumn(name = "ticket_id", nullable = false)
     private Ticket ticket;
 
+    @Setter(AccessLevel.NONE)
+    @Column(insertable = false, updatable = false, unique = true,
+            columnDefinition = "BIGINT GENERATED ALWAYS AS (CASE WHEN status = 'PENDING' THEN ticket_id END) STORED")
+    private Long pendingTicketId;
+
     @Column(nullable = false)
     private Long requestedBy;
 

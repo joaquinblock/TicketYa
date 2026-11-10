@@ -1,0 +1,504 @@
+{
+  "info": {
+    "name": "TicketYa - Ciclo de vida del evento",
+    "description": "Ver, editar, borrar, publicar y cancelar eventos. Necesita auth-service (8081), event-service (8082) y api-gateway (8080) recién levantados: los requests cambian los datos del seeder y van en orden. El evento 3 es un borrador publicable, el 10 un borrador sin sectores, el 12 un borrador de la organización 2 y el 9 está finalizado. Ver docs/architecture/eventservice.md.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "organizerId",
+      "value": "2"
+    },
+    {
+      "key": "otherOrganizerId",
+      "value": "5"
+    },
+    {
+      "key": "adminId",
+      "value": "3"
+    }
+  ],
+  "item": [
+    {
+      "name": "Ver",
+      "item": [
+        {
+          "name": "Ver un evento publicado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('Capacidad = suma de sus sectores', () => pm.expect(body.capacity).to.eql(body.sectors.reduce((a, s) => a + s.capacity, 0)));",
+                  "pm.test('Trae precios y participantes', () => { pm.expect(body.sectors[0]).to.have.property('price'); pm.expect(body.participants).to.not.be.empty; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/events/1"
+          }
+        },
+        {
+          "name": "Evento inexistente → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404 event_not_found', () => {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error).to.eql('event_not_found');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/events/999"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Publicar",
+      "item": [
+        {
+          "name": "Borrador sin sectores → 409 con los problemas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409 event_not_publishable', () => {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error).to.eql('event_not_publishable');",
+                  "});",
+                  "pm.test('Dice qué falta', () => pm.expect(pm.response.json().detail.problems).to.include('No tiene sectores a la venta'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/events/10/publish",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{organizerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Organizador de otra organización → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('403 organizer_not_in_organization', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error).to.eql('organizer_not_in_organization');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/events/12/publish",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{organizerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Admin sin EVENT_MANAGE → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('403 forbidden', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error).to.eql('forbidden');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/events/3/publish",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Borrador listo → 200 PUBLISHED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Queda publicado', () => pm.expect(pm.response.json().status).to.eql('PUBLISHED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/events/3/publish",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{organizerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Publicarlo otra vez → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409 invalid_status_transition', () => {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error).to.eql('invalid_status_transition');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/events/3/publish",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{organizerId}}"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Editar",
+      "item": [
+        {
+          "name": "Editar un borrador cambiando el lugar → 200 sin sectores",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('Datos nuevos', () => { pm.expect(body.name).to.eql('Cultura y territorio II'); pm.expect(body.venue.id).to.eql(5); });",
+                  "pm.test('Se quitaron los sectores del lugar anterior', () => pm.expect(body.sectors).to.eql([]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/events/12",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Cultura y territorio II\",\n  \"description\": \"Ciclo de charlas, segunda edición\",\n  \"type\": \"CONFERENCE\",\n  \"venueId\": 5,\n  \"dateTime\": \"2099-01-10T18:30:00\",\n  \"highDemand\": false\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{otherOrganizerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Editar un evento publicado → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409 event_not_editable', () => {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error).to.eql('event_not_editable');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/events/1",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Cultura y territorio II\",\n  \"description\": \"Ciclo de charlas, segunda edición\",\n  \"type\": \"CONFERENCE\",\n  \"venueId\": 1,\n  \"dateTime\": \"2099-01-10T18:30:00\",\n  \"highDemand\": false\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{organizerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Body inválido → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 validation_error', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error).to.eql('validation_error');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/events/12",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \" \",\n  \"description\": \"Ciclo de charlas, segunda edición\",\n  \"type\": \"CONFERENCE\",\n  \"venueId\": 5,\n  \"dateTime\": \"2099-01-10T18:30:00\",\n  \"highDemand\": false\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{otherOrganizerId}}"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Borrar",
+      "item": [
+        {
+          "name": "Borrar un publicado → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409 event_not_editable', () => {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error).to.eql('event_not_editable');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/events/1",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{organizerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Borrar un borrador → 204",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('204', () => {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/events/10",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{organizerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Ya no existe → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404 event_not_found', () => {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error).to.eql('event_not_found');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/events/10"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cancelar",
+      "item": [
+        {
+          "name": "Organizador → 403 (solo administradores)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('403 forbidden', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error).to.eql('forbidden');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/events/1/cancel",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{organizerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Admin cancela un publicado → 200 CANCELLED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Queda cancelado', () => pm.expect(pm.response.json().status).to.eql('CANCELLED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/events/1/cancel",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Cancelar un borrador → 409 (se borra)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409 invalid_status_transition', () => {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error).to.eql('invalid_status_transition');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/events/12/cancel",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Cancelar uno finalizado → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409 invalid_status_transition', () => {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error).to.eql('invalid_status_transition');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/events/9/cancel",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-# event-service: ABM de lugares, sectores, asientos y participantes
+# event-service: ABM de lugares, sectores, asientos, participantes y eventos
 
 > Épica 3 (#3), primera parte: *"ABM de lugares con sectores numerados (filas/asientos) y no numerados (capacidad)"*.
 > El modelo de datos y su porqué están en [`event-service.md`](event-service.md). Este documento cubre cómo se usa la API y qué reglas aplica.
@@ -161,3 +161,41 @@ PUT /api/events/10/participants              X-User-Id: 2
 |---|---|
 | Permisos del ABM | Igual que `/api/venues`, no tiene `@RequiresPermission`: falta definir qué permiso cubre el catálogo (ver `permissions.md`) |
 | Eventos publicados | Cambiar la grilla de un evento publicado queda para cuando haya notificaciones de cambios (Entrega 2) |
+
+## Eventos: ver, editar, borrar, publicar y cancelar
+
+El alta (`POST /api/events`) está en `event-creation-pending.md`. Las transiciones de estado siguen [`event-state-machine.md`](event-state-machine.md).
+
+| Método | Ruta | Qué hace | Permiso | OK |
+|---|---|---|---|---|
+| `GET` | `/api/events/{id}` | El evento con su lugar, los sectores que vende (precio y capacidad), los participantes y la capacidad total | Público | 200 |
+| `PUT` | `/api/events/{id}` | Reemplaza los datos del alta. Usa el mismo body que `POST` | `EVENT_MANAGE` | 200 |
+| `DELETE` | `/api/events/{id}` | Borra un borrador con sus sectores y participantes | `EVENT_MANAGE` | 204 |
+| `POST` | `/api/events/{id}/publish` | `DRAFT → PUBLISHED` | `EVENT_MANAGE` | 200 |
+| `POST` | `/api/events/{id}/cancel` | `PUBLISHED`, `SOLD_OUT` o `SUSPENDED → CANCELLED` | `EVENT_ADMIN` | 200 |
+
+### Reglas
+
+- **Editar, borrar y publicar** son solo para un organizador de la organización del evento: si no, `403 organizer_not_in_organization`. Cancelar lo hace cualquier administrador, sobre cualquier evento, como dice la consigna 3.
+- **Editar y borrar, solo en `DRAFT`:** si no, `409 event_not_editable`. Un evento publicado se cancela, no se borra.
+- **Si al editar cambia el lugar,** se borran los sectores que vendía, porque eran del lugar anterior. La organización, el estado, los sectores y los participantes no se cambian con `PUT`.
+- **Publicar** exige que esté en `DRAFT` (si no, `409 invalid_status_transition`) y que cumpla todas estas condiciones. Si falla alguna, responde `409 event_not_publishable` con todas en `detail.problems`:
+  - al menos un sector a la venta;
+  - ningún sector numerado sin asientos, porque se vendería un sector de capacidad 0;
+  - la fecha todavía en el futuro;
+  - si es de alta demanda, un `saleStart`, y siempre anterior a la fecha.
+- **Cancelar un borrador** da `409 invalid_status_transition`: un borrador se borra. Cancelar uno ya cancelado no cambia nada.
+- **La capacidad** es la suma de los sectores que vende: los asientos de los numerados y `capacity` de los no numerados.
+- **Las llamadas al auth-service van fuera de la transacción,** como en el alta: solo la escritura corre dentro de una (`TransactionTemplate`). Así una espera de auth no retiene una conexión de la base.
+
+```http
+POST /api/events/10/publish                  X-User-Id: 2
+→ 409 { "error": "event_not_publishable", "detail": { "problems": ["No tiene sectores a la venta"] } }
+```
+
+| Pendiente | Detalle |
+|---|---|
+| Inventario | Publicar todavía no le pide al ticket-service que arme el inventario (US-TKT-01, #42). Un evento publicado por API no se puede comprar |
+| Reintegros | Cancelar todavía no avisa al ticket-service (US-TKT-18, #61). Las entradas vendidas siguen válidas allá |
+| Sectores y precios | No hay endpoint para elegir qué sectores vende un borrador. Hoy solo los carga el seeder: el evento 3 se puede publicar y el 10 no |
+| Otras transiciones | Suspender, reanudar, agotar y finalizar todavía no tienen endpoint |

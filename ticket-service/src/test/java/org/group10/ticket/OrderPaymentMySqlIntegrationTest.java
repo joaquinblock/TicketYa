@@ -352,8 +352,8 @@ class OrderPaymentMySqlIntegrationTest {
 
         assertThat(eventSaleRepository.findById(eventId).orElseThrow().getStatus()).isEqualTo(EventSaleStatus.SOLD_OUT);
 
-        soldOutService.notifyPendingSoldOutEvents();
-        soldOutService.notifyPendingSoldOutEvents();
+        soldOutService.notifyPendingAvailabilityChanges();
+        soldOutService.notifyPendingAvailabilityChanges();
 
         verify(eventClient, times(1)).markEventSoldOut(eventId);
     }
@@ -369,29 +369,29 @@ class OrderPaymentMySqlIntegrationTest {
     }
 
     @Test
-    void notifyPendingSoldOutEvents_eventServiceDown_retriesOnTheNextRun() {
+    void notifyPendingAvailabilityChanges_eventServiceDown_retriesOnTheNextRun() {
         sellEverything();
         doThrow(new ResourceAccessException("event-service caído")).when(eventClient).markEventSoldOut(eventId);
 
-        soldOutService.notifyPendingSoldOutEvents();
+        soldOutService.notifyPendingAvailabilityChanges();
 
-        assertThat(eventSaleRepository.findById(eventId).orElseThrow().isSoldOutNotificationPending()).isTrue();
+        assertThat(eventSaleRepository.findById(eventId).orElseThrow().isAvailabilityNotificationPending()).isTrue();
 
         doNothing().when(eventClient).markEventSoldOut(eventId);
-        soldOutService.notifyPendingSoldOutEvents();
+        soldOutService.notifyPendingAvailabilityChanges();
 
-        assertThat(eventSaleRepository.findById(eventId).orElseThrow().isSoldOutNotificationPending()).isFalse();
+        assertThat(eventSaleRepository.findById(eventId).orElseThrow().isAvailabilityNotificationPending()).isFalse();
     }
 
     @Test
-    void notifyPendingSoldOutEvents_eventServiceRejectsIt_stopsRetrying() {
+    void notifyPendingAvailabilityChanges_eventServiceRejectsIt_stopsRetrying() {
         sellEverything();
         doThrow(HttpClientErrorException.create(HttpStatus.CONFLICT, "conflict", new HttpHeaders(), new byte[0],
                 StandardCharsets.UTF_8)).when(eventClient).markEventSoldOut(eventId);
 
-        soldOutService.notifyPendingSoldOutEvents();
+        soldOutService.notifyPendingAvailabilityChanges();
 
-        assertThat(eventSaleRepository.findById(eventId).orElseThrow().isSoldOutNotificationPending()).isFalse();
+        assertThat(eventSaleRepository.findById(eventId).orElseThrow().isAvailabilityNotificationPending()).isFalse();
     }
 
     private void sellEverything() {

@@ -195,7 +195,7 @@ public class EventController {
     @PostMapping("/{id}/cancel")
     @RequiresPermission(Permission.EVENT_ADMIN)
     @Operation(summary = "Cancelar un evento", description = """
-            Solo administradores (`EVENT_ADMIN`), sobre cualquier evento `PUBLISHED`, `SOLD_OUT` o `SUSPENDED`.             Es definitivo. Cancelar uno ya cancelado no cambia nada. **Todavía no avisa al ticket-service**: las             entradas vendidas no pasan a reintegro hasta que exista ese endpoint.""")
+            Solo administradores (`EVENT_ADMIN`), sobre cualquier evento `PUBLISHED`, `SOLD_OUT` o `SUSPENDED`.             Es definitivo. Cancelar uno ya cancelado no cambia nada. Frena la venta en el ticket-service; los reintegros todavía no están.""")
     @ApiResponse(responseCode = "200", description = "Evento cancelado")
     @ApiResponse(responseCode = "403", description = "forbidden (sin EVENT_ADMIN)",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))

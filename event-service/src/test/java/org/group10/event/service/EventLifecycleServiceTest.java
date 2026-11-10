@@ -375,6 +375,31 @@ class EventLifecycleServiceTest {
         assertThat(event.getStatus()).isEqualTo(EventStatus.CANCELLED);
     }
 
+    @Test
+    void markSoldOut_published_goesToSoldOut() {
+        Event event = givenEvent(EventStatus.PUBLISHED);
+
+        eventService.markSoldOut(EVENT_ID);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.SOLD_OUT);
+    }
+
+    @Test
+    void markSoldOut_alreadySoldOut_changesNothing() {
+        Event event = givenEvent(EventStatus.SOLD_OUT);
+
+        eventService.markSoldOut(EVENT_ID);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.SOLD_OUT);
+    }
+
+    @Test
+    void markSoldOut_cancelled_throwsInvalidTransition() {
+        givenEvent(EventStatus.CANCELLED);
+
+        assertError(() -> eventService.markSoldOut(EVENT_ID), EventErrorCode.INVALID_STATUS_TRANSITION);
+    }
+
     // ---- replaceSectors ----
 
     @Test

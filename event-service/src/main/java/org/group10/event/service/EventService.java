@@ -3,18 +3,54 @@ package org.group10.event.service;
 import lombok.RequiredArgsConstructor;
 import org.group10.common.exception.TicketYaException;
 import org.group10.event.client.AuthClient;
+import org.group10.event.client.TicketClient;
+import org.group10.event.client.dto.EventSaleRequest;
 import org.group10.event.client.dto.OrganizerResponse;
 import org.group10.event.dto.EventCreateRequest;
+import org.group10.event.dto.EventDetailResponse;
+import org.group10.event.dto.EventParticipantsRequest;
 import org.group10.event.dto.EventResponse;
+import org.group10.event.dto.EventResumeRequest;
+import org.group10.event.dto.EventSectorResponse;
+import org.group10.event.dto.EventSectorsRequest;
+import org.group10.event.dto.ParticipantResponse;
 import org.group10.event.entity.Event;
+import org.group10.event.entity.EventSector;
+import org.group10.event.entity.EventStatus;
+import org.group10.event.entity.Participant;
+import org.group10.event.entity.Seat;
+import org.group10.event.entity.Sector;
 import org.group10.event.entity.Venue;
 import org.group10.event.exception.EventErrorCode;
 import org.group10.event.mapper.EventMapper;
+import org.group10.event.mapper.ParticipantMapper;
 import org.group10.event.repository.EventRepository;
+import org.group10.event.repository.EventSectorRepository;
+import org.group10.event.repository.ParticipantRepository;
+import org.group10.event.repository.SeatRepository;
+import org.group10.event.repository.SectorRepository;
+import org.group10.event.repository.SectorSeatCount;
 import org.group10.event.repository.VenueRepository;
+import org.group10.event.security.Caller;
+import org.group10.event.security.Permission;
+import org.group10.event.statemachine.EventStatusMachine;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionOperations;
+import org.springframework.web.client.HttpClientErrorException;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -23,7 +59,359 @@ public class EventService {
 
     private final EventRepository eventRepository;
     private final VenueRepository venueRepository;
+    private final ParticipantRepository participantRepository;
+    private final EventSectorRepository eventSectorRepository;
+    private final SectorRepository sectorRepository;
+    private final SeatRepository seatRepository;
+    private final EventStatusMachine statusMachine;
+    private final TransactionOperations transactions;
     private final AuthClient authClient;
+    private final TicketClient ticketClient;
+
+    /**
+     * The event with its venue, the sectors it sells with their price and capacity, and its participants.
+     * <p>
+     * A draft is private: only an organizer of its organization sees it. For anyone else it doesn't exist, with the
+     * same 404 as a missing id, so its id doesn't reveal that the event is being prepared.
+     *
+     * @param userId optional {@code X-User-Id}; only needed to see a draft
+     * @throws TicketYaException {@code EVENT_NOT_FOUND}
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public EventDetailResponse findById(Long id, Long userId) {
+        Event event = getEvent(id);
+        if (event.getStatus() == EventStatus.DRAFT && !organizesFor(userId, event.getOrganizationId())) {
+            throw eventNotFound(id);
+        }
+        return transactions.execute(tx -> toDetail(getEvent(id)));
+    }
+
+    /**
+     * Whether the user is an active organizer of the organization. A user who isn't an organizer at all comes back
+     * from the auth-service as a 404, which here just means "no".
+     */
+    private boolean organizesFor(Long userId, Long organizationId) {
+        if (userId == null) {
+            return false;
+        }
+        try {
+            return organizationId.equals(authClient.getOrganizer(userId).organizationId());
+        } catch (HttpClientErrorException.NotFound notAnOrganizer) {
+            return false;
+        }
+    }
+
+    /**
+     * Replaces the data of a draft event. If the venue changes, the sectors it sold are removed, because they belong
+     * to the old venue.
+     * <p>
+     * The checks against the auth-service run outside the transaction, like in {@link #create}; only the write runs
+     * inside one.
+     *
+     * @throws TicketYaException {@code EVENT_NOT_FOUND}, {@code EVENT_NOT_EDITABLE}, {@code VENUE_NOT_FOUND},
+     *                           {@code INVALID_EVENT_CONFIGURATION} or {@code ORGANIZER_NOT_IN_ORGANIZATION}
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public EventDetailResponse update(Long id, Long organizerId, EventCreateRequest request) {
+        Event event = getEvent(id);
+        ensureDraft(event, "editar");
+        validateSaleWindow(request);
+        if (!venueRepository.existsById(request.venueId())) {
+            throw new TicketYaException(EventErrorCode.VENUE_NOT_FOUND,
+                    "No se encontró el lugar con id %d".formatted(request.venueId()));
+        }
+        verifyOrganizer(event.getOrganizationId(), organizerId);
+
+        return transactions.execute(tx -> {
+            Event managed = getEvent(id);
+            ensureDraft(managed, "editar");
+            if (!managed.getVenue().getId().equals(request.venueId())) {
+                eventSectorRepository.deleteAllByEventId(id);
+            }
+            EventMapper.update(managed, request, venueRepository.getReferenceById(request.venueId()));
+            eventRepository.flush();
+            return toDetail(managed);
+        });
+    }
+
+    /**
+     * Replaces the sectors a draft event sells and their prices. Each one has to be a sector of the event's venue, and
+     * none can repeat, because it would have two prices. An empty list removes them all.
+     * <p>
+     * Updated in place: a sector that stays keeps its {@code event_sector} id and only its price changes, so the id
+     * stays stable if one day prices can change after publishing (the ticket-service refers to it).
+     *
+     * @throws TicketYaException {@code EVENT_NOT_FOUND}, {@code EVENT_NOT_EDITABLE},
+     *                           {@code INVALID_EVENT_CONFIGURATION} with the repeated ids in {@code detail},
+     *                           {@code ORGANIZER_NOT_IN_ORGANIZATION} or {@code SECTOR_NOT_FOUND} with the ids that
+     *                           aren't sectors of the venue in {@code detail}
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public EventDetailResponse replaceSectors(Long id, Long organizerId, EventSectorsRequest request) {
+        Event event = getEvent(id);
+        ensureDraft(event, "cambiar los sectores");
+        List<Long> repeated = request.sectors().stream()
+                .collect(Collectors.groupingBy(EventSectorsRequest.SectorPrice::sectorId, Collectors.counting()))
+                .entrySet().stream().filter(e -> e.getValue() > 1).map(Map.Entry::getKey).sorted().toList();
+        if (!repeated.isEmpty()) {
+            throw new TicketYaException(EventErrorCode.INVALID_EVENT_CONFIGURATION,
+                    "Cada sector va una sola vez, con un solo precio: se repiten %s".formatted(repeated),
+                    Map.of("repeatedSectorIds", repeated));
+        }
+        verifyOrganizer(event.getOrganizationId(), organizerId);
+
+        return transactions.execute(tx -> {
+            Event managed = getEvent(id);
+            ensureDraft(managed, "cambiar los sectores");
+            Long venueId = managed.getVenue().getId();
+            List<Long> ids = request.sectors().stream().map(EventSectorsRequest.SectorPrice::sectorId).toList();
+            Map<Long, Sector> sectors = sectorRepository.findAllById(ids).stream()
+                    .filter(s -> s.getVenue().getId().equals(venueId))
+                    .collect(Collectors.toMap(Sector::getId, Function.identity()));
+            List<Long> missing = ids.stream().filter(sectorId -> !sectors.containsKey(sectorId)).toList();
+            if (!missing.isEmpty()) {
+                throw new TicketYaException(EventErrorCode.SECTOR_NOT_FOUND,
+                        "Los sectores %s no son del lugar %d del evento".formatted(missing, venueId),
+                        Map.of("missingIds", missing));
+            }
+
+            Map<Long, EventSector> current = eventSectorRepository.findByEventId(id).stream()
+                    .collect(Collectors.toMap(es -> es.getSector().getId(), Function.identity()));
+            eventSectorRepository.deleteAll(current.values().stream()
+                    .filter(es -> !ids.contains(es.getSector().getId()))
+                    .toList());
+            List<EventSector> added = new ArrayList<>();
+            for (EventSectorsRequest.SectorPrice requested : request.sectors()) {
+                BigDecimal price = requested.price().setScale(2);   // @Digits allows at most 2 decimals
+                EventSector kept = current.get(requested.sectorId());
+                if (kept != null) {
+                    kept.setPrice(price);
+                } else {
+                    added.add(EventSector.builder().event(managed).sector(sectors.get(requested.sectorId()))
+                            .price(price).build());
+                }
+            }
+            eventSectorRepository.saveAll(added);
+            return toDetail(managed);
+        });
+    }
+
+    /**
+     * Deletes a draft event with its sectors and participants. A draft has no tickets yet: its inventory is created
+     * when it's published. A published event is cancelled, not deleted.
+     *
+     * @throws TicketYaException {@code EVENT_NOT_FOUND}, {@code EVENT_NOT_EDITABLE} or
+     *                           {@code ORGANIZER_NOT_IN_ORGANIZATION}
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public void delete(Long id, Long organizerId) {
+        Event event = getEvent(id);
+        ensureDraft(event, "borrar");
+        verifyOrganizer(event.getOrganizationId(), organizerId);
+
+        transactions.execute(tx -> {
+            ensureDraft(getEvent(id), "borrar");
+            eventSectorRepository.deleteAllByEventId(id);
+            eventRepository.deleteById(id);
+            return null;
+        });
+    }
+
+    /**
+     * Publishes a draft: {@code DRAFT -> PUBLISHED} through the state machine, once it can be sold.
+     *
+     * @throws TicketYaException {@code EVENT_NOT_FOUND}, {@code INVALID_STATUS_TRANSITION} if it isn't a draft,
+     *                           {@code ORGANIZER_NOT_IN_ORGANIZATION} or {@code EVENT_NOT_PUBLISHABLE} with every
+     *                           failed precondition in {@code detail.problems}
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public EventDetailResponse publish(Long id, Long organizerId) {
+        Event event = getEvent(id);
+        ensureStatus(event, EventStatus.DRAFT, "Solo se publica un borrador");
+        verifyOrganizer(event.getOrganizationId(), organizerId);
+
+        EventSaleRequest sale = transactions.execute(tx -> {
+            Event managed = getEvent(id);
+            ensureStatus(managed, EventStatus.DRAFT, "Solo se publica un borrador");
+            List<String> problems = publishProblems(managed, sectorsOf(managed));
+            if (!problems.isEmpty()) {
+                throw new TicketYaException(EventErrorCode.EVENT_NOT_PUBLISHABLE,
+                        "El evento %d todavía no se puede publicar".formatted(id), Map.of("problems", problems));
+            }
+            return saleSnapshotOf(managed, EventStatus.PUBLISHED);
+        });
+        ticketClient.synchronizeEventSale(id, sale);
+
+        return transactions.execute(tx -> {
+            Event managed = getEvent(id);
+            ensureStatus(managed, EventStatus.DRAFT, "Solo se publica un borrador");
+            managed.changeStatus(EventStatus.PUBLISHED, statusMachine);
+            return toDetail(managed);
+        });
+    }
+
+    /**
+     * Cancels a published, sold out or suspended event for good.
+     *
+     * @param caller an administrator, or the organizer who created the event (see {@link #ensureCanSuspendOrCancel})
+     * @throws TicketYaException {@code EVENT_NOT_FOUND}, {@code NOT_EVENT_CREATOR}, {@code ORGANIZER_NOT_IN_ORGANIZATION}
+     *                           or {@code INVALID_STATUS_TRANSITION} for a draft (it's deleted instead) or a finished
+     *                           event
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public EventDetailResponse cancel(Long id, Caller caller) {
+        Event event = getEvent(id);
+        ensureCanSuspendOrCancel(event, caller, "cancelarlo");
+        ensureNotStatus(event, EventStatus.DRAFT, "Un borrador no se cancela: se borra con DELETE /api/events/%d"
+                .formatted(id));
+        statusMachine.transition(event.getStatus(), EventStatus.CANCELLED);
+
+        ticketClient.synchronizeEventSale(id, transactions.execute(tx ->
+                saleSnapshotOf(getEvent(id), EventStatus.CANCELLED)));
+
+        return transactions.execute(tx -> {
+            Event managed = getEvent(id);
+            managed.changeStatus(EventStatus.CANCELLED, statusMachine);
+            return toDetail(managed);
+        });
+    }
+
+    @Transactional
+    public void markSoldOut(Long id) {
+        getEvent(id).changeAvailabilityTo(EventStatus.SOLD_OUT, statusMachine);
+    }
+
+    @Transactional
+    public void markBackOnSale(Long id) {
+        getEvent(id).changeAvailabilityTo(EventStatus.PUBLISHED, statusMachine);
+    }
+
+    /**
+     * Suspends a published or sold out event, remembering which of the two it was so {@link #resume} goes back to it.
+     *
+     * @param caller an administrator, or the organizer who created the event
+     * @throws TicketYaException {@code EVENT_NOT_FOUND}, {@code NOT_EVENT_CREATOR}, {@code ORGANIZER_NOT_IN_ORGANIZATION}
+     *                           or {@code INVALID_STATUS_TRANSITION} if it isn't published or sold out
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public EventDetailResponse suspend(Long id, Caller caller) {
+        Event event = getEvent(id);
+        ensureCanSuspendOrCancel(event, caller, "suspenderlo");
+        ensureNotStatus(event, EventStatus.DRAFT, "Un borrador no se suspende: todavía no está a la venta");
+        statusMachine.transition(event.getStatus(), EventStatus.SUSPENDED);
+
+        ticketClient.synchronizeEventSale(id, transactions.execute(tx ->
+                saleSnapshotOf(getEvent(id), EventStatus.SUSPENDED)));
+
+        return transactions.execute(tx -> {
+            Event managed = getEvent(id);
+            managed.suspend(statusMachine);
+            // TODO: keep accepting returns with the 72 h rule (US-TKT-07, #49). Notifying the buyers comes with the
+            //  notifications (Entrega 2).
+            return toDetail(managed);
+        });
+    }
+
+    /**
+     * Resumes a suspended event: it goes back to {@code PUBLISHED} or {@code SOLD_OUT}, whichever it was. If it was
+     * rescheduled, {@code request.dateTime()} is the new date.
+     *
+     * @param request optional; {@code null} or without a date keeps the current one
+     * @throws TicketYaException {@code EVENT_NOT_FOUND}, {@code NOT_EVENT_CREATOR}, {@code ORGANIZER_NOT_IN_ORGANIZATION},
+     *                           {@code INVALID_STATUS_TRANSITION} if it isn't suspended or
+     *                           {@code INVALID_EVENT_CONFIGURATION} if the new date isn't after {@code saleStart}
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public EventDetailResponse resume(Long id, Caller caller, EventResumeRequest request) {
+        Event event = getEvent(id);
+        ensureCanSuspendOrCancel(event, caller, "reanudarlo");
+        LocalDateTime newDate = request == null ? null : request.dateTime();
+        ensureCanBeResumedOn(event, newDate);
+
+        ticketClient.synchronizeEventSale(id, transactions.execute(tx -> {
+            Event current = getEvent(id);
+            return saleSnapshotOf(current, current.statusToResumeTo(),
+                    newDate == null ? current.getDateTime() : newDate);
+        }));
+
+        return transactions.execute(tx -> {
+            Event managed = getEvent(id);
+            ensureCanBeResumedOn(managed, newDate);
+            if (newDate != null) {
+                managed.setDateTime(newDate);
+            }
+            managed.resume(statusMachine);
+            // TODO: notify the buyers if the date changed (Entrega 2, notifications).
+            return toDetail(managed);
+        });
+    }
+
+    private void ensureCanBeResumedOn(Event event, LocalDateTime newDate) {
+        ensureStatus(event, EventStatus.SUSPENDED, "Solo se reanuda un evento suspendido");
+        if (newDate != null && event.getSaleStart() != null && !event.getSaleStart().isBefore(newDate)) {
+            throw invalidConfiguration("La fecha nueva tiene que ser posterior a saleStart (%s)"
+                    .formatted(event.getSaleStart()));
+        }
+    }
+
+    /**
+     * An administrator can suspend or cancel any event. An organizer, only the ones they created, and only while they
+     * still organize for its organization: another organizer of the same organization can't, so a single account
+     * can't suspend events that affect many buyers and artists by mistake or on purpose.
+     */
+    private void ensureCanSuspendOrCancel(Event event, Caller caller, String action) {
+        if (caller.has(Permission.EVENT_ADMIN)) {
+            return;
+        }
+        if (!caller.userId().equals(event.getCreatedBy())) {
+            throw new TicketYaException(EventErrorCode.NOT_EVENT_CREATOR,
+                    "Solo el organizador que creó el evento %d, o un administrador, puede %s".formatted(event.getId(), action));
+        }
+        verifyOrganizer(event.getOrganizationId(), caller.userId());
+    }
+
+    /**
+     * Replaces the participants of a draft event with the given ones. Repeated ids count once, and an empty list
+     * removes them all.
+     * <p>
+     * Runs without a surrounding transaction, like {@link #create}, so the call to the auth-service doesn't hold a
+     * database connection.
+     *
+     * @param organizerId user making the change; has to organize for the event's organization
+     * @return the event's participants, ordered by name
+     * @throws TicketYaException {@code EVENT_NOT_FOUND}, {@code EVENT_NOT_EDITABLE} if it isn't a draft,
+     *                           {@code ORGANIZER_NOT_IN_ORGANIZATION} or {@code PARTICIPANT_NOT_FOUND} with the
+     *                           missing ids in {@code detail}
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public List<ParticipantResponse> replaceParticipants(Long eventId, Long organizerId,
+                                                         EventParticipantsRequest request) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new TicketYaException(EventErrorCode.EVENT_NOT_FOUND,
+                        "No se encontró el evento con id %d".formatted(eventId)));
+        if (event.getStatus() != EventStatus.DRAFT) {
+            throw new TicketYaException(EventErrorCode.EVENT_NOT_EDITABLE,
+                    "El evento %d está %s: solo se le pueden cambiar los participantes en DRAFT"
+                            .formatted(eventId, event.getStatus()));
+        }
+        verifyOrganizer(event.getOrganizationId(), organizerId);
+
+        Set<Long> ids = new LinkedHashSet<>(request.participantIds());
+        List<Participant> participants = participantRepository.findAllById(ids);
+        if (participants.size() != ids.size()) {
+            Set<Long> found = participants.stream().map(Participant::getId).collect(Collectors.toSet());
+            List<Long> missing = ids.stream().filter(id -> !found.contains(id)).toList();
+            throw new TicketYaException(EventErrorCode.PARTICIPANT_NOT_FOUND,
+                    "No se encontraron los participantes %s".formatted(missing), Map.of("missingIds", missing));
+        }
+
+        event.setParticipants(new HashSet<>(participants));
+        eventRepository.save(event);
+        return participants.stream()
+                .sorted(Comparator.comparing(Participant::getName))
+                .map(ParticipantMapper::toResponse)
+                .toList();
+    }
 
     /**
      * Creates an event in {@code DRAFT} for an organization, on behalf of one of its organizers.
@@ -72,6 +460,109 @@ public class EventService {
         if (!organizationId.equals(organizer.organizationId())) {
             throw new TicketYaException(EventErrorCode.ORGANIZER_NOT_IN_ORGANIZATION,
                     "El organizador %d no pertenece a la organización %d".formatted(organizerId, organizationId));
+        }
+    }
+
+    /**
+     * Every precondition that fails, so the organizer can fix them all at once.
+     */
+    private static List<String> publishProblems(Event event, List<EventSectorResponse> sectors) {
+        List<String> problems = new ArrayList<>();
+        if (sectors.isEmpty()) {
+            problems.add("No tiene sectores a la venta");
+        }
+        sectors.stream()
+                .filter(s -> s.numbered() && s.capacity() == 0)
+                .forEach(s -> problems.add("El sector numerado '%s' no tiene asientos".formatted(s.name())));
+        if (!event.getDateTime().isAfter(LocalDateTime.now())) {
+            problems.add("La fecha del evento ya pasó");
+        }
+        if (event.isHighDemand() && event.getSaleStart() == null) {
+            problems.add("Es de alta demanda y no tiene saleStart");
+        }
+        if (event.getSaleStart() != null && !event.getSaleStart().isBefore(event.getDateTime())) {
+            problems.add("saleStart tiene que ser anterior a la fecha del evento");
+        }
+        return problems;
+    }
+
+    private EventSaleRequest saleSnapshotOf(Event event, EventStatus status) {
+        return saleSnapshotOf(event, status, event.getDateTime());
+    }
+
+    private EventSaleRequest saleSnapshotOf(Event event, EventStatus status, LocalDateTime dateTime) {
+        List<EventSector> sectors = eventSectorRepository.findByEventId(event.getId());
+        List<Long> numberedSectorIds = sectors.stream()
+                .map(EventSector::getSector)
+                .filter(Sector::isNumbered)
+                .map(Sector::getId)
+                .toList();
+        Map<Long, List<Long>> seatIdsBySector = seatRepository.findBySectorIdIn(numberedSectorIds).stream()
+                .collect(Collectors.groupingBy(seat -> seat.getSector().getId(),
+                        Collectors.mapping(Seat::getId, Collectors.toList())));
+
+        return new EventSaleRequest(status, dateTime, event.getSaleStart(), event.isHighDemand(),
+                event.getMaxTicketsPerCustomer(), sectors.stream()
+                .map(eventSector -> saleOfSector(eventSector, seatIdsBySector))
+                .toList());
+    }
+
+    private static EventSaleRequest.SectorSale saleOfSector(EventSector eventSector,
+                                                            Map<Long, List<Long>> seatIdsBySector) {
+        Sector sector = eventSector.getSector();
+        return sector.isNumbered()
+                ? new EventSaleRequest.SectorSale(eventSector.getId(), eventSector.getPrice(), null,
+                        seatIdsBySector.getOrDefault(sector.getId(), List.of()))
+                : new EventSaleRequest.SectorSale(eventSector.getId(), eventSector.getPrice(), sector.getCapacity(), null);
+    }
+
+    private EventDetailResponse toDetail(Event event) {
+        return EventMapper.toDetail(event, sectorsOf(event));
+    }
+
+    /**
+     * A numbered sector's capacity is its number of seats; a general admission one's is the loaded capacity.
+     */
+    private List<EventSectorResponse> sectorsOf(Event event) {
+        Map<Long, Long> seatsBySector = seatRepository.countBySectorOfVenue(event.getVenue().getId()).stream()
+                .collect(Collectors.toMap(SectorSeatCount::sectorId, SectorSeatCount::seats));
+        return eventSectorRepository.findByEventId(event.getId()).stream()
+                .map(es -> {
+                    Sector sector = es.getSector();
+                    int capacity = sector.isNumbered()
+                            ? seatsBySector.getOrDefault(sector.getId(), 0L).intValue()
+                            : sector.getCapacity();
+                    return new EventSectorResponse(sector.getId(), sector.getName(), sector.isNumbered(), capacity,
+                            es.getPrice());
+                })
+                .toList();
+    }
+
+    private Event getEvent(Long id) {
+        return eventRepository.findById(id).orElseThrow(() -> eventNotFound(id));
+    }
+
+    private static TicketYaException eventNotFound(Long id) {
+        return new TicketYaException(EventErrorCode.EVENT_NOT_FOUND, "No se encontró el evento con id %d".formatted(id));
+    }
+
+    private static void ensureDraft(Event event, String action) {
+        if (event.getStatus() != EventStatus.DRAFT) {
+            throw new TicketYaException(EventErrorCode.EVENT_NOT_EDITABLE,
+                    "El evento %d está %s: solo se puede %s en DRAFT".formatted(event.getId(), event.getStatus(), action));
+        }
+    }
+
+    private static void ensureStatus(Event event, EventStatus expected, String message) {
+        if (event.getStatus() != expected) {
+            throw new TicketYaException(EventErrorCode.INVALID_STATUS_TRANSITION,
+                    "%s: el evento %d está %s".formatted(message, event.getId(), event.getStatus()));
+        }
+    }
+
+    private static void ensureNotStatus(Event event, EventStatus forbidden, String message) {
+        if (event.getStatus() == forbidden) {
+            throw new TicketYaException(EventErrorCode.INVALID_STATUS_TRANSITION, message);
         }
     }
 

@@ -9,6 +9,7 @@ public enum PaymentErrorCode implements ErrorCode {
     PAYMENT_NOT_FOUND(HttpStatus.NOT_FOUND),
     PAYMENT_REJECTED(HttpStatus.UNPROCESSABLE_CONTENT),
     PAYMENT_GATEWAY_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE),
+    PAYMENT_NOT_REFUNDABLE(HttpStatus.CONFLICT),
     REFUND_FAILED(HttpStatus.BAD_GATEWAY);
 
     private final HttpStatus status;

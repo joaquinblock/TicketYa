@@ -2,6 +2,7 @@ package org.group10.payment.service;
 
 import org.group10.common.exception.CommonErrorCode;
 import org.group10.common.exception.TicketYaException;
+import org.group10.payment.dto.OrderPaymentResponse;
 import org.group10.payment.dto.PaymentRequest;
 import org.group10.payment.dto.PaymentResponse;
 import org.group10.payment.entity.Payment;
@@ -30,6 +31,7 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
@@ -344,6 +346,25 @@ class PaymentServiceTest {
 
         verifyNoInteractions(paymentGateway);
         verify(paymentRepository, never()).save(any());
+    }
+
+    @Test
+    void findPaymentsOfOrder_orderWithPayments_mapsEachOneWithItsFailureReason() {
+        when(paymentRepository.findByOrderIdOrderByIdAsc(ORDER_ID))
+                .thenReturn(List.of(storedPayment(PaymentStatus.REJECTED), storedPayment(PaymentStatus.APPROVED)));
+
+        assertThat(paymentService.findPaymentsOfOrder(ORDER_ID))
+                .extracting(OrderPaymentResponse::status, OrderPaymentResponse::failureReason)
+                .containsExactly(tuple(PaymentStatus.REJECTED, "Fondos insuficientes"), tuple(PaymentStatus.APPROVED, null));
+    }
+
+    @Test
+    void findPaymentsOfOrder_orderWithoutPayments_failsAsNotFound() {
+        when(paymentRepository.findByOrderIdOrderByIdAsc(ORDER_ID)).thenReturn(List.of());
+
+        assertThatThrownBy(() -> paymentService.findPaymentsOfOrder(ORDER_ID))
+                .isInstanceOfSatisfying(TicketYaException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(PaymentErrorCode.PAYMENT_NOT_FOUND));
     }
 
     private static Stream<PaymentRequest> requestsThatChangeTheDataOfTheAttempt() {

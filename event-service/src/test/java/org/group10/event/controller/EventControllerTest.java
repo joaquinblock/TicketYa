@@ -3,11 +3,21 @@ package org.group10.event.controller;
 import org.group10.common.exception.TicketYaException;
 import org.group10.event.client.AuthClient;
 import org.group10.event.client.dto.UserPermissionsResponse;
+import org.group10.event.dto.EventDetailResponse;
+import org.group10.event.dto.EventPageResponse;
 import org.group10.event.dto.EventResponse;
+import org.group10.event.dto.EventResumeRequest;
+import org.group10.event.dto.EventSearchRequest;
+import org.group10.event.dto.EventSort;
+import org.group10.event.dto.EventSectorResponse;
+import org.group10.event.dto.ParticipantResponse;
 import org.group10.event.dto.VenueSummaryResponse;
 import org.group10.event.entity.EventStatus;
 import org.group10.event.entity.EventType;
+import org.group10.event.entity.ParticipantType;
 import org.group10.event.exception.EventErrorCode;
+import org.group10.event.security.Caller;
+import org.group10.event.service.EventSearchService;
 import org.group10.event.service.EventService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,14 +29,22 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.web.client.ResourceAccessException;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -46,6 +64,9 @@ class EventControllerTest {
 
     @MockitoBean
     private AuthClient authClient;
+
+    @MockitoBean
+    private EventSearchService eventSearchService;
 
     @BeforeEach
     void organizerWithEventManage() {
@@ -183,6 +204,291 @@ class EventControllerTest {
         mockMvc.perform(createRequest(VALID_EVENT))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.error").value("service_unavailable"));
+    }
+
+    @Test
+    void replaceParticipants_valid_returns200WithTheParticipants() throws Exception {
+        when(eventService.replaceParticipants(eq(10L), eq(2L), any()))
+                .thenReturn(List.of(new ParticipantResponse(1L, "Los Serranos", ParticipantType.ARTIST)));
+
+        mockMvc.perform(put("/api/events/10/participants").header("X-User-Id", 2)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"participantIds\": [1]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].name").value("Los Serranos"));
+    }
+
+    @Test
+    void replaceParticipants_userWithoutEventManage_returns403() throws Exception {
+        when(authClient.getPermissions(1L)).thenReturn(
+                new UserPermissionsResponse(1L, "CLIENT", Set.of("EVENT_SEARCH")));
+
+        mockMvc.perform(put("/api/events/10/participants").header("X-User-Id", 1)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"participantIds\": [1]}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("forbidden"));
+        verifyNoInteractions(eventService);
+    }
+
+    @Test
+    void replaceParticipants_withoutTheList_returns400() throws Exception {
+        mockMvc.perform(put("/api/events/10/participants").header("X-User-Id", 2)
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail.participantIds").exists());
+        verifyNoInteractions(eventService);
+    }
+
+    @Test
+    void replaceParticipants_notADraft_returns409() throws Exception {
+        when(eventService.replaceParticipants(eq(10L), eq(2L), any())).thenThrow(new TicketYaException(
+                EventErrorCode.EVENT_NOT_EDITABLE, "El evento 10 está PUBLISHED"));
+
+        mockMvc.perform(put("/api/events/10/participants").header("X-User-Id", 2)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"participantIds\": [1]}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("event_not_editable"));
+    }
+
+    @Test
+    void search_bindsEveryFilterAndDoesNotCallAuth() throws Exception {
+        when(eventSearchService.search(any())).thenReturn(new EventPageResponse(List.of(), 0, 20, 0, 0));
+
+        mockMvc.perform(get("/api/events").param("q", "serranos").param("type", "CONCERT").param("city", "Rosario")
+                        .param("participant", "serr").param("organizationId", "1").param("from", "2026-12-01")
+                        .param("to", "2027-01-31").param("sort", "PRICE").param("page", "1").param("size", "5"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0));
+        verify(eventSearchService).search(new EventSearchRequest("serranos", EventType.CONCERT, "Rosario", "serr", 1L,
+                java.time.LocalDate.of(2026, 12, 1), java.time.LocalDate.of(2027, 1, 31), EventSort.PRICE, 1, 5));
+        verifyNoInteractions(authClient);
+    }
+
+    @Test
+    void search_withoutFilters_passesThemAllAsNull() throws Exception {
+        when(eventSearchService.search(any())).thenReturn(new EventPageResponse(List.of(), 0, 20, 0, 0));
+
+        mockMvc.perform(get("/api/events")).andExpect(status().isOk());
+        verify(eventSearchService).search(new EventSearchRequest(null, null, null, null, null, null, null, null, null, null));
+    }
+
+    @Test
+    void search_withSizeOver50_returns400() throws Exception {
+        mockMvc.perform(get("/api/events").param("size", "51"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail.size").exists());
+        verifyNoInteractions(eventSearchService);
+    }
+
+    @Test
+    void search_withUnknownSort_returns400() throws Exception {
+        mockMvc.perform(get("/api/events").param("sort", "POPULARITY"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail.sort").exists());
+        verifyNoInteractions(eventSearchService);
+    }
+
+    @Test
+    void findById_isPublic_soItDoesNotCallAuth() throws Exception {
+        when(eventService.findById(1L, null)).thenReturn(detail(EventStatus.PUBLISHED));
+
+        mockMvc.perform(get("/api/events/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.capacity").value(5080))
+                .andExpect(jsonPath("$.sectors[0].price").value(45000));
+        verifyNoInteractions(authClient);
+    }
+
+    @Test
+    void findById_missing_returns404() throws Exception {
+        when(eventService.findById(99L, null)).thenThrow(new TicketYaException(EventErrorCode.EVENT_NOT_FOUND,
+                "No se encontró el evento con id 99"));
+
+        mockMvc.perform(get("/api/events/99"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("event_not_found"));
+    }
+
+    @Test
+    void update_valid_returns200() throws Exception {
+        when(eventService.update(eq(3L), eq(2L), any())).thenReturn(detail(EventStatus.DRAFT));
+
+        mockMvc.perform(put("/api/events/3").header("X-User-Id", 2)
+                        .contentType(MediaType.APPLICATION_JSON).content(VALID_EVENT))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DRAFT"));
+    }
+
+    @Test
+    void update_withInvalidBody_returns400WithoutCallingTheService() throws Exception {
+        mockMvc.perform(put("/api/events/3").header("X-User-Id", 2)
+                        .contentType(MediaType.APPLICATION_JSON).content(VALID_EVENT.replace("\"Los Serranos en vivo\"", "\" \"")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail.name").exists());
+        verifyNoInteractions(eventService);
+    }
+
+    @Test
+    void delete_draft_returns204() throws Exception {
+        mockMvc.perform(delete("/api/events/10").header("X-User-Id", 2)).andExpect(status().isNoContent());
+        verify(eventService).delete(10L, 2L);
+    }
+
+    @Test
+    void publish_notReady_returns409WithTheProblems() throws Exception {
+        when(eventService.publish(10L, 2L)).thenThrow(new TicketYaException(EventErrorCode.EVENT_NOT_PUBLISHABLE,
+                "El evento 10 todavía no se puede publicar", Map.of("problems", List.of("No tiene sectores a la venta"))));
+
+        mockMvc.perform(post("/api/events/10/publish").header("X-User-Id", 2))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("event_not_publishable"))
+                .andExpect(jsonPath("$.detail.problems[0]").value("No tiene sectores a la venta"));
+    }
+
+    @Test
+    void publish_withoutEventManage_returns403() throws Exception {
+        when(authClient.getPermissions(3L)).thenReturn(
+                new UserPermissionsResponse(3L, "ADMIN", Set.of("EVENT_SEARCH", "EVENT_ADMIN")));
+
+        mockMvc.perform(post("/api/events/10/publish").header("X-User-Id", 3))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(eventService);
+    }
+
+    @Test
+    void cancel_byAnAdmin_passesItsPermissionsToTheService() throws Exception {
+        givenAdmin();
+        when(eventService.cancel(eq(1L), any())).thenReturn(detail(EventStatus.CANCELLED));
+
+        mockMvc.perform(post("/api/events/1/cancel").header("X-User-Id", 3))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+        verify(eventService).cancel(1L, new Caller(3L, Set.of("EVENT_SEARCH", "EVENT_ADMIN")));
+    }
+
+    @Test
+    void cancel_byAnOrganizer_reachesTheServiceThatChecksTheCreator() throws Exception {
+        when(eventService.cancel(eq(1L), any())).thenThrow(new TicketYaException(EventErrorCode.NOT_EVENT_CREATOR,
+                "Solo el organizador que creó el evento 1, o un administrador, puede cancelarlo"));
+
+        mockMvc.perform(post("/api/events/1/cancel").header("X-User-Id", 2))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("not_event_creator"));
+        verify(eventService).cancel(1L, new Caller(2L, Set.of("EVENT_SEARCH", "EVENT_MANAGE")));
+    }
+
+    @Test
+    void cancel_byAClient_returns403ListingBothPermissions() throws Exception {
+        when(authClient.getPermissions(1L)).thenReturn(
+                new UserPermissionsResponse(1L, "CLIENT", Set.of("EVENT_SEARCH")));
+
+        mockMvc.perform(post("/api/events/1/cancel").header("X-User-Id", 1))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("El usuario 1 no tiene ninguno de los permisos EVENT_ADMIN, EVENT_MANAGE"));
+        verifyNoInteractions(eventService);
+    }
+
+    @Test
+    void cancel_draft_returns409() throws Exception {
+        givenAdmin();
+        when(eventService.cancel(eq(10L), any())).thenThrow(new TicketYaException(EventErrorCode.INVALID_STATUS_TRANSITION,
+                "Un borrador no se cancela: se borra con DELETE /api/events/10"));
+
+        mockMvc.perform(post("/api/events/10/cancel").header("X-User-Id", 3))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("invalid_status_transition"));
+    }
+
+    @Test
+    void suspend_byAnAdmin_returns200() throws Exception {
+        givenAdmin();
+        when(eventService.suspend(eq(1L), any())).thenReturn(detail(EventStatus.SUSPENDED));
+
+        mockMvc.perform(post("/api/events/1/suspend").header("X-User-Id", 3))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SUSPENDED"));
+    }
+
+    @Test
+    void resume_withoutBody_passesNullAndKeepsTheDate() throws Exception {
+        when(eventService.resume(eq(7L), any(), isNull())).thenReturn(detail(EventStatus.PUBLISHED));
+
+        mockMvc.perform(post("/api/events/7/resume").header("X-User-Id", 2))
+                .andExpect(status().isOk());
+        verify(eventService).resume(eq(7L), any(), isNull());
+    }
+
+    @Test
+    void resume_withANewDate_passesIt() throws Exception {
+        when(eventService.resume(eq(7L), any(), any())).thenReturn(detail(EventStatus.PUBLISHED));
+
+        mockMvc.perform(post("/api/events/7/resume").header("X-User-Id", 2)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"dateTime\": \"2099-02-20T21:00:00\"}"))
+                .andExpect(status().isOk());
+        verify(eventService).resume(7L, new Caller(2L, Set.of("EVENT_SEARCH", "EVENT_MANAGE")),
+                new EventResumeRequest(LocalDateTime.of(2099, 2, 20, 21, 0)));
+    }
+
+    @Test
+    void resume_withAPastDate_returns400() throws Exception {
+        mockMvc.perform(post("/api/events/7/resume").header("X-User-Id", 2)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"dateTime\": \"2020-02-20T21:00:00\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail.dateTime").exists());
+        verifyNoInteractions(eventService);
+    }
+
+    @Test
+    void replaceSectors_valid_returns200WithTheDetail() throws Exception {
+        when(eventService.replaceSectors(eq(10L), eq(2L), any())).thenReturn(detail(EventStatus.DRAFT));
+
+        mockMvc.perform(put("/api/events/10/sectors").header("X-User-Id", 2).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sectors\": [{\"sectorId\": 3, \"price\": 20000.00}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.capacity").value(5080));
+    }
+
+    @Test
+    void replaceSectors_withZeroOrTooManyDecimalsInThePrice_returns400() throws Exception {
+        mockMvc.perform(put("/api/events/10/sectors").header("X-User-Id", 2).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sectors\": [{\"sectorId\": 3, \"price\": 0}, {\"sectorId\": 4, \"price\": 10.555}]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("validation_error"))
+                .andExpect(jsonPath("$.detail['sectors[0].price']").exists())
+                .andExpect(jsonPath("$.detail['sectors[1].price']").exists());
+        verifyNoInteractions(eventService);
+    }
+
+    @Test
+    void replaceSectors_withoutTheList_returns400() throws Exception {
+        mockMvc.perform(put("/api/events/10/sectors").header("X-User-Id", 2).contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail.sectors").exists());
+    }
+
+    @Test
+    void replaceSectors_withoutEventManage_returns403() throws Exception {
+        when(authClient.getPermissions(1L)).thenReturn(
+                new UserPermissionsResponse(1L, "CLIENT", Set.of("EVENT_SEARCH")));
+
+        mockMvc.perform(put("/api/events/10/sectors").header("X-User-Id", 1).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sectors\": []}"))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(eventService);
+    }
+
+    private void givenAdmin() {
+        when(authClient.getPermissions(3L)).thenReturn(
+                new UserPermissionsResponse(3L, "ADMIN", Set.of("EVENT_SEARCH", "EVENT_ADMIN")));
+    }
+
+    private static EventDetailResponse detail(EventStatus status) {
+        return new EventDetailResponse(1L, "Los Serranos en vivo", "Presentación del nuevo disco", EventType.CONCERT, 1L,
+                2L, new VenueSummaryResponse(1L, "Estadio del Sur", "Av. del Estadio 1000", "Buenos Aires", -34.5453, -58.4498),
+                LocalDateTime.of(2099, 12, 12, 21, 0), status, true, LocalDateTime.of(2099, 11, 20, 10, 0), 4, 5080,
+                List.of(new EventSectorResponse(1L, "Campo", false, 5000, new BigDecimal("45000.00")),
+                        new EventSectorResponse(2L, "Platea", true, 80, new BigDecimal("70000.00"))),
+                List.of(new ParticipantResponse(1L, "Los Serranos", ParticipantType.ARTIST)));
     }
 
     private static MockHttpServletRequestBuilder createRequest(String body) {

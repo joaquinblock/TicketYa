@@ -1,0 +1,330 @@
+{
+  "info": {
+    "name": "TicketYa - Búsqueda de eventos",
+    "description": "GET /api/events (filtros, orden y páginas) y la visibilidad de GET /api/events/{id}. Solo lee: se puede correr las veces que haga falta, con los datos del seeder recién cargados (las fechas son relativas al día de arranque). Ver docs/architecture/event-search.md.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "organizerId",
+      "value": "2"
+    },
+    {
+      "key": "otherOrganizerId",
+      "value": "5"
+    }
+  ],
+  "item": [
+    {
+      "name": "Buscar",
+      "item": [
+        {
+          "name": "Sin filtros: solo PUBLISHED y SOLD_OUT, del más próximo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('Eventos [6, 5, 11, 2, 1, 4]', () => pm.expect(pm.response.json().content.map(e => e.id)).to.eql([6, 5, 11, 2, 1, 4]));",
+                  "pm.test('Ningún suspendido, cancelado, finalizado ni borrador', () => pm.response.json().content.forEach(e => pm.expect(['PUBLISHED', 'SOLD_OUT']).to.include(e.status)));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/events"
+          }
+        },
+        {
+          "name": "Por tipo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('Eventos [6, 11, 1]', () => pm.expect(pm.response.json().content.map(e => e.id)).to.eql([6, 11, 1]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/events?type=CONCERT"
+          }
+        },
+        {
+          "name": "Por ciudad, sin acentos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('Eventos [4]', () => pm.expect(pm.response.json().content.map(e => e.id)).to.eql([4]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/events?city=cordoba"
+          }
+        },
+        {
+          "name": "Por participante (el suspendido no aparece)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('Eventos [1, 4]', () => pm.expect(pm.response.json().content.map(e => e.id)).to.eql([1, 4]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/events?participant=serranos"
+          }
+        },
+        {
+          "name": "Por organización",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('Eventos [11]', () => pm.expect(pm.response.json().content.map(e => e.id)).to.eql([11]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/events?organizationId=2"
+          }
+        },
+        {
+          "name": "Varios filtros a la vez",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('Eventos [11]', () => pm.expect(pm.response.json().content.map(e => e.id)).to.eql([11]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/events?type=CONCERT&city=tandil"
+          }
+        },
+        {
+          "name": "Orden por precio desde",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('Eventos [11, 5, 2, 6, 4, 1]', () => pm.expect(pm.response.json().content.map(e => e.id)).to.eql([11, 5, 2, 6, 4, 1]));",
+                  "pm.test('El primero es el más barato', () => pm.expect(pm.response.json().content[0].priceFrom).to.eql(7000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/events?sort=PRICE"
+          }
+        },
+        {
+          "name": "Relevancia: nombre antes que participante",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('Eventos [11, 1, 4]', () => pm.expect(pm.response.json().content.map(e => e.id)).to.eql([11, 1, 4]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/events?q=serran&sort=RELEVANCE"
+          }
+        },
+        {
+          "name": "Páginas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('Eventos [1, 4]', () => pm.expect(pm.response.json().content.map(e => e.id)).to.eql([1, 4]));",
+                  "pm.test('Cuenta todos', () => { const b = pm.response.json(); pm.expect(b.totalElements).to.eql(6); pm.expect(b.totalPages).to.eql(2); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/events?page=1&size=4"
+          }
+        },
+        {
+          "name": "Comodín % → sin resultados",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('Eventos []', () => pm.expect(pm.response.json().content.map(e => e.id)).to.eql([]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/events?q=%25"
+          }
+        },
+        {
+          "name": "from posterior a to → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 invalid_parameter', () => { pm.response.to.have.status(400); pm.expect(pm.response.json().error).to.eql('invalid_parameter'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/events?from=2027-01-10&to=2027-01-01"
+          }
+        },
+        {
+          "name": "size 51 → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 validation_error', () => { pm.response.to.have.status(400); pm.expect(pm.response.json().detail).to.have.property('size'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/events?size=51"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Ver por id",
+      "item": [
+        {
+          "name": "Un cancelado se ve por id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 CANCELLED', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('CANCELLED'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/events/8"
+          }
+        },
+        {
+          "name": "Borrador sin X-User-Id → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404 event_not_found', () => { pm.response.to.have.status(404); pm.expect(pm.response.json().error).to.eql('event_not_found'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/events/3"
+          }
+        },
+        {
+          "name": "Borrador para un organizador de su organización → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 DRAFT', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('DRAFT'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/events/3",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{organizerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Borrador para un organizador de otra organización → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/events/3",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{otherOrganizerId}}"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -61,6 +61,7 @@ erDiagram
 |---|---|
 | `idempotency_key` UNIQUE | `payment` |
 | `active_order_id` generada y UNIQUE: un solo pago `PENDING` o `APPROVED` por orden | `payment` |
+| Índice en `order_id`, para consultar los pagos de una orden | `payment` |
 | `ticket_id` UNIQUE | `refund` |
 | `reason` (enum), en vez de deducir el motivo de que `return_request_id` sea NULL | `refund` |
 | `gateway_id` UNIQUE | `refund` (en `payment` ya lo era) |
@@ -112,7 +113,13 @@ El diagrama ya decía que una entrada tiene como máximo un reintegro (0..1), pe
 
 Si un reintegro queda `FAILED`, el reintento se hace con la pasarela sobre la misma fila (vuelve a `REQUESTED`) y con los datos nuevos, para que un reintegro fallido por devolución no bloquee el de una cancelación posterior.
 
+Si un reintegro sigue `REQUESTED`, es un estado de duda como el `PENDING` de un cobro: el pedido anterior puede estar en curso o haberse caído después de llamar a la pasarela. Un pedido con los mismos datos vuelve a llamarla sobre la misma fila. La pasarela recibe siempre el mismo reintegro y no lo acredita dos veces, y un estado `CREDITED` ya guardado no se pisa aunque otro intento falle después.
+
 El reintegro es **por entrada** y no por orden porque la consigna 7 permite devolver una sola entrada de una compra de varias.
+
+### La suma de los reintegros no supera lo cobrado
+
+Cada reintegro se registra en una transacción corta que toma un bloqueo pesimista sobre la fila del `payment`, por `active_order_id` para que solo se bloquee esa fila. Con el bloqueo tomado se suman los reintegros del pago que no están `FAILED` y se inserta o reabre el reintegro en `REQUESTED`, así dos pedidos simultáneos de entradas distintas no pueden pasar los dos el control. La llamada a la pasarela ocurre después del commit, sin ningún bloqueo tomado.
 
 ### Motivo explícito: `refund.reason`
 
@@ -163,6 +170,7 @@ El enunciado pide que en la Entrega 1 sea simulada, así que `MockPaymentGateway
 | Aprobar un cobro | Devuelve `APPROVED` con un `gatewayId` |
 | No cobrar dos veces con la misma clave | El `gatewayId` se deriva de la `idempotency_key`, así que repetirla da el mismo resultado |
 | Rechazar un cobro | Decide por medio de pago, con una propiedad (`payment.mock.rejected-method: DEBIT_CARD`) |
+| Aprobar un reintegro | Devuelve `CREDITED` con un `gatewayId` derivado del `ticket_id`, que es único por reintegro. No depende del medio de pago |
 | Lentitud y caída (Entrega 2) | Propiedades `payment.mock.delay-ms` y otra para la caída |
 
 `PaymentService` solo conoce la interfaz `PaymentGateway` y recibe la respuesta como `ChargeResult`. Ahí quedan nuestras reglas, separadas de la simulación. Para conectar una pasarela real alcanza con otra implementación de la interfaz.
@@ -171,7 +179,7 @@ El enunciado pide que en la Entrega 1 sea simulada, así que `MockPaymentGateway
 
 Cobrar, reintegrar y anular van en `/internal/**`, que el gateway no reenvía. La protección es por etapas:
 
-- **Entrega 1:** `/internal/payments` a través del gateway responde 404, con un test que lo verifique. El puerto 8084 del servicio sigue accesible de forma directa, así que esa ruta no tiene protección si se llega sin pasar por el gateway.
+- **Entrega 1:** `/internal/payments` y `/internal/refunds` a través del gateway responden 404, y lo verifica `InternalRoutesTest` en `api-gateway`. El puerto 8084 del servicio sigue accesible de forma directa, así que esas rutas no tienen protección si se llega sin pasar por el gateway.
 - **Entrega 2:** el `docker-compose` general no publica el puerto de payment-service, y las llamadas entre servicios se autentican con una credencial de servicio (sin ella, 401). `GET /api/payments` exige rol administrador.
 
 ## Contrato con ticket-service
@@ -187,7 +195,8 @@ REST síncrono en la Entrega 1. **payment-service nunca llama a ticket-service**
 | `GET /api/payments?orderId=` | Solo administrador, por el gateway | 200 con los pagos de la orden; 404 `payment_not_found` |
 
 - **Reintento de un cobro:** con la misma clave y los mismos datos responde con el mismo status y cuerpo que la primera vez. Si fue rechazado, vuelve a dar 422 `payment_rejected`, sin llamar a la pasarela. Si todavía no tiene resultado, vuelve a llamar a la pasarela con la misma clave y responde como un cobro normal, o con 503 `payment_gateway_unavailable` si la pasarela falla otra vez. La pasarela no cobra dos veces la misma clave, aunque reciba dos reintentos simultáneos.
-- **Reintento de un reintegro:** si existe y no falló, se devuelve el existente. Si falló, se reintenta sobre la misma fila.
+- **Reintento de un reintegro:** si está `CREDITED`, se devuelve el existente con 200. Si sigue `REQUESTED`, se vuelve a llamar a la pasarela y responde 200, o 502 `refund_failed` si falla. Si falló, se reintenta sobre la misma fila y responde 201 o 502.
+- **Consulta de pagos:** las dos rutas `GET` devuelven los pagos de la orden del más antiguo al más nuevo, con `id`, `orderId`, `amount`, `paymentMethod`, `status`, `failureReason`, `gatewayId` y `createdAt`. Es una respuesta aparte de la del cobro, porque el `POST` tiene que repetir exactamente el mismo cuerpo. Sin `orderId`, o si no es un número: 400 `invalid_parameter`. Si no es positivo: 400 `validation_error`.
 - **Errores:** los resuelve `GlobalExceptionHandler` de `common`: los 4xx se reenvían tal cual y los 5xx llegan a ticket como 503.
 
 ## Datos de prueba
@@ -206,5 +215,4 @@ La clave del pago `PENDING` de la orden 3 es `seed-pending-order-3` y tiene que 
 
 ## Pendientes para la implementación
 
-- Código nuevo `payment_not_refundable` en `PaymentErrorCode`.
 - `CANCELLED` en el estado de `Payment` (Entrega 2).

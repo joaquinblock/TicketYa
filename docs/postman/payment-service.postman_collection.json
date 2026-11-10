@@ -15,7 +15,9 @@
     { "key": "retryRejectedKey", "value": "" },
     { "key": "retryRejectedAnswer", "value": "" },
     { "key": "pendingOrderId", "value": "3" },
-    { "key": "pendingKey", "value": "seed-pending-order-3" }
+    { "key": "pendingKey", "value": "seed-pending-order-3" },
+    { "key": "orderWithPaymentsId", "value": "2" },
+    { "key": "orderPaymentsAnswer", "value": "" }
   ],
   "item": [
     {
@@ -484,6 +486,98 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "url": "{{paymentUrl}}/internal/payments",
             "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{pendingOrderId}},\n  \"amount\": 70000.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{pendingKey}}\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "US-PAY-04: Consultar los pagos de una orden",
+      "item": [
+        {
+          "name": "API: orden con rechazo y aprobado → 200",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 con todos los pagos, incluido el rechazado', () => {",
+            "  pm.response.to.have.status(200);",
+            "  const payments = pm.response.json();",
+            "  pm.expect(payments).to.have.lengthOf(2);",
+            "  pm.expect(payments[0].status).to.eql('REJECTED');",
+            "  pm.expect(payments[0].failureReason).to.eql('Fondos insuficientes');",
+            "  pm.expect(payments[0].paymentMethod).to.eql('DEBIT_CARD');",
+            "  pm.expect(payments[0].amount).to.eql(40000.00);",
+            "  pm.expect(payments[0].createdAt).to.be.a('string').and.not.empty;",
+            "  pm.expect(payments[1].status).to.eql('APPROVED');",
+            "  pm.collectionVariables.set('orderPaymentsAnswer', pm.response.text());",
+            "});"
+          ] } }],
+          "request": {
+            "method": "GET",
+            "description": "Usa los pagos de la orden 2 que carga PaymentSeeder.",
+            "url": "{{paymentUrl}}/api/payments?orderId={{orderWithPaymentsId}}"
+          }
+        },
+        {
+          "name": "Interna: misma orden → misma respuesta",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Misma respuesta que /api/payments', () => {",
+            "  pm.response.to.have.status(200);",
+            "  pm.expect(pm.response.json()).to.eql(JSON.parse(pm.collectionVariables.get('orderPaymentsAnswer')));",
+            "});"
+          ] } }],
+          "request": {
+            "method": "GET",
+            "url": "{{paymentUrl}}/internal/payments?orderId={{orderWithPaymentsId}}"
+          }
+        },
+        {
+          "name": "Orden sin pagos → 404",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('404 payment_not_found', () => {",
+            "  pm.response.to.have.status(404);",
+            "  pm.expect(pm.response.json().error).to.eql('payment_not_found');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "GET",
+            "url": "{{paymentUrl}}/api/payments?orderId=999999999"
+          }
+        },
+        {
+          "name": "Falta orderId → 400",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('400 invalid_parameter', () => {",
+            "  pm.response.to.have.status(400);",
+            "  pm.expect(pm.response.json().error).to.eql('invalid_parameter');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "GET",
+            "url": "{{paymentUrl}}/api/payments"
+          }
+        },
+        {
+          "name": "orderId que no es un número → 400",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('400 invalid_parameter', () => {",
+            "  pm.response.to.have.status(400);",
+            "  pm.expect(pm.response.json().error).to.eql('invalid_parameter');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "GET",
+            "url": "{{paymentUrl}}/api/payments?orderId=abc"
+          }
+        },
+        {
+          "name": "orderId en cero → 400",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('400 validation_error', () => {",
+            "  pm.response.to.have.status(400);",
+            "  pm.expect(pm.response.json().error).to.eql('validation_error');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "GET",
+            "url": "{{paymentUrl}}/api/payments?orderId=0"
           }
         }
       ]

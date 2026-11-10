@@ -19,6 +19,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.group10.event.statemachine.EventStatusMachine;
 
 import java.time.LocalDateTime;
 import java.util.HashSet;
@@ -57,9 +58,19 @@ public class Event {
     @Column(nullable = false)
     private LocalDateTime dateTime;
 
+    /** No setter: it only changes through {@link #changeStatus}, so nobody can skip the state machine. */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
+    @Setter(AccessLevel.NONE)
     private EventStatus status;
+
+    /**
+     * {@code PUBLISHED} or {@code SOLD_OUT} while the event is suspended, so resuming goes back to it; {@code null}
+     * otherwise. Without it, a sold out event would reopen the sale as if it had room.
+     */
+    @Enumerated(EnumType.STRING)
+    @Setter(AccessLevel.NONE)
+    private EventStatus statusBeforeSuspension;
 
     @Column(nullable = false)
     private boolean highDemand;
@@ -79,4 +90,47 @@ public class Event {
     )
     @Builder.Default
     private Set<Participant> participants = new HashSet<>();
+
+    /**
+     * Changes the status through the state machine.
+     *
+     * @throws org.group10.common.exception.TicketYaException {@code INVALID_STATUS_TRANSITION} if not allowed
+     */
+    public void changeStatus(EventStatus next, EventStatusMachine machine) {
+        this.status = machine.transition(status, next);
+        if (status != EventStatus.SUSPENDED) {
+            statusBeforeSuspension = null;
+        }
+    }
+
+    /**
+     * Suspends the event and remembers the status it had. Suspending one that is already suspended changes nothing.
+     */
+    public void suspend(EventStatusMachine machine) {
+        EventStatus previous = status;
+        changeStatus(EventStatus.SUSPENDED, machine);
+        if (previous != EventStatus.SUSPENDED) {
+            statusBeforeSuspension = previous;
+        }
+    }
+
+    /**
+     * Goes back to the status it had before being suspended. An event loaded as suspended with no previous status
+     * (e.g. by the seeder) goes back to {@code PUBLISHED}.
+     */
+    public void resume(EventStatusMachine machine) {
+        changeStatus(statusToResumeTo(), machine);
+    }
+
+    public void changeAvailabilityTo(EventStatus availability, EventStatusMachine machine) {
+        if (status == EventStatus.SUSPENDED) {
+            statusBeforeSuspension = availability;
+        } else {
+            changeStatus(availability, machine);
+        }
+    }
+
+    public EventStatus statusToResumeTo() {
+        return statusBeforeSuspension == null ? EventStatus.PUBLISHED : statusBeforeSuspension;
+    }
 }

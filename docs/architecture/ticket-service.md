@@ -132,7 +132,9 @@ Si actualiza 0 filas, no hay lugar. La base ejecuta el `UPDATE` de a una fila po
 
 ### El inventario se crea al publicar el evento
 
-`event_seat` y `event_sector_stock` se crean cuando el evento pasa a `PUBLISHED`: el event-service le pasa al ticket-service los asientos de los sectores numerados y la capacidad de los no numerados que tienen fila en `event_sector`. Así hay un solo momento de sincronización entre los dos servicios, y durante la venta el ticket-service no necesita consultar al event-service para saber qué hay disponible. Se implementa en la épica #3.
+`event_seat` y `event_sector_stock` se crean cuando el evento pasa a `PUBLISHED`: el event-service le pasa al ticket-service los asientos de los sectores numerados y la capacidad de los no numerados que tienen fila en `event_sector`. Así hay un solo momento de sincronización entre los dos servicios, y durante la venta el ticket-service no necesita consultar al event-service para saber qué hay disponible.
+
+Publicar y cancelar usan el mismo endpoint interno, `PUT /internal/event-sales/{eventId}`, que recibe la foto completa de la venta. Es idempotente: actualiza estado, fechas y precios, y crea solo los lugares que faltan, sin tocar los ya vendidos o reservados. El event-service llama antes de cambiar su propio estado y sin una transacción abierta. Si la llamada falla, el evento queda como estaba y se puede reintentar.
 
 ### La `ticket` existe desde la reserva
 
@@ -153,6 +155,8 @@ Se genera con un UUID, no a partir del ID de la entrada. Si fuera predecible, al
 ### Idempotencia de la orden
 
 `orders.idempotency_key` es única y la genera el cliente para cada intento de compra. Si la app reintenta la misma compra por un problema de conexión (consigna 5), el ticket-service encuentra la orden existente y la devuelve en vez de crear otra y reservar dos veces. La idempotencia del cobro se resuelve en el payment-service.
+
+Si una reserva falla, antes de responder el error se vuelve a buscar la clave. Dos pedidos del mismo intento pueden correr a la vez, y el que pierde ve los lugares ya tomados por su propia orden: tiene que recibir esa orden, no `seat_unavailable`.
 
 ### `reserved_until` repite `orders.expires_at`
 
@@ -272,9 +276,16 @@ Las historias y sus criterios de aceptación están en [`user-stories.md`](../us
 
 ### Pendientes para la implementación
 
-- **Códigos nuevos en `TicketErrorCode`:** `event_not_on_sale`, `order_not_payable`, `order_not_cancellable`, `payment_in_progress`, `payment_window_closed`, `return_request_not_found`, `return_request_already_pending`, `invalid_queue_token`.
-- **Valores nuevos de enums:** `CANCELLED` y `FAILED` en `OrderStatus`, `CANCELLED` en `ReturnRequestStatus`.
-- **Modelo:** entidades `EventSale` y `EventSectorPrice`, `event_sector_id` en `EventSeat`, y `payment_method` y `payment_attempt_key` en `Order`. El `TicketSeeder` tiene que cargarlos, con la misma clave que el pago `PENDING` de la orden 3.
+- **Códigos nuevos en `TicketErrorCode`:** `order_not_payable`, `payment_window_closed`, `return_request_not_found`, `return_request_already_pending`, `invalid_queue_token`.
+
+### Endpoints
+
+| Método y ruta | Qué hace | Errores |
+|---|---|---|
+| `PUT /internal/event-sales/{eventId}` | Sincroniza la venta y el inventario. Solo entre servicios; el gateway no la expone | 400 `validation_error` |
+| `GET /api/availability?eventId=` | Disponibilidad por sector | 404 `resource_not_found` |
+| `POST /api/orders` | Reserva asientos (`seatIds`) o lugares (`eventSectorId` y `quantity`). Header `X-User-Id` | 400 `validation_error`, 404 `resource_not_found`, 409 `seat_unavailable`, `sector_sold_out`, `ticket_limit_exceeded`, `event_not_on_sale`, `sale_not_started`, `data_conflict` |
+| `POST /api/orders/{id}/cancel` | Abandona una reserva. Repetirlo responde 200. Header `X-User-Id` | 404 `order_not_found`, 409 `payment_in_progress`, `reservation_expired`, `order_not_cancellable` |
 
 ### Dependencias con otros servicios
 

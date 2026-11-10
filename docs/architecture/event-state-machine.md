@@ -53,5 +53,5 @@ Un borrador no se cancela: se borra con `DELETE /api/events/{id}`. El resto de l
 
 ## Pendiente
 
-- **Efectos al cambiar de estado.** Llegar a `CANCELLED` tiene que avisar al ticket-service para los reintegros (US-TKT-18, #61), y publicar tiene que pedirle que arme el inventario (US-TKT-01, #42). Hoy los dos son un `// TODO` en `EventService`.
-- **Venta según el estado.** El ticket-service tiene que vender solo cuando el evento está en `PUBLISHED`. `SUSPENDED` también bloquea la venta, y durante la suspensión se aceptan devoluciones con la regla de 72 horas (ver US-TKT-14 en `user-stories.md`).
+- **Reintegros al cancelar.** Publicar y cancelar ya sincronizan la venta con el ticket-service. Si esa llamada falla, el estado no cambia. Falta reintegrar las entradas vendidas al llegar a `CANCELLED` (US-TKT-18, #61).
+- **Avisos del resto de las transiciones.** Suspender, reanudar y agotar tienen que usar la misma sincronización cuando tengan endpoint. El ticket-service solo vende en `PUBLISHED`, y durante la suspensión se aceptan devoluciones con la regla de 72 horas (ver US-TKT-14 en `user-stories.md`).

@@ -7,7 +7,6 @@ import org.group10.ticket.dto.OrderResponse;
 import org.group10.ticket.entity.Order;
 import org.group10.ticket.entity.OrderStatus;
 import org.group10.ticket.exception.TicketErrorCode;
-import org.group10.ticket.mapper.OrderMapper;
 import org.group10.ticket.repository.EventSeatRepository;
 import org.group10.ticket.repository.EventSectorStockRepository;
 import org.group10.ticket.repository.OrderRepository;
@@ -23,6 +22,7 @@ import java.time.LocalDateTime;
 @Slf4j
 public class OrderClosingService {
 
+    private final OrderQueryService orderQueryService;
     private final OrderRepository orderRepository;
     private final TicketRepository ticketRepository;
     private final EventSeatRepository eventSeatRepository;
@@ -31,16 +31,16 @@ public class OrderClosingService {
     private final Clock clock;
 
     public OrderResponse cancelReservation(Long userId, Long orderId) {
-        findOrderOfCustomer(userId, orderId);
+        orderQueryService.findOrderOfCustomer(userId, orderId);
         transactions.executeWithoutResult(transaction -> {
             if (orderRepository.cancelPendingOrderWithoutPaymentInProgress(orderId) == 1) {
                 releasePlacesOfOrder(orderId);
             }
         });
 
-        Order order = findOrderOfCustomer(userId, orderId);
+        Order order = orderQueryService.findOrderOfCustomer(userId, orderId);
         ensureOrderEndedCancelled(order);
-        return OrderMapper.toResponse(order, ticketRepository.findByOrderIdOrderById(orderId));
+        return orderQueryService.toResponse(order);
     }
 
     public void expireOverdueReservations() {
@@ -48,13 +48,17 @@ public class OrderClosingService {
                 .forEach(this::expireOrderLoggingAnyFailure);
     }
 
+    public void closePendingOrderReleasingItsPlaces(Long orderId, OrderStatus nextStatus) {
+        transactions.executeWithoutResult(transaction -> {
+            if (orderRepository.closePendingOrder(orderId, nextStatus) == 1) {
+                releasePlacesOfOrder(orderId);
+            }
+        });
+    }
+
     private void expireOrderLoggingAnyFailure(Long orderId) {
         try {
-            transactions.executeWithoutResult(transaction -> {
-                if (orderRepository.closePendingOrder(orderId, OrderStatus.EXPIRED) == 1) {
-                    releasePlacesOfOrder(orderId);
-                }
-            });
+            closePendingOrderReleasingItsPlaces(orderId, OrderStatus.EXPIRED);
         } catch (RuntimeException failure) {
             log.error("No se pudo vencer la orden {}", orderId, failure);
         }
@@ -65,12 +69,6 @@ public class OrderClosingService {
                 eventSectorStockRepository.releasePlaces(reserved.eventSectorId(), reserved.places()));
         ticketRepository.voidReservedTicketsOfOrder(orderId);
         eventSeatRepository.releaseSeatsHeldByOrder(orderId);
-    }
-
-    private Order findOrderOfCustomer(Long userId, Long orderId) {
-        return orderRepository.findByIdAndUserId(orderId, userId)
-                .orElseThrow(() -> new TicketYaException(TicketErrorCode.ORDER_NOT_FOUND,
-                        "No se encontró la orden con id %d".formatted(orderId)));
     }
 
     private static void ensureOrderEndedCancelled(Order order) {

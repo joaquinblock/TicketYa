@@ -29,4 +29,14 @@ public interface EventSeatRepository extends JpaRepository<EventSeat, EventSeatI
             where s.order.id = :orderId and s.status = org.group10.ticket.entity.EventSeatStatus.RESERVED
             """)
     int releaseSeatsHeldByOrder(Long orderId);
+
+    @Modifying
+    @Query("""
+            update EventSeat s
+            set s.status = org.group10.ticket.entity.EventSeatStatus.SOLD,
+                s.reservedUntil = null,
+                s.version = s.version + 1
+            where s.order.id = :orderId and s.status = org.group10.ticket.entity.EventSeatStatus.RESERVED
+            """)
+    int sellSeatsHeldByOrder(Long orderId);
 }

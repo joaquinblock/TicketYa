@@ -11,6 +11,8 @@ public enum TicketErrorCode implements ErrorCode {
     SALE_NOT_STARTED(HttpStatus.CONFLICT),
     EVENT_NOT_ON_SALE(HttpStatus.CONFLICT),
     ORDER_NOT_CANCELLABLE(HttpStatus.CONFLICT),
+    ORDER_NOT_PAYABLE(HttpStatus.CONFLICT),
+    PAYMENT_WINDOW_CLOSED(HttpStatus.CONFLICT),
     PAYMENT_IN_PROGRESS(HttpStatus.CONFLICT),
     SEAT_UNAVAILABLE(HttpStatus.CONFLICT),
     SECTOR_SOLD_OUT(HttpStatus.CONFLICT),

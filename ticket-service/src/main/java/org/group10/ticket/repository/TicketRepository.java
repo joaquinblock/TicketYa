@@ -13,6 +13,8 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
 
     List<Ticket> findByOrderIdOrderById(Long orderId);
 
+    List<Ticket> findByOrderIdInOrderById(Collection<Long> orderIds);
+
     @Query("""
             select count(t) from Ticket t
             where t.order.userId = :userId and t.order.eventId = :eventId and t.status in :statuses

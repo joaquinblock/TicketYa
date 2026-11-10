@@ -21,6 +21,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "ticket")
@@ -60,4 +61,9 @@ public class Ticket {
 
     @Version
     private Long version;
+
+    public void issue() {
+        status = TicketStatus.ISSUED;
+        qrCode = UUID.randomUUID().toString();
+    }
 }

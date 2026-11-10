@@ -5,5 +5,5 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import java.time.Duration;
 
 @ConfigurationProperties("ticketya.reservation")
-public record ReservationProperties(Duration hold) {
+public record ReservationProperties(Duration hold, Duration paymentMargin, int maxRejectedPayments) {
 }

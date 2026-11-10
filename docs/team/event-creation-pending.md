@@ -56,7 +56,7 @@
 
 ## Resiliencia de `AuthClient`
 
-- [x] **Timeouts:** 1 s para conectar y 2 s para leer. Si el auth-service se cuelga, responde `503` en vez de esperar para siempre (ver *Timeouts y reintentos* en [`microservices.md`](../architecture/microservices.md))
+- [x] **Timeouts:** 1 s para conectar y 5 s para leer. Si el auth-service se cuelga, responde `503` en vez de esperar para siempre (ver *Timeouts y reintentos* en [`microservices.md`](../architecture/microservices.md))
 - [x] **Reintentos:** un reintento a los 200 ms, solo para `GET` y solo si no hubo respuesta (`RetryOnIoErrorInterceptor`)
 
 ## Decisiones abiertas

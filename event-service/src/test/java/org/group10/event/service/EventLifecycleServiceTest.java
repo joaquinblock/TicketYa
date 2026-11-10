@@ -434,6 +434,55 @@ class EventLifecycleServiceTest {
         assertError(() -> eventService.markSoldOut(EVENT_ID), EventErrorCode.INVALID_STATUS_TRANSITION);
     }
 
+    @Test
+    void markBackOnSale_soldOut_goesToPublished() {
+        Event event = givenEvent(EventStatus.SOLD_OUT);
+
+        eventService.markBackOnSale(EVENT_ID);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.PUBLISHED);
+    }
+
+    @Test
+    void markBackOnSale_alreadyPublished_changesNothing() {
+        Event event = givenEvent(EventStatus.PUBLISHED);
+
+        eventService.markBackOnSale(EVENT_ID);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.PUBLISHED);
+    }
+
+    @Test
+    void markSoldOut_suspended_staysSuspendedAndResumesAsSoldOut() {
+        Event event = givenEvent(EventStatus.PUBLISHED);
+        eventService.suspend(EVENT_ID, ADMIN);
+
+        eventService.markSoldOut(EVENT_ID);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.SUSPENDED);
+        eventService.resume(EVENT_ID, ADMIN, null);
+        assertThat(event.getStatus()).isEqualTo(EventStatus.SOLD_OUT);
+    }
+
+    @Test
+    void markBackOnSale_suspendedWhileSoldOut_staysSuspendedAndResumesAsPublished() {
+        Event event = givenEvent(EventStatus.SOLD_OUT);
+        eventService.suspend(EVENT_ID, ADMIN);
+
+        eventService.markBackOnSale(EVENT_ID);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.SUSPENDED);
+        eventService.resume(EVENT_ID, ADMIN, null);
+        assertThat(event.getStatus()).isEqualTo(EventStatus.PUBLISHED);
+    }
+
+    @Test
+    void markBackOnSale_cancelled_throwsInvalidTransition() {
+        givenEvent(EventStatus.CANCELLED);
+
+        assertError(() -> eventService.markBackOnSale(EVENT_ID), EventErrorCode.INVALID_STATUS_TRANSITION);
+    }
+
     // ---- suspend and resume ----
 
     @Test

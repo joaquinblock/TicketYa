@@ -35,4 +35,16 @@ public class InternalEventController {
     public void markSoldOut(@PathVariable @Positive Long id) {
         eventService.markSoldOut(id);
     }
+
+    @PutMapping("/{id}/back-on-sale")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "Volver a poner en venta un evento agotado", description = "Lo llama el ticket-service cuando una devolución libera un lugar. Repetirlo no cambia nada.")
+    @ApiResponse(responseCode = "204", description = "Evento publicado")
+    @ApiResponse(responseCode = "404", description = "event_not_found",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "409", description = "invalid_status_transition",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    public void markBackOnSale(@PathVariable @Positive Long id) {
+        eventService.markBackOnSale(id);
+    }
 }

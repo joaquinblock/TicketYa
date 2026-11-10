@@ -44,4 +44,21 @@ class InternalEventControllerTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error").value("invalid_status_transition"));
     }
+
+    @Test
+    void markBackOnSale_existingEvent_returnsNoContent() throws Exception {
+        mockMvc.perform(put("/internal/events/3/back-on-sale"))
+                .andExpect(status().isNoContent());
+        verify(eventService).markBackOnSale(3L);
+    }
+
+    @Test
+    void markBackOnSale_invalidTransition_returnsConflictWithItsCode() throws Exception {
+        doThrow(new TicketYaException(EventErrorCode.INVALID_STATUS_TRANSITION, "No se puede"))
+                .when(eventService).markBackOnSale(3L);
+
+        mockMvc.perform(put("/internal/events/3/back-on-sale"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("invalid_status_transition"));
+    }
 }

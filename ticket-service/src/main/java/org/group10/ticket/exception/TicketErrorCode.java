@@ -20,6 +20,8 @@ public enum TicketErrorCode implements ErrorCode {
     RESERVATION_EXPIRED(HttpStatus.CONFLICT),
     TICKET_ALREADY_USED(HttpStatus.CONFLICT),
     REFUND_NOT_ALLOWED(HttpStatus.CONFLICT),
+    RETURN_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND),
+    RETURN_REQUEST_ALREADY_PENDING(HttpStatus.CONFLICT),
     INVALID_QR(HttpStatus.BAD_REQUEST);
 
     private final HttpStatus status;

@@ -19,7 +19,7 @@ public class ExpiredReservationsJob {
     }
 
     @Scheduled(fixedDelayString = "${ticketya.reservation.expiration-check}")
-    public void notifyPendingSoldOutEvents() {
-        soldOutService.notifyPendingSoldOutEvents();
+    public void notifyPendingAvailabilityChanges() {
+        soldOutService.notifyPendingAvailabilityChanges();
     }
 }

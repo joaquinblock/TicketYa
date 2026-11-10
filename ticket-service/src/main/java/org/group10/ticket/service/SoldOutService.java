@@ -3,6 +3,8 @@ package org.group10.ticket.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.group10.ticket.client.EventClient;
+import org.group10.ticket.entity.EventSale;
+import org.group10.ticket.entity.EventSaleStatus;
 import org.group10.ticket.entity.EventSeatStatus;
 import org.group10.ticket.repository.EventSaleRepository;
 import org.group10.ticket.repository.EventSeatRepository;
@@ -36,8 +38,8 @@ public class SoldOutService {
         }
     }
 
-    public void notifyPendingSoldOutEvents() {
-        eventSaleRepository.findEventIdsWithPendingSoldOutNotification().forEach(this::notifyLoggingAnyFailure);
+    public void notifyPendingAvailabilityChanges() {
+        eventSaleRepository.findByAvailabilityNotificationPendingTrue().forEach(this::notifyLoggingAnyFailure);
     }
 
     private boolean nothingIsLeftToSell(Long eventId) {
@@ -46,19 +48,29 @@ public class SoldOutService {
                 && ticketRepository.countReservedTicketsOfEvent(eventId) == 0;
     }
 
-    private void notifyLoggingAnyFailure(Long eventId) {
+    private void notifyLoggingAnyFailure(EventSale sale) {
         try {
-            eventClient.markEventSoldOut(eventId);
-            clearNotification(eventId);
+            notifyCurrentAvailability(sale);
+            clearNotification(sale);
         } catch (HttpClientErrorException rejected) {
-            log.warn("El event-service rechazó agotar el evento {}: {}", eventId, rejected.getStatusCode());
-            clearNotification(eventId);
+            log.warn("El event-service rechazó el cambio a {} del evento {}: {}", sale.getStatus(), sale.getEventId(),
+                    rejected.getStatusCode());
+            clearNotification(sale);
         } catch (RuntimeException failure) {
-            log.error("No se pudo avisar que el evento {} se agotó", eventId, failure);
+            log.error("No se pudo avisar el cambio a {} del evento {}", sale.getStatus(), sale.getEventId(), failure);
         }
     }
 
-    private void clearNotification(Long eventId) {
-        transactions.executeWithoutResult(transaction -> eventSaleRepository.clearSoldOutNotification(eventId));
+    private void notifyCurrentAvailability(EventSale sale) {
+        if (sale.getStatus() == EventSaleStatus.SOLD_OUT) {
+            eventClient.markEventSoldOut(sale.getEventId());
+        } else if (sale.getStatus() == EventSaleStatus.PUBLISHED) {
+            eventClient.markEventBackOnSale(sale.getEventId());
+        }
+    }
+
+    private void clearNotification(EventSale sale) {
+        transactions.executeWithoutResult(transaction ->
+                eventSaleRepository.clearAvailabilityNotification(sale.getEventId(), sale.getStatus()));
     }
 }

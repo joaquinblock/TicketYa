@@ -9,4 +9,7 @@ public interface EventClient {
 
     @PutExchange("/internal/events/{eventId}/sold-out")
     void markEventSoldOut(@PathVariable Long eventId);
+
+    @PutExchange("/internal/events/{eventId}/back-on-sale")
+    void markEventBackOnSale(@PathVariable Long eventId);
 }

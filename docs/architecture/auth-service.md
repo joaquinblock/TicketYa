@@ -103,8 +103,8 @@ Todos usan el `ErrorDto` común (ver [`error-handling.md`](error-handling.md)). 
 | `service` | `OrganizationService`, `OrganizerService`, `UserService` |
 | `controller` | `OrganizationController`, `OrganizerController`, `UserController` |
 
-- **Datos de prueba.** `AuthSeeder` carga dos organizaciones con un organizador cada una, que son los ids que asume `EventSeeder`:
-  - la `1` (*Del Sur Producciones*), con `organizer@ticketya.com` (user `2`);
+- **Datos de prueba.** `AuthSeeder` carga dos organizaciones, con los organizadores que asume `EventSeeder`:
+  - la `1` (*Del Sur Producciones*), con `organizer@ticketya.com` (user `2`, que crea sus eventos) y `organizer.delsur@ticketya.com` (user `6`, sin eventos propios: sirve para probar que solo el creador puede suspender o cancelar);
   - la `2` (*Cultura Serrana*), con `organizer.serrana@ticketya.com` (user `5`).
 
   El user `2` no organiza para la `2`, así que crear un evento de la org `2` con `X-User-Id: 2` sigue dando `organizer_not_in_organization`.

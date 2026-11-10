@@ -164,6 +164,7 @@ public class EventSeeder implements ApplicationRunner {
 
         Event suspendedTour = eventRepository.save(base("Los Serranos en Rosario", "Gira nacional, suspendida por mal tiempo",
                 EventType.CONCERT, litoral, at(40, 21, 0), EventStatus.SUSPENDED)
+                .statusBeforeSuspension(EventStatus.PUBLISHED)
                 .maxTicketsPerCustomer(4)
                 .participants(participants(losSerranos))
                 .build());

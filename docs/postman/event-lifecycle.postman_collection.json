@@ -20,6 +20,10 @@
     {
       "key": "adminId",
       "value": "3"
+    },
+    {
+      "key": "sameOrgOrganizerId",
+      "value": "6"
     }
   ],
   "item": [
@@ -395,15 +399,15 @@
       "name": "Cancelar",
       "item": [
         {
-          "name": "Organizador → 403 (solo administradores)",
+          "name": "Otro organizador de la misma organización → 403 (solo el creador o un admin)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('403 forbidden', () => {",
+                  "pm.test('403 not_event_creator', () => {",
                   "  pm.response.to.have.status(403);",
-                  "  pm.expect(pm.response.json().error).to.eql('forbidden');",
+                  "  pm.expect(pm.response.json().error).to.eql('not_event_creator');",
                   "});"
                 ]
               }
@@ -415,7 +419,7 @@
             "header": [
               {
                 "key": "X-User-Id",
-                "value": "{{organizerId}}"
+                "value": "{{sameOrgOrganizerId}}"
               }
             ]
           }

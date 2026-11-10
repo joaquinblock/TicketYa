@@ -208,8 +208,6 @@ POST /api/events/10/publish                  X-User-Id: 2
 
 | Pendiente | Detalle |
 |---|---|
-| Inventario | Publicar todavía no le pide al ticket-service que arme el inventario (US-TKT-01, #42). Un evento publicado por API no se puede comprar |
-| Reintegros | Cancelar todavía no avisa al ticket-service (US-TKT-18, #61). Las entradas vendidas siguen válidas allá |
-| Suspensión en el ticket-service | Suspender todavía no frena la venta: el ticket-service tiene que dejar de vender eventos `SUSPENDED` (US-TKT-07, #49) |
+| Reintegros | Cancelar ya frena la venta en el ticket-service, pero todavía no reintegra las entradas vendidas (US-TKT-18, #61) |
 | Avisar a los compradores | Suspender, reprogramar y cancelar no notifican a nadie (Entrega 2) |
 | Otras transiciones | Agotar (`SOLD_OUT`) y finalizar (`FINISHED`) todavía no tienen endpoint. Agotar le toca al ticket-service (US-TKT-13, #55) |

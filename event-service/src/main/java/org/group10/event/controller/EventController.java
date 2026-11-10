@@ -219,7 +219,7 @@ public class EventController {
     @PostMapping("/{id}/cancel")
     @RequiresPermission({Permission.EVENT_ADMIN, Permission.EVENT_MANAGE})
     @Operation(summary = "Cancelar un evento", description = """
-            Definitivo, desde `PUBLISHED`, `SOLD_OUT` o `SUSPENDED`. Lo puede hacer un administrador (`EVENT_ADMIN`), sobre cualquier evento, o el organizador que creó el evento (`EVENT_MANAGE`), mientras siga siendo organizador de su organización. Otro organizador de la misma organización no puede.             Cancelar uno ya cancelado no cambia nada. **Todavía no avisa al ticket-service**: las entradas vendidas             no pasan a reintegro hasta que exista ese endpoint.""")
+            Definitivo, desde `PUBLISHED`, `SOLD_OUT` o `SUSPENDED`. Lo puede hacer un administrador (`EVENT_ADMIN`), sobre cualquier evento, o el organizador que creó el evento (`EVENT_MANAGE`), mientras siga siendo organizador de su organización. Otro organizador de la misma organización no puede.             Cancelar uno ya cancelado no cambia nada. Frena la venta en el ticket-service; los reintegros todavía no están.""")
     @ApiResponse(responseCode = "200", description = "Evento cancelado")
     @ApiResponse(responseCode = "403", description = "forbidden (sin EVENT_ADMIN ni EVENT_MANAGE) / not_event_creator / "
             + "organizer_not_in_organization",

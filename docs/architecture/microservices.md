@@ -80,7 +80,7 @@ Hoy solo el event-service los tiene configurados. Los demás servicios tienen qu
 spring.http.serviceclient:
   auth-service:
     connect-timeout: 1s    # tiempo para abrir la conexión
-    read-timeout: 2s       # tiempo para recibir la respuesta
+    read-timeout: 5s       # tiempo para recibir la respuesta
 ticketya.http.retry:
   max-attempts: 2          # el intento original + 1 reintento
   backoff: 200ms
@@ -99,7 +99,9 @@ ticketya.http.retry:
 | `POST`/`PUT`/`DELETE` sin respuesta | No | Puede haberse aplicado igual, y repetirlo duplicaría el efecto (p. ej. dos cobros) |
 | Respuesta con error (4xx o 5xx) | No | Hubo respuesta: un `404` no se arregla reintentando, y el `GlobalExceptionHandler` ya lo reenvía o lo convierte en `503` |
 
-**Peor caso:** con auth colgado, un request espera unos 4,2 s (2 s + 0,2 s + 2 s) y recibe `503`. Ya no queda esperando sin límite.
+**Peor caso:** con auth colgado, un request espera unos 10,2 s (5 s + 0,2 s + 5 s) y recibe `503`. Ya no queda esperando sin límite.
+
+**Por qué 5 s y no 2 s:** con 2 s, el primer request a un auth-service recién levantado fallaba con `503`. Sus primeras respuestas tardan más de 2 s mientras arranca (JIT, conexiones a la base), y los dos intentos vencían. Ya caliente responde en unos 0,1 s, así que 5 s deja margen sin esperar de más cuando el servicio está colgado de verdad.
 
 **Lo que falta:** un *circuit breaker*, para dejar de llamar un rato a un servicio que viene fallando en vez de esperar el timeout en cada request. Para la Entrega 1 alcanza con timeouts y reintentos.
 

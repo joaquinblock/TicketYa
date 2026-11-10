@@ -1,4 +1,4 @@
-# event-service: ABM de lugares, sectores y asientos
+# event-service: ABM de lugares, sectores, asientos, participantes y eventos
 
 > Épica 3 (#3), primera parte: *"ABM de lugares con sectores numerados (filas/asientos) y no numerados (capacidad)"*.
 > El modelo de datos y su porqué están en [`event-service.md`](event-service.md). Este documento cubre cómo se usa la API y qué reglas aplica.
@@ -122,3 +122,91 @@ Todos usan el `ErrorDto` común (ver [`error-handling.md`](error-handling.md)).
 | Autorización | La Entrega 1 no tiene autenticación: cualquiera puede usar estos endpoints. Con la Épica 9 deberían quedar solo para administradores, u organizadores según se decida |
 | Mover o renumerar asientos | No hay endpoint para cambiar fila o número de un asiento: se borra y se crea. No lo pide el enunciado |
 | Capacidad habilitada | Sigue sin modelarse `venue.licensed_capacity` (ver `event-service.md`) |
+
+## Participantes
+
+Artistas, equipos y disertantes (`ARTIST`, `TEAM`, `SPEAKER`). El gateway enruta `/api/participants/**` al event-service.
+
+| Método | Ruta | Qué hace | OK |
+|---|---|---|---|
+| `GET` | `/api/participants?type=&name=` | Lista por nombre. `type` y `name` (parte del nombre, sin distinguir mayúsculas) son opcionales | 200 |
+| `GET` | `/api/participants/{id}` | Un participante | 200 |
+| `POST` | `/api/participants` | Crea un participante | 201 |
+| `PUT` | `/api/participants/{id}` | Reemplaza nombre y tipo | 200 |
+| `DELETE` | `/api/participants/{id}` | Lo borra definitivamente | 204 |
+| `PUT` | `/api/events/{id}/participants` | Reemplaza los participantes de un evento en `DRAFT` | 200 |
+
+```http
+POST /api/participants
+{ "name": "Trío Costero", "type": "ARTIST" }
+
+PUT /api/events/10/participants              X-User-Id: 2
+{ "participantIds": [1, 5] }
+→ 200 [ { "id": 5, "name": "DJ Marea", "type": "ARTIST" }, { "id": 1, "name": "Los Serranos", ... } ]
+```
+
+### Reglas
+
+- **No hay dos participantes con el mismo nombre y tipo**, sin distinguir mayúsculas: `409 participant_duplicated`. Un artista y un equipo sí pueden llamarse igual. Un participante repetido partiría en dos los favoritos de los clientes (Entrega 2).
+- **Borrado físico, solo si no está en ningún evento**, en cualquier estado: si no, `409 participant_in_use`. Es la misma regla que `venue_in_use`.
+- **Modificar un participante** cambia lo que muestran todos los eventos que lo tienen.
+- **Asignar participantes a un evento:**
+  - reemplaza la lista completa; los ids repetidos cuentan una vez y `[]` los quita a todos;
+  - solo en `DRAFT` (`409 event_not_editable`), con `EVENT_MANAGE` (`403 forbidden`) y por un organizador de la organización del evento (`403 organizer_not_in_organization`);
+  - si falta algún id, `404 participant_not_found` con los ids que faltan en `detail.missingIds`, y no se cambia nada.
+
+**Datos de prueba:** *Sofía Lanza* no está en ningún evento, así que se puede borrar (`204`). Cualquier otro participante da `409`. El evento `10` es un borrador sin participantes.
+
+| Tema | Detalle |
+|---|---|
+| Permisos del ABM | Igual que `/api/venues`, no tiene `@RequiresPermission`: falta definir qué permiso cubre el catálogo (ver `permissions.md`) |
+| Eventos publicados | Cambiar la grilla de un evento publicado queda para cuando haya notificaciones de cambios (Entrega 2) |
+
+## Eventos: ver, editar, borrar, publicar, suspender y cancelar
+
+El alta (`POST /api/events`) está en `event-creation-pending.md`. Las transiciones de estado siguen [`event-state-machine.md`](event-state-machine.md).
+
+| Método | Ruta | Qué hace | Permiso | OK |
+|---|---|---|---|---|
+| `GET` | `/api/events/{id}` | El evento con su lugar, los sectores que vende (precio y capacidad), los participantes y la capacidad total | Público | 200 |
+| `PUT` | `/api/events/{id}` | Reemplaza los datos del alta. Usa el mismo body que `POST` | `EVENT_MANAGE` | 200 |
+| `PUT` | `/api/events/{id}/sectors` | Reemplaza los sectores que vende y sus precios | `EVENT_MANAGE` | 200 |
+| `DELETE` | `/api/events/{id}` | Borra un borrador con sus sectores y participantes | `EVENT_MANAGE` | 204 |
+| `POST` | `/api/events/{id}/publish` | `DRAFT → PUBLISHED` | `EVENT_MANAGE` | 200 |
+| `POST` | `/api/events/{id}/cancel` | `PUBLISHED`, `SOLD_OUT` o `SUSPENDED → CANCELLED` | `EVENT_ADMIN`, o `EVENT_MANAGE` si es el organizador que lo creó | 200 |
+| `POST` | `/api/events/{id}/suspend` | `PUBLISHED` o `SOLD_OUT → SUSPENDED` | `EVENT_ADMIN`, o `EVENT_MANAGE` si es el organizador que lo creó | 200 |
+| `POST` | `/api/events/{id}/resume` | `SUSPENDED →` el estado anterior. Body opcional `{ "dateTime" }` para reprogramarlo | `EVENT_ADMIN`, o `EVENT_MANAGE` si es el organizador que lo creó | 200 |
+
+### Reglas
+
+- **Editar, borrar y publicar** son solo para un organizador de la organización del evento: si no, `403 organizer_not_in_organization`. Cancelar lo hace cualquier administrador, sobre cualquier evento, como dice la consigna 3.
+- **Sectores y precios:** `{ "sectors": [{ "sectorId": 3, "price": 20000.00 }] }` reemplaza la lista completa, y `[]` los quita a todos. Solo en `DRAFT`. Además:
+  - cada sector tiene que ser del lugar del evento: si no, `404 sector_not_found` con los que no lo son en `detail.missingIds`;
+  - un sector va una sola vez, porque tendría dos precios: `400 invalid_event_configuration` con `detail.repeatedSectorIds`;
+  - el precio es mayor a 0 y tiene hasta dos decimales (`400 validation_error`), y se guarda siempre con dos. Se asume que está en pesos;
+  - **se actualiza en el lugar:** un sector que sigue conserva su fila de `event_sector` (y su id) y solo cambia el precio; los que se van se borran y los nuevos se insertan. Así el id queda estable si algún día se permite cambiar precios de un evento publicado, porque el ticket-service lo referencia.
+- **Eventos gratuitos:** no están soportados. El precio tiene que ser mayor a 0, y el payment-service tampoco cobra montos de 0. Si hicieran falta, habría que aceptar `price = 0` acá y que el ticket-service emita la entrada sin cobrar.
+- **Editar, borrar y cambiar sectores, solo en `DRAFT`:** si no, `409 event_not_editable`. Un evento publicado se cancela, no se borra.
+- **Si al editar cambia el lugar,** se borran los sectores que vendía, porque eran del lugar anterior. La organización, el estado, los sectores y los participantes no se cambian con `PUT`.
+- **Publicar** exige que esté en `DRAFT` (si no, `409 invalid_status_transition`) y que cumpla todas estas condiciones. Si falla alguna, responde `409 event_not_publishable` con todas en `detail.problems`:
+  - al menos un sector a la venta;
+  - ningún sector numerado sin asientos, porque se vendería un sector de capacidad 0;
+  - la fecha todavía en el futuro;
+  - si es de alta demanda, un `saleStart`, y siempre anterior a la fecha.
+- **Suspender, reanudar y cancelar:** el admin puede con cualquier evento. Un organizador, solo con los que creó, y mientras siga siendo organizador de su organización. Otro organizador, aunque sea de la misma organización, recibe `403 not_event_creator`. Ver *Varios permisos y quién llama* en `permissions.md`.
+- **Cancelar o suspender un borrador** da `409 invalid_status_transition`: un borrador se borra. Cancelar uno ya cancelado, o suspender uno ya suspendido, no cambia nada.
+- **Reanudar vuelve al estado anterior:** al suspender se guarda `PUBLISHED` o `SOLD_OUT` en `status_before_suspension`. Así un evento agotado no reabre la venta como si tuviera lugar. Un evento suspendido sin estado anterior guardado (el 7 del seeder antes de este cambio) vuelve a `PUBLISHED`.
+- **Reprogramar:** `POST /resume` con `{ "dateTime": "2027-02-20T21:00:00" }` cambia la fecha. Tiene que ser futura (`400 validation_error`) y posterior a `saleStart` (`400 invalid_event_configuration`). Es la única forma de cambiar la fecha de un evento que no es borrador.
+- **La capacidad** es la suma de los sectores que vende: los asientos de los numerados y `capacity` de los no numerados.
+- **Las llamadas al auth-service van fuera de la transacción,** como en el alta: solo la escritura corre dentro de una (`TransactionTemplate`). Así una espera de auth no retiene una conexión de la base.
+
+```http
+POST /api/events/10/publish                  X-User-Id: 2
+→ 409 { "error": "event_not_publishable", "detail": { "problems": ["No tiene sectores a la venta"] } }
+```
+
+| Pendiente | Detalle |
+|---|---|
+| Reintegros | Cancelar ya frena la venta en el ticket-service, pero todavía no reintegra las entradas vendidas (US-TKT-18, #61) |
+| Avisar a los compradores | Suspender, reprogramar y cancelar no notifican a nadie (Entrega 2) |
+| Otras transiciones | Agotar (`SOLD_OUT`) y finalizar (`FINISHED`) todavía no tienen endpoint. Agotar le toca al ticket-service (US-TKT-13, #55) |

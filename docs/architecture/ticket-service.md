@@ -132,7 +132,9 @@ Si actualiza 0 filas, no hay lugar. La base ejecuta el `UPDATE` de a una fila po
 
 ### El inventario se crea al publicar el evento
 
-`event_seat` y `event_sector_stock` se crean cuando el evento pasa a `PUBLISHED`: el event-service le pasa al ticket-service los asientos de los sectores numerados y la capacidad de los no numerados que tienen fila en `event_sector`. Así hay un solo momento de sincronización entre los dos servicios, y durante la venta el ticket-service no necesita consultar al event-service para saber qué hay disponible. Se implementa en la épica #3.
+`event_seat` y `event_sector_stock` se crean cuando el evento pasa a `PUBLISHED`: el event-service le pasa al ticket-service los asientos de los sectores numerados y la capacidad de los no numerados que tienen fila en `event_sector`. Así hay un solo momento de sincronización entre los dos servicios, y durante la venta el ticket-service no necesita consultar al event-service para saber qué hay disponible.
+
+Publicar y cancelar usan el mismo endpoint interno, `PUT /internal/event-sales/{eventId}`, que recibe la foto completa de la venta. Es idempotente: actualiza estado, fechas y precios, y crea solo los lugares que faltan, sin tocar los ya vendidos o reservados. El event-service llama antes de cambiar su propio estado y sin una transacción abierta. Si la llamada falla, el evento queda como estaba y se puede reintentar.
 
 ### La `ticket` existe desde la reserva
 
@@ -153,6 +155,8 @@ Se genera con un UUID, no a partir del ID de la entrada. Si fuera predecible, al
 ### Idempotencia de la orden
 
 `orders.idempotency_key` es única y la genera el cliente para cada intento de compra. Si la app reintenta la misma compra por un problema de conexión (consigna 5), el ticket-service encuentra la orden existente y la devuelve en vez de crear otra y reservar dos veces. La idempotencia del cobro se resuelve en el payment-service.
+
+Si una reserva falla, antes de responder el error se vuelve a buscar la clave. Dos pedidos del mismo intento pueden correr a la vez, y el que pierde ve los lugares ya tomados por su propia orden: tiene que recibir esa orden, no `seat_unavailable`.
 
 ### `reserved_until` repite `orders.expires_at`
 
@@ -183,6 +187,8 @@ No hay una transacción que abarque las dos bases, así que aprobar se hace en t
 3. Si lo aceptó, se confirma en una transacción: solicitud `APPROVED`, entrada `REFUNDED` y lugar liberado.
 
 Si el payment-service no responde, la solicitud sigue `PENDING` y el administrador reintenta. Ante un timeout no se sabe si el reintegro se procesó, por eso el reintento tiene que ser seguro: para el mismo `ticket_id`, el payment-service devuelve el reintegro existente. El mismo reintento completa el paso 3 si el ticket-service se cayó después del paso 2.
+
+El paso 3 usa `UPDATE` condicionales, y solo libera el lugar quien efectivamente pasó la entrada de `ISSUED` a `REFUNDED`, así dos aprobaciones simultáneas no lo liberan dos veces. Si la solicitud se resolvió por otro camino mientras se pedía el reintegro, la entrada igual queda `REFUNDED`, porque el dinero ya se devolvió, y el administrador recibe 409 `refund_not_allowed`.
 
 ### Una sola transición desde `PENDING`
 
@@ -232,11 +238,31 @@ La salida es un `UPDATE` condicional que además exige `payment_attempt_key IS N
 
 Un `event_seat` con `reserved_until` vencido se trata como libre, así que otro cliente puede tomarlo aunque el job todavía no haya expirado la orden original. Antes de pasar a `PAID` se verifica que cada asiento siga asociado a esa orden. Si alguno ya no lo está, la orden pasa a `EXPIRED` y se compensa el pago como en el caso anterior.
 
+### Evento agotado
+
+Después de emitir, y en otra transacción para ver las compras simultáneas ya confirmadas, se revisa si queda algún lugar libre o reservado. Si no queda, `event_sale` pasa a `SOLD_OUT` y se anota el aviso pendiente. El job lo envía al event-service con `PUT /internal/events/{id}/sold-out` y lo reintenta hasta que se aplique, sin deshacer la compra. Si el event-service lo rechaza con un 4xx, se deja de reintentar.
+
+Aprobar una devolución libera un lugar, así que en esa misma transacción `event_sale` vuelve de `SOLD_OUT` a `PUBLISHED` y se anota el aviso. El job manda el estado que tiene la venta en ese momento, con `PUT /internal/events/{id}/sold-out` o `PUT /internal/events/{id}/back-on-sale`. El aviso solo se limpia si la venta sigue en el estado que se avisó: si cambió mientras tanto, la siguiente corrida avisa el estado nuevo.
+
+### Cancelación de un evento
+
+El event-service avisa la cancelación con `PUT /internal/event-sales/{eventId}` y estado `CANCELLED`. En esa misma transacción las órdenes `PENDING` pasan a `CANCELLED`, sus entradas a `VOIDED`, sus lugares se liberan y las solicitudes de devolución `PENDING` pasan a `CANCELLED`.
+
+Los reintegros no se piden dentro de ese aviso, porque un evento con muchas entradas superaría el timeout del event-service. Los pide un job cada 30 segundos, uno por entrada `ISSUED` o `USED` de un evento `CANCELLED`, con motivo `EVENT_CANCELLED`. Cada entrada pasa a `REFUNDED` cuando el payment-service acepta su reintegro. Si uno falla, se siguen procesando los demás y el siguiente ciclo reintenta solo los que faltan, sin duplicados porque el reintegro es único por entrada.
+
+Si la orden se cancela mientras se confirma su pago, no se emiten entradas y el pago se reintegra con motivo `PURCHASE_COMPENSATION`, por el mismo camino que una reserva vencida.
+
+### Una sola solicitud pendiente por entrada
+
+`return_request.pending_ticket_id` es una columna generada que vale `ticket_id` mientras la solicitud está `PENDING` y `NULL` si no, con UNIQUE. Es el mismo recurso que `payment.active_order_id`: dos pedidos simultáneos no pueden crear dos solicitudes pendientes, y después de un rechazo se puede volver a solicitar.
+
 ## Limitaciones conocidas
 
 **Límite de entradas por cliente.** Se controla contando las entradas del usuario para el evento (`orders.user_id` + `orders.event_id`) contra `event_sale.max_tickets_per_customer`. Si el mismo usuario lanza dos compras exactamente al mismo tiempo, las dos pueden pasar el control. Resolverlo requiere un lock por usuario y evento; para la Entrega 1 se valida en el service y queda anotado. No afecta la no doble venta: cada lugar sigue vendiéndose una sola vez.
 
 **Ingreso durante la aprobación de una devolución.** Si alguien entra con una entrada justo entre el pedido de reintegro y la confirmación local, el reintegro ya se pidió y la entrada queda `USED`. Es muy improbable y se registra en el log para resolverlo a mano. Si la entrada ya estaba usada al aprobar, no se pide el reintegro.
+
+**Reintegro rechazado de un evento cancelado.** Si el payment-service rechaza el reintegro con un 4xx, por ejemplo porque la entrada ya tenía un reintegro acreditado con otros datos, la entrada sigue sin pasar a `REFUNDED`, el job la reintenta y cada intento queda en el log para resolverlo a mano.
 
 ## Datos de prueba
 
@@ -272,9 +298,20 @@ Las historias y sus criterios de aceptación están en [`user-stories.md`](../us
 
 ### Pendientes para la implementación
 
-- **Códigos nuevos en `TicketErrorCode`:** `event_not_on_sale`, `order_not_payable`, `order_not_cancellable`, `payment_in_progress`, `payment_window_closed`, `return_request_not_found`, `return_request_already_pending`, `invalid_queue_token`.
-- **Valores nuevos de enums:** `CANCELLED` y `FAILED` en `OrderStatus`, `CANCELLED` en `ReturnRequestStatus`.
-- **Modelo:** entidades `EventSale` y `EventSectorPrice`, `event_sector_id` en `EventSeat`, y `payment_method` y `payment_attempt_key` en `Order`. El `TicketSeeder` tiene que cargarlos, con la misma clave que el pago `PENDING` de la orden 3.
+- **Códigos nuevos en `TicketErrorCode`:** `invalid_queue_token`.
+
+### Endpoints
+
+| Método y ruta | Qué hace | Errores |
+|---|---|---|
+| `PUT /internal/event-sales/{eventId}` | Sincroniza la venta y el inventario. Con estado `CANCELLED` cierra las compras abiertas y deja los reintegros al job. Solo entre servicios; el gateway no la expone | 400 `validation_error` |
+| `GET /api/availability?eventId=` | Disponibilidad por sector | 404 `resource_not_found` |
+| `POST /api/orders` | Reserva asientos (`seatIds`) o lugares (`eventSectorId` y `quantity`). Header `X-User-Id` | 400 `validation_error`, 404 `resource_not_found`, 409 `seat_unavailable`, `sector_sold_out`, `ticket_limit_exceeded`, `event_not_on_sale`, `sale_not_started`, `data_conflict` |
+| `POST /api/orders/{id}/cancel` | Abandona una reserva. Repetirlo responde 200. Header `X-User-Id` | 404 `order_not_found`, 409 `payment_in_progress`, `reservation_expired`, `order_not_cancellable` |
+| `POST /api/tickets/{ticketId}/return-requests` | Solicita la devolución de una entrada. Header `X-User-Id` | 404 `ticket_not_found`, 409 `refund_not_allowed`, `return_request_already_pending` |
+| `GET /api/return-requests?status=&page=&size=` | Lista paginada, primero las más antiguas. Por defecto, `PENDING` | 400 si un parámetro es inválido |
+| `POST /api/return-requests/{id}/approve` | Pide el reintegro, marca la entrada `REFUNDED` y libera el lugar. Header `X-User-Id` | 404 `return_request_not_found`, 409 `refund_not_allowed`, `ticket_already_used`, 503 `service_unavailable` |
+| `POST /api/return-requests/{id}/reject` | Rechaza la solicitud y la entrada sigue vigente. Header `X-User-Id` | 404 `return_request_not_found`, 409 `refund_not_allowed` |
 
 ### Dependencias con otros servicios
 

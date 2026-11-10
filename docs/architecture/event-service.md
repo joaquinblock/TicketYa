@@ -44,6 +44,7 @@ erDiagram
         bigint venue_id FK
         datetime date_time
         enum status "DRAFT | PUBLISHED | SOLD_OUT | SUSPENDED | CANCELLED | FINISHED"
+        enum status_before_suspension "PUBLISHED | SOLD_OUT, only while SUSPENDED"
         boolean high_demand
         datetime sale_start
         int max_tickets_per_customer
@@ -174,6 +175,8 @@ Organización `1` (*Del Sur Producciones*, organizador `2`), salvo los dos últi
 | 10 | Muestra de fin de año | `THEATER` | Tandil | `DRAFT` | +50 días | Borrador sin sectores ni participantes: no se puede publicar |
 | 11 | Peña folklórica serrana | `CONCERT` | Tandil | `PUBLISHED` | +18 días | Organización `2` |
 | 12 | Cultura y territorio | `CONFERENCE` | Tandil | `DRAFT` | +70 días | Organización `2` |
+
+**Para el ABM de participantes:** *Sofía Lanza* (`SPEAKER`) no está en ningún evento y se puede borrar. El Festival (evento 4) es el evento de referencia con todos los campos completos, y `EventSeederTest` verifica que siga así.
 
 **Para la búsqueda (consigna 9):**
 - *Los Serranos* toca en tres eventos (1, 4 y 7).

@@ -16,6 +16,10 @@ spring:
         read-timeout: 20s
       auth-service:
         base-url: ${AUTH_SERVICE_URL:http://localhost:8081}
+  task:
+    scheduling:
+      pool:
+        size: 3
   docker:
     compose:
       file: compose.yaml
@@ -42,6 +46,8 @@ ticketya:
     payment-margin: 1m
     max-rejected-payments: 3
     expiration-check: PT30S
+  cancellation:
+    refund-check: PT30S
 
 springdoc:
   swagger-ui:

@@ -49,6 +49,25 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
             """)
     int markIssuedTicketAsRefunded(Long id);
 
+    @Query("""
+            select t from Ticket t join fetch t.order o
+            where t.status in (org.group10.ticket.entity.TicketStatus.ISSUED, org.group10.ticket.entity.TicketStatus.USED)
+              and o.eventId in (
+                  select s.eventId from EventSale s
+                  where s.status = org.group10.ticket.entity.EventSaleStatus.CANCELLED)
+            order by t.id
+            """)
+    List<Ticket> findTicketsToRefundOfCancelledEvents();
+
+    @Modifying
+    @Query("""
+            update Ticket t
+            set t.status = org.group10.ticket.entity.TicketStatus.REFUNDED, t.version = t.version + 1
+            where t.id = :id
+              and t.status in (org.group10.ticket.entity.TicketStatus.ISSUED, org.group10.ticket.entity.TicketStatus.USED)
+            """)
+    int markSoldTicketAsRefunded(Long id);
+
     @Modifying
     @Query("""
             update Ticket t

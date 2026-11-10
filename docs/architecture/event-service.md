@@ -175,6 +175,8 @@ Organización `1` (*Del Sur Producciones*, organizador `2`), salvo los dos últi
 | 11 | Peña folklórica serrana | `CONCERT` | Tandil | `PUBLISHED` | +18 días | Organización `2` |
 | 12 | Cultura y territorio | `CONFERENCE` | Tandil | `DRAFT` | +70 días | Organización `2` |
 
+**Para el ABM de participantes:** *Sofía Lanza* (`SPEAKER`) no está en ningún evento y se puede borrar. El Festival (evento 4) es el evento de referencia con todos los campos completos, y `EventSeederTest` verifica que siga así.
+
 **Para la búsqueda (consigna 9):**
 - *Los Serranos* toca en tres eventos (1, 4 y 7).
 - Hay eventos en cinco ciudades y de los cinco tipos.

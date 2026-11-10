@@ -1,4 +1,4 @@
-# event-service: ABM de lugares, sectores y asientos
+# event-service: ABM de lugares, sectores, asientos y participantes
 
 > Épica 3 (#3), primera parte: *"ABM de lugares con sectores numerados (filas/asientos) y no numerados (capacidad)"*.
 > El modelo de datos y su porqué están en [`event-service.md`](event-service.md). Este documento cubre cómo se usa la API y qué reglas aplica.
@@ -122,3 +122,42 @@ Todos usan el `ErrorDto` común (ver [`error-handling.md`](error-handling.md)).
 | Autorización | La Entrega 1 no tiene autenticación: cualquiera puede usar estos endpoints. Con la Épica 9 deberían quedar solo para administradores, u organizadores según se decida |
 | Mover o renumerar asientos | No hay endpoint para cambiar fila o número de un asiento: se borra y se crea. No lo pide el enunciado |
 | Capacidad habilitada | Sigue sin modelarse `venue.licensed_capacity` (ver `event-service.md`) |
+
+## Participantes
+
+Artistas, equipos y disertantes (`ARTIST`, `TEAM`, `SPEAKER`). El gateway enruta `/api/participants/**` al event-service.
+
+| Método | Ruta | Qué hace | OK |
+|---|---|---|---|
+| `GET` | `/api/participants?type=&name=` | Lista por nombre. `type` y `name` (parte del nombre, sin distinguir mayúsculas) son opcionales | 200 |
+| `GET` | `/api/participants/{id}` | Un participante | 200 |
+| `POST` | `/api/participants` | Crea un participante | 201 |
+| `PUT` | `/api/participants/{id}` | Reemplaza nombre y tipo | 200 |
+| `DELETE` | `/api/participants/{id}` | Lo borra definitivamente | 204 |
+| `PUT` | `/api/events/{id}/participants` | Reemplaza los participantes de un evento en `DRAFT` | 200 |
+
+```http
+POST /api/participants
+{ "name": "Trío Costero", "type": "ARTIST" }
+
+PUT /api/events/10/participants              X-User-Id: 2
+{ "participantIds": [1, 5] }
+→ 200 [ { "id": 5, "name": "DJ Marea", "type": "ARTIST" }, { "id": 1, "name": "Los Serranos", ... } ]
+```
+
+### Reglas
+
+- **No hay dos participantes con el mismo nombre y tipo**, sin distinguir mayúsculas: `409 participant_duplicated`. Un artista y un equipo sí pueden llamarse igual. Un participante repetido partiría en dos los favoritos de los clientes (Entrega 2).
+- **Borrado físico, solo si no está en ningún evento**, en cualquier estado: si no, `409 participant_in_use`. Es la misma regla que `venue_in_use`.
+- **Modificar un participante** cambia lo que muestran todos los eventos que lo tienen.
+- **Asignar participantes a un evento:**
+  - reemplaza la lista completa; los ids repetidos cuentan una vez y `[]` los quita a todos;
+  - solo en `DRAFT` (`409 event_not_editable`), con `EVENT_MANAGE` (`403 forbidden`) y por un organizador de la organización del evento (`403 organizer_not_in_organization`);
+  - si falta algún id, `404 participant_not_found` con los ids que faltan en `detail.missingIds`, y no se cambia nada.
+
+**Datos de prueba:** *Sofía Lanza* no está en ningún evento, así que se puede borrar (`204`). Cualquier otro participante da `409`. El evento `10` es un borrador sin participantes.
+
+| Tema | Detalle |
+|---|---|
+| Permisos del ABM | Igual que `/api/venues`, no tiene `@RequiresPermission`: falta definir qué permiso cubre el catálogo (ver `permissions.md`) |
+| Eventos publicados | Cambiar la grilla de un evento publicado queda para cuando haya notificaciones de cambios (Entrega 2) |

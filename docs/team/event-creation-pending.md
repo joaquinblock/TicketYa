@@ -8,7 +8,7 @@
 |---|---|---|
 | 1. Crear el evento en borrador | `POST /api/events` | ✅ Hecho |
 | 2. Definir qué sectores se venden y a qué precio | `PUT /api/events/{id}/sectors` | ⬜ Falta |
-| 3. Agregar participantes | `PUT /api/events/{id}/participants` | ⬜ Falta |
+| 3. Agregar participantes | `PUT /api/events/{id}/participants` | ✅ Hecho |
 | 4. Corregir datos mientras es borrador | `PUT /api/events/{id}` | ⬜ Falta |
 | 5. Publicar | `POST /api/events/{id}/publish` | ⬜ Falta |
 | 6. Que el ticket-service arme el inventario | `TicketClient` | ⬜ Falta |
@@ -29,7 +29,7 @@
   - Sin sectores repetidos (el unique `uk_event_sector` lo protege igual)
   - `price > 0` con dos decimales, como en `EventSector`
   - Reemplaza la lista completa en vez de agregar de a uno: es más simple de validar y de explicar
-- [ ] **Participantes:** recibir `participantIds` y validar que existan (`404 participant_not_found`, el código ya existe). No hay ABM de participantes ni ruta `/api/participants`, aunque el gateway ya la tiene
+- [x] **Participantes:** ABM en `/api/participants` y `PUT /api/events/{id}/participants` (ver *Participantes* en [`eventservice.md`](../architecture/eventservice.md))
 - [ ] **Capacidad del evento:** Σ de los sectores que se venden (asientos si es numerado, `capacity` si no). Misma regla que `VenueMapper.toDetail`, pero solo con los sectores de `event_sector` (ver *Capacidades* en `event-service.md`)
 - [ ] **Modificar el evento:** solo en `DRAFT`, si no `409 event_not_editable` (el código ya existe). Si cambia el lugar, los sectores cargados dejan de valer y hay que borrarlos
 - [ ] **Que solo lo toque su organización:** en editar, configurar y publicar, comparar `event.organizationId` con el del organizador de `X-User-Id`. Hoy solo se valida al crear

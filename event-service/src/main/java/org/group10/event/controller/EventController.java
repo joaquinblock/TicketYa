@@ -10,18 +10,24 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.group10.common.dto.ErrorDto;
 import org.group10.event.dto.EventCreateRequest;
+import org.group10.event.dto.EventParticipantsRequest;
 import org.group10.event.dto.EventResponse;
+import org.group10.event.dto.ParticipantResponse;
 import org.group10.event.security.Permission;
 import org.group10.event.security.PermissionInterceptor;
 import org.group10.event.security.RequiresPermission;
 import org.group10.event.service.EventService;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 /**
  * En la Entrega 1 no hay JWT: quien llama se identifica con los headers {@value #USER_HEADER} y
@@ -63,5 +69,30 @@ public class EventController {
             @RequestHeader(USER_HEADER) Long organizerId,
             @Valid @RequestBody EventCreateRequest request) {
         return eventService.create(organizationId, organizerId, request);
+    }
+
+    @PutMapping("/{id}/participants")
+    @RequiresPermission(Permission.EVENT_MANAGE)
+    @Operation(summary = "Definir los participantes de un evento", description = """
+            Reemplaza la lista completa: los ids repetidos cuentan una vez y una lista vacía los quita a todos. \
+            Solo en `DRAFT`, y solo un organizador de la organización del evento.""")
+    @ApiResponse(responseCode = "200", description = "Participantes del evento, ordenados por nombre")
+    @ApiResponse(responseCode = "400", description = "validation_error / invalid_parameter",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "403", description = "forbidden (sin EVENT_MANAGE) / organizer_not_in_organization",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "404", description = "event_not_found / participant_not_found (con missingIds en "
+            + "detail) / user_not_found / organizer_not_found",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "409", description = "event_not_editable: el evento no está en DRAFT",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "503", description = "service_unavailable: el auth-service no responde",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    public List<ParticipantResponse> replaceParticipants(
+            @PathVariable Long id,
+            @Parameter(description = "Organizador que hace el cambio (id de usuario)", example = "2")
+            @RequestHeader(USER_HEADER) Long organizerId,
+            @Valid @RequestBody EventParticipantsRequest request) {
+        return eventService.replaceParticipants(id, organizerId, request);
     }
 }

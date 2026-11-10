@@ -24,7 +24,7 @@ No se crea una clase por error. Cada servicio tiene su enum `<Servicio>ErrorCode
 |---|---|---|
 | `CommonErrorCode` | common | `validation_error`, `invalid_parameter`, `unauthorized`, `forbidden`, `resource_not_found`, `method_not_allowed`, `data_conflict`, `service_unavailable`, `internal_error` |
 | `AuthErrorCode` | auth-service | `user_not_found`, `email_duplicated`, `invalid_credentials`, `organization_not_found`, `organizer_not_found`, `staff_not_assigned` |
-| `EventErrorCode` | event-service | `event_not_found`, `venue_not_found`, `venue_in_use`, `sector_not_found`, `sector_name_duplicated`, `sector_in_use`, `sector_not_numbered`, `invalid_sector_configuration`, `seat_not_found`, `seat_row_duplicated`, `participant_not_found`, `invalid_status_transition`, `event_not_editable`, `invalid_event_configuration`, `organizer_not_in_organization` |
+| `EventErrorCode` | event-service | `event_not_found`, `venue_not_found`, `venue_in_use`, `sector_not_found`, `sector_name_duplicated`, `sector_in_use`, `sector_not_numbered`, `invalid_sector_configuration`, `seat_not_found`, `seat_row_duplicated`, `participant_not_found`, `participant_duplicated`, `participant_in_use`, `invalid_status_transition`, `event_not_editable`, `invalid_event_configuration`, `organizer_not_in_organization` |
 | `TicketErrorCode` | ticket-service | `order_not_found`, `ticket_not_found`, `sale_not_started`, `seat_unavailable`, `sector_sold_out`, `ticket_limit_exceeded`, `reservation_expired`, `ticket_already_used`, `refund_not_allowed`, `invalid_qr` |
 | `PaymentErrorCode` | payment-service | `payment_not_found`, `payment_rejected`, `payment_gateway_unavailable`, `refund_failed` |
 

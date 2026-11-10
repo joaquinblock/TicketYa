@@ -4,9 +4,11 @@ import org.group10.common.exception.TicketYaException;
 import org.group10.event.client.AuthClient;
 import org.group10.event.client.dto.UserPermissionsResponse;
 import org.group10.event.dto.EventResponse;
+import org.group10.event.dto.ParticipantResponse;
 import org.group10.event.dto.VenueSummaryResponse;
 import org.group10.event.entity.EventStatus;
 import org.group10.event.entity.EventType;
+import org.group10.event.entity.ParticipantType;
 import org.group10.event.exception.EventErrorCode;
 import org.group10.event.service.EventService;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,6 +22,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import org.springframework.web.client.ResourceAccessException;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Set;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -27,6 +30,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -183,6 +187,49 @@ class EventControllerTest {
         mockMvc.perform(createRequest(VALID_EVENT))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.error").value("service_unavailable"));
+    }
+
+    @Test
+    void replaceParticipants_valid_returns200WithTheParticipants() throws Exception {
+        when(eventService.replaceParticipants(eq(10L), eq(2L), any()))
+                .thenReturn(List.of(new ParticipantResponse(1L, "Los Serranos", ParticipantType.ARTIST)));
+
+        mockMvc.perform(put("/api/events/10/participants").header("X-User-Id", 2)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"participantIds\": [1]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].name").value("Los Serranos"));
+    }
+
+    @Test
+    void replaceParticipants_userWithoutEventManage_returns403() throws Exception {
+        when(authClient.getPermissions(1L)).thenReturn(
+                new UserPermissionsResponse(1L, "CLIENT", Set.of("EVENT_SEARCH")));
+
+        mockMvc.perform(put("/api/events/10/participants").header("X-User-Id", 1)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"participantIds\": [1]}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("forbidden"));
+        verifyNoInteractions(eventService);
+    }
+
+    @Test
+    void replaceParticipants_withoutTheList_returns400() throws Exception {
+        mockMvc.perform(put("/api/events/10/participants").header("X-User-Id", 2)
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail.participantIds").exists());
+        verifyNoInteractions(eventService);
+    }
+
+    @Test
+    void replaceParticipants_notADraft_returns409() throws Exception {
+        when(eventService.replaceParticipants(eq(10L), eq(2L), any())).thenThrow(new TicketYaException(
+                EventErrorCode.EVENT_NOT_EDITABLE, "El evento 10 está PUBLISHED"));
+
+        mockMvc.perform(put("/api/events/10/participants").header("X-User-Id", 2)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"participantIds\": [1]}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("event_not_editable"));
     }
 
     private static MockHttpServletRequestBuilder createRequest(String body) {

@@ -74,8 +74,9 @@ Usuarios de prueba: `1` cliente, `2` organizador (org `1`), `3` admin, `4` perso
 | Servicio | Endpoint | Permiso |
 |---|---|---|
 | event-service | `POST /api/events` | `EVENT_MANAGE` |
+| event-service | `PUT /api/events/{id}/participants` | `EVENT_MANAGE` |
 
-El resto todavía no tiene `@RequiresPermission`. Los `POST`/`PUT`/`DELETE` de `/api/venues` quedan sin proteger hasta definir qué permiso los cubre: hoy no existe uno para administrar lugares (ver *Pendiente*).
+El resto todavía no tiene `@RequiresPermission`. Los `POST`/`PUT`/`DELETE` de `/api/venues` y de `/api/participants` quedan sin proteger hasta definir qué permiso los cubre: hoy no existe uno para administrar lugares (ver *Pendiente*).
 
 ## Errores
 

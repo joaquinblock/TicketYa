@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
+import java.util.Collection;
 import java.util.List;
 
 public interface EventSectorRepository extends JpaRepository<EventSector, Long> {
@@ -24,4 +25,11 @@ public interface EventSectorRepository extends JpaRepository<EventSector, Long> 
     @Modifying
     @Query("delete from EventSector es where es.event.id = :eventId")
     void deleteAllByEventId(Long eventId);
+
+    @Query("""
+            select new org.group10.event.repository.EventPriceFrom(es.event.id, min(es.price))
+            from EventSector es
+            where es.event.id in :eventIds
+            group by es.event.id""")
+    List<EventPriceFrom> findPriceFromByEventIds(Collection<Long> eventIds);
 }

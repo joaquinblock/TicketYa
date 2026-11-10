@@ -38,6 +38,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionOperations;
+import org.springframework.web.client.HttpClientErrorException;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -69,11 +70,35 @@ public class EventService {
 
     /**
      * The event with its venue, the sectors it sells with their price and capacity, and its participants.
+     * <p>
+     * A draft is private: only an organizer of its organization sees it. For anyone else it doesn't exist, with the
+     * same 404 as a missing id, so its id doesn't reveal that the event is being prepared.
      *
+     * @param userId optional {@code X-User-Id}; only needed to see a draft
      * @throws TicketYaException {@code EVENT_NOT_FOUND}
      */
-    public EventDetailResponse findById(Long id) {
-        return toDetail(getEvent(id));
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public EventDetailResponse findById(Long id, Long userId) {
+        Event event = getEvent(id);
+        if (event.getStatus() == EventStatus.DRAFT && !organizesFor(userId, event.getOrganizationId())) {
+            throw eventNotFound(id);
+        }
+        return transactions.execute(tx -> toDetail(getEvent(id)));
+    }
+
+    /**
+     * Whether the user is an active organizer of the organization. A user who isn't an organizer at all comes back
+     * from the auth-service as a 404, which here just means "no".
+     */
+    private boolean organizesFor(Long userId, Long organizationId) {
+        if (userId == null) {
+            return false;
+        }
+        try {
+            return organizationId.equals(authClient.getOrganizer(userId).organizationId());
+        } catch (HttpClientErrorException.NotFound notAnOrganizer) {
+            return false;
+        }
     }
 
     /**
@@ -514,9 +539,11 @@ public class EventService {
     }
 
     private Event getEvent(Long id) {
-        return eventRepository.findById(id)
-                .orElseThrow(() -> new TicketYaException(EventErrorCode.EVENT_NOT_FOUND,
-                        "No se encontró el evento con id %d".formatted(id)));
+        return eventRepository.findById(id).orElseThrow(() -> eventNotFound(id));
+    }
+
+    private static TicketYaException eventNotFound(Long id) {
+        return new TicketYaException(EventErrorCode.EVENT_NOT_FOUND, "No se encontró el evento con id %d".formatted(id));
     }
 
     private static void ensureDraft(Event event, String action) {

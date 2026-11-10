@@ -50,7 +50,7 @@
 ## Lectura y baja
 
 - [x] **`GET /api/events/{id}`:** con lugar, sectores y precios, participantes y capacidad
-- [ ] **`GET /api/events`:** filtros simples (`organizationId`, `status`). La búsqueda de la consigna 9 (tipo, organizador, participante, ciudad, fechas, ordenamiento) es otra tarea
+- [x] **`GET /api/events`:** la búsqueda de la consigna 9, con filtros, orden y páginas (ver [`event-search.md`](../architecture/event-search.md))
 - [x] **`DELETE /api/events/{id}`:** solo en `DRAFT`. En borrador no hay tickets, porque el inventario nace al publicar, así que no hace falta cascada. Un evento publicado se cancela, no se borra
 - [ ] **Nombre de la organización:** las páginas de eventos tienen que mostrar `publicName`. [`RFC-004`](../rfc/RFC-004-cross-service-relations.md) eligió la referencia por id, así que para mostrar el nombre hay que sumarle composición (B) o snapshot (D)
 

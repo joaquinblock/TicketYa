@@ -7,6 +7,8 @@ import org.group10.payment.gateway.PaymentGateway;
 import org.group10.payment.repository.PaymentRepository;
 import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -32,6 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -56,35 +59,38 @@ class PaymentIdempotencyIntegrationTest {
     }
 
     @RepeatedTest(5)
-    void charge_sameKeySimultaneously_chargesOnceAndStoresOnePayment() throws Exception {
+    void charge_sameKeySimultaneously_storesOnePaymentAndEveryAnswerIsTheSame() throws Exception {
         Long orderId = uniqueOrderId();
         String body = paymentBody(orderId, "25000.00", "CREDIT_CARD", uniqueKey());
-        CountDownLatch ready = new CountDownLatch(SIMULTANEOUS_REQUESTS);
-        CountDownLatch start = new CountDownLatch(1);
 
-        try (ExecutorService executor = Executors.newFixedThreadPool(SIMULTANEOUS_REQUESTS)) {
-            List<Future<HttpAnswer>> requests = IntStream.range(0, SIMULTANEOUS_REQUESTS)
-                    .mapToObj(request -> executor.submit(() -> {
-                        ready.countDown();
-                        start.await();
-                        return postPayment(body);
-                    }))
-                    .toList();
+        List<HttpAnswer> answers = postSimultaneously(IntStream.range(0, SIMULTANEOUS_REQUESTS)
+                .mapToObj(request -> body)
+                .toList());
 
-            assertThat(ready.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
-            start.countDown();
+        assertThat(answers).allSatisfy(answer -> assertThat(answer.status()).isEqualTo(201));
+        assertThat(answers.stream().distinct()).hasSize(1);
+        assertThat(paymentsOfTheOrder(orderId)).singleElement()
+                .satisfies(payment -> assertThat(payment.getStatus()).isEqualTo(PaymentStatus.APPROVED));
+    }
 
-            List<Integer> statuses = statusesOf(requests);
-            assertThat(statuses).contains(201).allMatch(status -> status == 201 || status == 503);
-        }
+    @RepeatedTest(5)
+    void charge_otherKeysSimultaneouslyOnTheSameOrder_chargesOnlyOneAttempt() throws Exception {
+        Long orderId = uniqueOrderId();
 
+        List<HttpAnswer> answers = postSimultaneously(IntStream.range(0, SIMULTANEOUS_REQUESTS)
+                .mapToObj(request -> paymentBody(orderId, "25000.00", "CREDIT_CARD", uniqueKey()))
+                .toList());
+
+        assertThat(answers.stream().map(HttpAnswer::status).toList())
+                .containsOnlyOnce(201)
+                .allMatch(status -> status == 201 || status == 409);
         assertThat(paymentsOfTheOrder(orderId)).singleElement()
                 .satisfies(payment -> assertThat(payment.getStatus()).isEqualTo(PaymentStatus.APPROVED));
         verify(paymentGateway, times(1)).charge(any());
     }
 
     @Test
-    void charge_sameKeyWhileTheFirstRequestIsAtTheGateway_answers503AndThenTheOriginalResult() throws Exception {
+    void charge_sameKeyWhileTheFirstRequestIsAtTheGateway_retriesWithTheSameKeyAndBothGetTheSameAnswer() throws Exception {
         Long orderId = uniqueOrderId();
         String body = paymentBody(orderId, "25000.00", "CREDIT_CARD", uniqueKey());
         CountDownLatch gatewayReached = new CountDownLatch(1);
@@ -93,7 +99,7 @@ class PaymentIdempotencyIntegrationTest {
             gatewayReached.countDown();
             assertThat(gatewayReleased.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
             return invocation.callRealMethod();
-        }).when(paymentGateway).charge(any());
+        }).doCallRealMethod().when(paymentGateway).charge(any());
 
         try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
             Future<HttpAnswer> firstRequest = executor.submit(() -> postPayment(body));
@@ -102,16 +108,15 @@ class PaymentIdempotencyIntegrationTest {
             HttpAnswer whileCharging = postPayment(body);
             gatewayReleased.countDown();
             HttpAnswer firstAnswer = firstRequest.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            HttpAnswer afterCharging = postPayment(body);
 
-            assertThat(whileCharging.status()).isEqualTo(503);
-            assertThat(whileCharging.body()).contains("payment_gateway_unavailable");
-            assertThat(firstAnswer.status()).isEqualTo(201);
-            assertThat(afterCharging).isEqualTo(firstAnswer);
+            assertThat(whileCharging.status()).isEqualTo(201);
+            assertThat(firstAnswer).isEqualTo(whileCharging);
+            assertThat(postPayment(body)).isEqualTo(firstAnswer);
         }
 
-        assertThat(paymentsOfTheOrder(orderId)).hasSize(1);
-        verify(paymentGateway, times(1)).charge(any());
+        assertThat(paymentsOfTheOrder(orderId)).singleElement()
+                .satisfies(payment -> assertThat(payment.getStatus()).isEqualTo(PaymentStatus.APPROVED));
+        verify(paymentGateway, times(2)).charge(any());
     }
 
     @Test
@@ -178,18 +183,37 @@ class PaymentIdempotencyIntegrationTest {
     }
 
     @Test
-    void charge_storedPendingPayment_answers503AndStaysPendingWithoutCharging() {
+    void charge_storedPendingPayment_chargesItAndLaterRetriesRepeatTheResult() {
         Long orderId = uniqueOrderId();
         String key = uniqueKey();
         paymentRepository.saveAndFlush(pendingPayment(orderId, key));
+        String body = paymentBody(orderId, "25000.00", "CREDIT_CARD", key);
 
-        HttpAnswer answer = postPayment(paymentBody(orderId, "25000.00", "CREDIT_CARD", key));
+        HttpAnswer answer = postPayment(body);
 
-        assertThat(answer.status()).isEqualTo(503);
-        assertThat(answer.body()).contains("payment_gateway_unavailable");
+        assertThat(answer.status()).isEqualTo(201);
+        assertThat(postPayment(body)).isEqualTo(answer);
+        assertThat(paymentsOfTheOrder(orderId)).singleElement()
+                .satisfies(payment -> assertThat(payment.getStatus()).isEqualTo(PaymentStatus.APPROVED));
+        verify(paymentGateway, times(1)).charge(any());
+    }
+
+    @Test
+    void charge_gatewayFailsAndThenRecovers_answers503AndTheRetryWithTheSameKeyCharges() {
+        Long orderId = uniqueOrderId();
+        String body = paymentBody(orderId, "25000.00", "CREDIT_CARD", uniqueKey());
+        doThrow(new IllegalStateException("gateway down")).doCallRealMethod().when(paymentGateway).charge(any());
+
+        HttpAnswer whileDown = postPayment(body);
+
+        assertThat(whileDown.status()).isEqualTo(503);
+        assertThat(whileDown.body()).contains("payment_gateway_unavailable");
         assertThat(paymentsOfTheOrder(orderId)).singleElement()
                 .satisfies(payment -> assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PENDING));
-        verify(paymentGateway, never()).charge(any());
+
+        assertThat(postPayment(body).status()).isEqualTo(201);
+        assertThat(paymentsOfTheOrder(orderId)).singleElement()
+                .satisfies(payment -> assertThat(payment.getStatus()).isEqualTo(PaymentStatus.APPROVED));
     }
 
     @Test
@@ -213,6 +237,46 @@ class PaymentIdempotencyIntegrationTest {
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
+    @ParameterizedTest
+    @EnumSource(value = PaymentStatus.class, names = {"PENDING", "APPROVED"})
+    void save_secondActivePaymentOfTheOrder_isRejectedByTheDatabase(PaymentStatus activeStatus) {
+        Long orderId = uniqueOrderId();
+        paymentRepository.saveAndFlush(paymentInStatus(orderId, uniqueKey(), activeStatus));
+
+        assertThatThrownBy(() -> paymentRepository.saveAndFlush(pendingPayment(orderId, uniqueKey())))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void save_rejectedPayment_doesNotBlockANewAttemptOfTheOrder() {
+        Long orderId = uniqueOrderId();
+        paymentRepository.saveAndFlush(paymentInStatus(orderId, uniqueKey(), PaymentStatus.REJECTED));
+
+        paymentRepository.saveAndFlush(pendingPayment(orderId, uniqueKey()));
+
+        assertThat(paymentsOfTheOrder(orderId)).hasSize(2);
+    }
+
+    private List<HttpAnswer> postSimultaneously(List<String> bodies) throws Exception {
+        CountDownLatch ready = new CountDownLatch(bodies.size());
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(bodies.size())) {
+            List<Future<HttpAnswer>> requests = bodies.stream()
+                    .map(body -> executor.submit(() -> {
+                        ready.countDown();
+                        start.await();
+                        return postPayment(body);
+                    }))
+                    .toList();
+
+            assertThat(ready.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+
+            return answersOf(requests);
+        }
+    }
+
     private HttpAnswer postPayment(String body) {
         return RestClient.create("http://localhost:" + port).post()
                 .uri("/internal/payments")
@@ -222,12 +286,12 @@ class PaymentIdempotencyIntegrationTest {
                         new HttpAnswer(response.getStatusCode().value(), response.bodyTo(String.class)));
     }
 
-    private List<Integer> statusesOf(List<Future<HttpAnswer>> requests) throws Exception {
-        List<Integer> statuses = new ArrayList<>();
+    private List<HttpAnswer> answersOf(List<Future<HttpAnswer>> requests) throws Exception {
+        List<HttpAnswer> answers = new ArrayList<>();
         for (Future<HttpAnswer> request : requests) {
-            statuses.add(request.get(TIMEOUT_SECONDS, TimeUnit.SECONDS).status());
+            answers.add(request.get(TIMEOUT_SECONDS, TimeUnit.SECONDS));
         }
-        return statuses;
+        return answers;
     }
 
     private List<Payment> paymentsOfTheOrder(Long orderId) {
@@ -237,12 +301,16 @@ class PaymentIdempotencyIntegrationTest {
     }
 
     private Payment pendingPayment(Long orderId, String key) {
+        return paymentInStatus(orderId, key, PaymentStatus.PENDING);
+    }
+
+    private Payment paymentInStatus(Long orderId, String key, PaymentStatus status) {
         return Payment.builder()
                 .orderId(orderId)
                 .idempotencyKey(key)
                 .paymentMethod(PaymentMethod.CREDIT_CARD)
                 .amount(new BigDecimal("25000.00"))
-                .status(PaymentStatus.PENDING)
+                .status(status)
                 .build();
     }
 

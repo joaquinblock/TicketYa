@@ -173,7 +173,7 @@ class PaymentServiceTest {
 
         paymentService.charge(request);
 
-        verify(paymentRepository, never()).findFirstByOrderIdAndStatusIn(any(), any());
+        verify(paymentRepository, never()).findByActiveOrderId(any());
     }
 
     @Test
@@ -206,15 +206,46 @@ class PaymentServiceTest {
     }
 
     @Test
-    void charge_sameKeyStillPending_failsAsUnavailableWithoutCharging() {
+    void charge_sameKeyStillPending_retriesTheGatewayOnTheSamePayment() {
+        Payment pendingPayment = storedPayment(PaymentStatus.PENDING);
+        when(paymentRepository.findByIdempotencyKey("attempt-1")).thenReturn(Optional.of(pendingPayment));
+        when(paymentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(paymentGateway.charge(pendingPayment)).thenReturn(APPROVED_CHARGE);
+
+        PaymentResponse response = paymentService.charge(request);
+
+        assertThat(response.id()).isEqualTo(STORED_PAYMENT_ID);
+        assertThat(response.status()).isEqualTo(PaymentStatus.APPROVED);
+        assertThat(response.gatewayId()).isEqualTo("MOCK-1");
+        verify(paymentRepository, times(1)).save(pendingPayment);
+    }
+
+    @Test
+    void charge_sameKeyStillPendingAndRejectedOnRetry_failsWithTheReasonAndTheRejectedAttempts() {
         when(paymentRepository.findByIdempotencyKey("attempt-1"))
                 .thenReturn(Optional.of(storedPayment(PaymentStatus.PENDING)));
+        when(paymentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(paymentGateway.charge(any())).thenReturn(ChargeResult.rejected("MOCK-1", "Fondos insuficientes"));
+        when(paymentRepository.countByOrderIdAndStatusAndIdLessThanEqual(ORDER_ID, PaymentStatus.REJECTED, STORED_PAYMENT_ID))
+                .thenReturn(1L);
 
         assertThatThrownBy(() -> paymentService.charge(request))
-                .isInstanceOfSatisfying(TicketYaException.class,
-                        ex -> assertThat(ex.getErrorCode()).isEqualTo(PaymentErrorCode.PAYMENT_GATEWAY_UNAVAILABLE));
+                .isInstanceOfSatisfying(TicketYaException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(PaymentErrorCode.PAYMENT_REJECTED);
+                    assertThat(ex.getDetail()).containsEntry("rejectedAttempts", 1L);
+                });
+    }
 
-        assertNothingWasChargedOrStored();
+    @Test
+    void charge_sameKeyStillPendingAndGatewayFailsAgain_failsAsUnavailableAndStaysPending() {
+        Payment pendingPayment = storedPayment(PaymentStatus.PENDING);
+        when(paymentRepository.findByIdempotencyKey("attempt-1")).thenReturn(Optional.of(pendingPayment));
+        when(paymentGateway.charge(any())).thenThrow(new IllegalStateException("gateway down"));
+
+        assertThatFailsAsGatewayUnavailable();
+
+        assertThat(pendingPayment.getStatus()).isEqualTo(PaymentStatus.PENDING);
+        verify(paymentRepository, never()).save(any());
     }
 
     @ParameterizedTest
@@ -251,18 +282,20 @@ class PaymentServiceTest {
     }
 
     @Test
-    void charge_keyTakenByASimultaneousAttemptStillPending_failsAsUnavailableAndNotAsConflict() {
+    void charge_keyTakenByASimultaneousAttemptStillPending_retriesTheGatewayAndIsNotAConflict() {
+        Payment pendingPayment = storedPayment(PaymentStatus.PENDING);
         when(paymentRepository.findByIdempotencyKey("attempt-1"))
-                .thenReturn(Optional.empty(), Optional.of(storedPayment(PaymentStatus.PENDING)));
-        when(paymentRepository.findFirstByOrderIdAndStatusIn(any(), any()))
-                .thenReturn(Optional.of(storedPayment(PaymentStatus.PENDING)));
-        when(paymentRepository.save(any())).thenThrow(new DataIntegrityViolationException("duplicate idempotency key"));
+                .thenReturn(Optional.empty(), Optional.of(pendingPayment));
+        when(paymentRepository.findByActiveOrderId(ORDER_ID)).thenReturn(Optional.of(pendingPayment));
+        when(paymentRepository.save(any()))
+                .thenThrow(new DataIntegrityViolationException("duplicate idempotency key"))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(paymentGateway.charge(pendingPayment)).thenReturn(APPROVED_CHARGE);
 
-        assertThatThrownBy(() -> paymentService.charge(request))
-                .isInstanceOfSatisfying(TicketYaException.class,
-                        ex -> assertThat(ex.getErrorCode()).isEqualTo(PaymentErrorCode.PAYMENT_GATEWAY_UNAVAILABLE));
+        PaymentResponse response = paymentService.charge(request);
 
-        verifyNoInteractions(paymentGateway);
+        assertThat(response.id()).isEqualTo(STORED_PAYMENT_ID);
+        assertThat(response.status()).isEqualTo(PaymentStatus.APPROVED);
     }
 
     @Test
@@ -291,18 +324,18 @@ class PaymentServiceTest {
     }
 
     @Test
-    void charge_gatewayFails_leavesThePaymentPendingAndPropagatesTheFailure() {
+    void charge_gatewayFails_leavesThePaymentPendingAndFailsAsUnavailable() {
         when(paymentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(paymentGateway.charge(any())).thenThrow(new IllegalStateException("gateway down"));
 
-        assertThatThrownBy(() -> paymentService.charge(request)).isInstanceOf(IllegalStateException.class);
+        assertThatFailsAsGatewayUnavailable();
 
         verify(paymentRepository, times(1)).save(any());
     }
 
     @Test
     void charge_orderWithAPendingOrApprovedPayment_isRejectedWithoutCharging() {
-        when(paymentRepository.findFirstByOrderIdAndStatusIn(any(), any()))
+        when(paymentRepository.findByActiveOrderId(ORDER_ID))
                 .thenReturn(Optional.of(Payment.builder().build()));
 
         assertThatThrownBy(() -> paymentService.charge(request))
@@ -311,17 +344,6 @@ class PaymentServiceTest {
 
         verifyNoInteractions(paymentGateway);
         verify(paymentRepository, never()).save(any());
-    }
-
-    @Test
-    void charge_onlyPendingAndApprovedPaymentsBlockTheOrder() {
-        when(paymentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(paymentGateway.charge(any())).thenReturn(APPROVED_CHARGE);
-
-        paymentService.charge(request);
-
-        verify(paymentRepository).findFirstByOrderIdAndStatusIn(
-                ORDER_ID, List.of(PaymentStatus.PENDING, PaymentStatus.APPROVED));
     }
 
     private static Stream<PaymentRequest> requestsThatChangeTheDataOfTheAttempt() {
@@ -348,6 +370,12 @@ class PaymentServiceTest {
         assertThatThrownBy(() -> paymentService.charge(conflictingRequest))
                 .isInstanceOfSatisfying(TicketYaException.class,
                         ex -> assertThat(ex.getErrorCode()).isEqualTo(CommonErrorCode.DATA_CONFLICT));
+    }
+
+    private void assertThatFailsAsGatewayUnavailable() {
+        assertThatThrownBy(() -> paymentService.charge(request))
+                .isInstanceOfSatisfying(TicketYaException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(PaymentErrorCode.PAYMENT_GATEWAY_UNAVAILABLE));
     }
 
     private void assertNothingWasChargedOrStored() {

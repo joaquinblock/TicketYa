@@ -36,7 +36,7 @@ public class PaymentController {
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "422", description = "payment_rejected, con reason y rejectedAttempts en detail",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    @ApiResponse(responseCode = "503", description = "payment_gateway_unavailable: el pago de esa clave sigue sin resultado",
+    @ApiResponse(responseCode = "503", description = "payment_gateway_unavailable: la pasarela no respondió y se puede reintentar con la misma clave",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     public PaymentResponse charge(@Valid @RequestBody PaymentRequest request) {
         return paymentService.charge(request);

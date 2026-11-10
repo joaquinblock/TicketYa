@@ -36,6 +36,11 @@ public class Payment {
     @Column(nullable = false)
     private Long orderId;
 
+    @Setter(AccessLevel.NONE)
+    @Column(insertable = false, updatable = false, unique = true,
+            columnDefinition = "BIGINT GENERATED ALWAYS AS (CASE WHEN status IN ('PENDING', 'APPROVED') THEN order_id END) STORED")
+    private Long activeOrderId;
+
     @Column(nullable = false, unique = true)
     private String idempotencyKey;
 

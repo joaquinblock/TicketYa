@@ -8,6 +8,7 @@ import org.group10.event.dto.EventCreateRequest;
 import org.group10.event.dto.EventDetailResponse;
 import org.group10.event.dto.EventParticipantsRequest;
 import org.group10.event.dto.EventResponse;
+import org.group10.event.dto.EventResumeRequest;
 import org.group10.event.dto.EventSectorResponse;
 import org.group10.event.dto.EventSectorsRequest;
 import org.group10.event.dto.ParticipantResponse;
@@ -27,6 +28,8 @@ import org.group10.event.repository.SeatRepository;
 import org.group10.event.repository.SectorRepository;
 import org.group10.event.repository.SectorSeatCount;
 import org.group10.event.repository.VenueRepository;
+import org.group10.event.security.Caller;
+import org.group10.event.security.Permission;
 import org.group10.event.statemachine.EventStatusMachine;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -215,20 +218,93 @@ public class EventService {
     }
 
     /**
-     * Cancels a published, sold out or suspended event for good. Any administrator can cancel any event.
+     * Cancels a published, sold out or suspended event for good.
      *
-     * @throws TicketYaException {@code EVENT_NOT_FOUND} or {@code INVALID_STATUS_TRANSITION} for a draft (it's
-     *                           deleted instead) or a finished event
+     * @param caller an administrator, or the organizer who created the event (see {@link #ensureCanSuspendOrCancel})
+     * @throws TicketYaException {@code EVENT_NOT_FOUND}, {@code NOT_EVENT_CREATOR}, {@code ORGANIZER_NOT_IN_ORGANIZATION}
+     *                           or {@code INVALID_STATUS_TRANSITION} for a draft (it's deleted instead) or a finished
+     *                           event
      */
-    @Transactional
-    public EventDetailResponse cancel(Long id) {
-        Event event = getEvent(id);
-        ensureNotStatus(event, EventStatus.DRAFT, "Un borrador no se cancela: se borra con DELETE /api/events/%d"
-                .formatted(id));
-        event.changeStatus(EventStatus.CANCELLED, statusMachine);
-        // TODO: tell the ticket-service, so every sold ticket goes to refund and the buyers are notified
-        //  (US-TKT-18, #61). Until then the tickets of a cancelled event stay valid in the ticket-service.
-        return toDetail(event);
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public EventDetailResponse cancel(Long id, Caller caller) {
+        ensureCanSuspendOrCancel(getEvent(id), caller, "cancelarlo");
+
+        return transactions.execute(tx -> {
+            Event event = getEvent(id);
+            ensureNotStatus(event, EventStatus.DRAFT, "Un borrador no se cancela: se borra con DELETE /api/events/%d"
+                    .formatted(id));
+            event.changeStatus(EventStatus.CANCELLED, statusMachine);
+            // TODO: tell the ticket-service, so every sold ticket goes to refund and the buyers are notified
+            //  (US-TKT-18, #61). Until then the tickets of a cancelled event stay valid in the ticket-service.
+            return toDetail(event);
+        });
+    }
+
+    /**
+     * Suspends a published or sold out event, remembering which of the two it was so {@link #resume} goes back to it.
+     *
+     * @param caller an administrator, or the organizer who created the event
+     * @throws TicketYaException {@code EVENT_NOT_FOUND}, {@code NOT_EVENT_CREATOR}, {@code ORGANIZER_NOT_IN_ORGANIZATION}
+     *                           or {@code INVALID_STATUS_TRANSITION} if it isn't published or sold out
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public EventDetailResponse suspend(Long id, Caller caller) {
+        ensureCanSuspendOrCancel(getEvent(id), caller, "suspenderlo");
+
+        return transactions.execute(tx -> {
+            Event event = getEvent(id);
+            ensureNotStatus(event, EventStatus.DRAFT, "Un borrador no se suspende: todavía no está a la venta");
+            event.suspend(statusMachine);
+            // TODO: the ticket-service has to stop selling a suspended event and keep accepting returns with the 72 h
+            //  rule (US-TKT-07, #49). Notifying the buyers comes with the notifications (Entrega 2).
+            return toDetail(event);
+        });
+    }
+
+    /**
+     * Resumes a suspended event: it goes back to {@code PUBLISHED} or {@code SOLD_OUT}, whichever it was. If it was
+     * rescheduled, {@code request.dateTime()} is the new date.
+     *
+     * @param request optional; {@code null} or without a date keeps the current one
+     * @throws TicketYaException {@code EVENT_NOT_FOUND}, {@code NOT_EVENT_CREATOR}, {@code ORGANIZER_NOT_IN_ORGANIZATION},
+     *                           {@code INVALID_STATUS_TRANSITION} if it isn't suspended or
+     *                           {@code INVALID_EVENT_CONFIGURATION} if the new date isn't after {@code saleStart}
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public EventDetailResponse resume(Long id, Caller caller, EventResumeRequest request) {
+        ensureCanSuspendOrCancel(getEvent(id), caller, "reanudarlo");
+        LocalDateTime newDate = request == null ? null : request.dateTime();
+
+        return transactions.execute(tx -> {
+            Event event = getEvent(id);
+            ensureStatus(event, EventStatus.SUSPENDED, "Solo se reanuda un evento suspendido");
+            if (newDate != null) {
+                if (event.getSaleStart() != null && !event.getSaleStart().isBefore(newDate)) {
+                    throw invalidConfiguration("La fecha nueva tiene que ser posterior a saleStart (%s)"
+                            .formatted(event.getSaleStart()));
+                }
+                event.setDateTime(newDate);
+            }
+            event.resume(statusMachine);
+            // TODO: notify the buyers if the date changed (Entrega 2, notifications).
+            return toDetail(event);
+        });
+    }
+
+    /**
+     * An administrator can suspend or cancel any event. An organizer, only the ones they created, and only while they
+     * still organize for its organization: another organizer of the same organization can't, so a single account
+     * can't suspend events that affect many buyers and artists by mistake or on purpose.
+     */
+    private void ensureCanSuspendOrCancel(Event event, Caller caller, String action) {
+        if (caller.has(Permission.EVENT_ADMIN)) {
+            return;
+        }
+        if (!caller.userId().equals(event.getCreatedBy())) {
+            throw new TicketYaException(EventErrorCode.NOT_EVENT_CREATOR,
+                    "Solo el organizador que creó el evento %d, o un administrador, puede %s".formatted(event.getId(), action));
+        }
+        verifyOrganizer(event.getOrganizationId(), caller.userId());
     }
 
     /**

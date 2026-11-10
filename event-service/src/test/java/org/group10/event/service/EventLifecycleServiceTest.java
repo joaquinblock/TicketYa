@@ -6,6 +6,7 @@ import org.group10.event.client.dto.OrganizationResponse;
 import org.group10.event.client.dto.OrganizerResponse;
 import org.group10.event.dto.EventCreateRequest;
 import org.group10.event.dto.EventDetailResponse;
+import org.group10.event.dto.EventResumeRequest;
 import org.group10.event.dto.EventSectorsRequest;
 import org.group10.event.entity.Event;
 import org.group10.event.entity.EventSector;
@@ -23,6 +24,7 @@ import org.group10.event.repository.SeatRepository;
 import org.group10.event.repository.SectorRepository;
 import org.group10.event.repository.SectorSeatCount;
 import org.group10.event.repository.VenueRepository;
+import org.group10.event.security.Caller;
 import org.group10.event.statemachine.EventStatusMachine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -58,6 +60,9 @@ class EventLifecycleServiceTest {
     private static final Long ORGANIZATION_ID = 1L;
     private static final Long ORGANIZER_ID = 2L;
     private static final LocalDateTime DATE = LocalDateTime.now().plusMonths(2);
+    private static final Caller ADMIN = new Caller(3L, Set.of("EVENT_ADMIN"));
+    private static final Caller CREATOR = new Caller(ORGANIZER_ID, Set.of("EVENT_MANAGE"));
+    private static final Caller OTHER_ORGANIZER = new Caller(7L, Set.of("EVENT_MANAGE"));
 
     @Mock
     private EventRepository eventRepository;
@@ -268,21 +273,49 @@ class EventLifecycleServiceTest {
     // ---- cancel ----
 
     @Test
-    void cancel_publishedSoldOutOrSuspended_goesToCancelled() {
+    void cancel_byAnAdmin_publishedSoldOutOrSuspended_goesToCancelledWithoutCallingAuth() {
         for (EventStatus status : List.of(EventStatus.PUBLISHED, EventStatus.SOLD_OUT, EventStatus.SUSPENDED)) {
             Event event = givenEvent(status);
 
-            eventService.cancel(EVENT_ID);
+            eventService.cancel(EVENT_ID, ADMIN);
 
             assertThat(event.getStatus()).as("desde %s", status).isEqualTo(EventStatus.CANCELLED);
+            assertThat(event.getStatusBeforeSuspension()).isNull();
         }
+        verifyNoInteractions(authClient);
+    }
+
+    @Test
+    void cancel_byTheOrganizerWhoCreatedIt_goesToCancelled() {
+        Event event = givenEvent(EventStatus.PUBLISHED);
+
+        eventService.cancel(EVENT_ID, CREATOR);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.CANCELLED);
+    }
+
+    @Test
+    void cancel_byAnotherOrganizerOfTheSameOrganization_throwsNotEventCreatorWithoutCallingAuth() {
+        Event event = givenEvent(EventStatus.PUBLISHED);
+
+        assertError(() -> eventService.cancel(EVENT_ID, OTHER_ORGANIZER), EventErrorCode.NOT_EVENT_CREATOR);
+        assertThat(event.getStatus()).isEqualTo(EventStatus.PUBLISHED);
+        verifyNoInteractions(authClient, transactions);
+    }
+
+    @Test
+    void cancel_byTheCreatorWhoNoLongerOrganizesForTheOrganization_throwsForbidden() {
+        givenEvent(EventStatus.PUBLISHED);
+        when(authClient.getOrganizer(ORGANIZER_ID)).thenReturn(new OrganizerResponse(ORGANIZER_ID, 9L));
+
+        assertError(() -> eventService.cancel(EVENT_ID, CREATOR), EventErrorCode.ORGANIZER_NOT_IN_ORGANIZATION);
     }
 
     @Test
     void cancel_draft_throwsInvalidTransitionAndPointsToDelete() {
         givenEvent(EventStatus.DRAFT);
 
-        assertThatThrownBy(() -> eventService.cancel(EVENT_ID))
+        assertThatThrownBy(() -> eventService.cancel(EVENT_ID, ADMIN))
                 .isInstanceOf(TicketYaException.class)
                 .hasMessageContaining("se borra");
     }
@@ -291,16 +324,111 @@ class EventLifecycleServiceTest {
     void cancel_finished_throwsInvalidTransition() {
         givenEvent(EventStatus.FINISHED);
 
-        assertError(() -> eventService.cancel(EVENT_ID), EventErrorCode.INVALID_STATUS_TRANSITION);
+        assertError(() -> eventService.cancel(EVENT_ID, ADMIN), EventErrorCode.INVALID_STATUS_TRANSITION);
     }
 
     @Test
     void cancel_alreadyCancelled_staysCancelled() {
         Event event = givenEvent(EventStatus.CANCELLED);
 
-        eventService.cancel(EVENT_ID);
+        eventService.cancel(EVENT_ID, ADMIN);
 
         assertThat(event.getStatus()).isEqualTo(EventStatus.CANCELLED);
+    }
+
+    // ---- suspend and resume ----
+
+    @Test
+    void suspend_published_remembersItAndResumeGoesBackToPublished() {
+        Event event = givenEvent(EventStatus.PUBLISHED);
+
+        eventService.suspend(EVENT_ID, ADMIN);
+        assertThat(event.getStatus()).isEqualTo(EventStatus.SUSPENDED);
+        assertThat(event.getStatusBeforeSuspension()).isEqualTo(EventStatus.PUBLISHED);
+
+        eventService.resume(EVENT_ID, ADMIN, null);
+        assertThat(event.getStatus()).isEqualTo(EventStatus.PUBLISHED);
+        assertThat(event.getStatusBeforeSuspension()).isNull();
+    }
+
+    @Test
+    void suspend_soldOut_resumeGoesBackToSoldOutNotToPublished() {
+        Event event = givenEvent(EventStatus.SOLD_OUT);
+
+        eventService.suspend(EVENT_ID, CREATOR);
+        eventService.resume(EVENT_ID, CREATOR, null);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.SOLD_OUT);
+    }
+
+    @Test
+    void suspend_alreadySuspended_keepsTheStatusItHadBefore() {
+        Event event = givenEvent(EventStatus.SOLD_OUT);
+        eventService.suspend(EVENT_ID, ADMIN);
+
+        eventService.suspend(EVENT_ID, ADMIN);
+
+        assertThat(event.getStatusBeforeSuspension()).isEqualTo(EventStatus.SOLD_OUT);
+    }
+
+    @Test
+    void suspend_draft_throwsInvalidTransition() {
+        givenEvent(EventStatus.DRAFT);
+
+        assertThatThrownBy(() -> eventService.suspend(EVENT_ID, ADMIN))
+                .isInstanceOf(TicketYaException.class)
+                .hasMessageContaining("borrador");
+    }
+
+    @Test
+    void suspend_cancelled_throwsInvalidTransition() {
+        givenEvent(EventStatus.CANCELLED);
+
+        assertError(() -> eventService.suspend(EVENT_ID, ADMIN), EventErrorCode.INVALID_STATUS_TRANSITION);
+    }
+
+    @Test
+    void suspend_byAnotherOrganizer_throwsNotEventCreator() {
+        givenEvent(EventStatus.PUBLISHED);
+
+        assertError(() -> eventService.suspend(EVENT_ID, OTHER_ORGANIZER), EventErrorCode.NOT_EVENT_CREATOR);
+    }
+
+    @Test
+    void resume_withANewDate_reschedulesIt() {
+        Event event = givenEvent(EventStatus.SUSPENDED);
+        LocalDateTime newDate = DATE.plusMonths(1);
+
+        eventService.resume(EVENT_ID, ADMIN, new EventResumeRequest(newDate));
+
+        assertThat(event.getDateTime()).isEqualTo(newDate);
+        assertThat(event.getStatus()).isEqualTo(EventStatus.PUBLISHED);
+    }
+
+    @Test
+    void resume_withANewDateBeforeTheSaleStart_throwsInvalidConfigurationAndStaysSuspended() {
+        Event event = givenEvent(EventStatus.SUSPENDED);
+        event.setSaleStart(DATE.minusDays(5));
+
+        assertError(() -> eventService.resume(EVENT_ID, ADMIN, new EventResumeRequest(DATE.minusDays(10))),
+                EventErrorCode.INVALID_EVENT_CONFIGURATION);
+        assertThat(event.getStatus()).isEqualTo(EventStatus.SUSPENDED);
+    }
+
+    @Test
+    void resume_suspendedWithoutPreviousStatus_goesToPublished() {
+        Event event = givenEvent(EventStatus.SUSPENDED);
+
+        eventService.resume(EVENT_ID, ADMIN, new EventResumeRequest(null));
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.PUBLISHED);
+    }
+
+    @Test
+    void resume_notSuspended_throwsInvalidTransition() {
+        givenEvent(EventStatus.PUBLISHED);
+
+        assertError(() -> eventService.resume(EVENT_ID, ADMIN, null), EventErrorCode.INVALID_STATUS_TRANSITION);
     }
 
     // ---- replaceSectors ----

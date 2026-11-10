@@ -64,6 +64,14 @@ public class Event {
     @Setter(AccessLevel.NONE)
     private EventStatus status;
 
+    /**
+     * {@code PUBLISHED} or {@code SOLD_OUT} while the event is suspended, so resuming goes back to it; {@code null}
+     * otherwise. Without it, a sold out event would reopen the sale as if it had room.
+     */
+    @Enumerated(EnumType.STRING)
+    @Setter(AccessLevel.NONE)
+    private EventStatus statusBeforeSuspension;
+
     @Column(nullable = false)
     private boolean highDemand;
 
@@ -90,5 +98,28 @@ public class Event {
      */
     public void changeStatus(EventStatus next, EventStatusMachine machine) {
         this.status = machine.transition(status, next);
+        if (status != EventStatus.SUSPENDED) {
+            statusBeforeSuspension = null;
+        }
+    }
+
+    /**
+     * Suspends the event and remembers the status it had. Suspending one that is already suspended changes nothing.
+     */
+    public void suspend(EventStatusMachine machine) {
+        EventStatus previous = status;
+        changeStatus(EventStatus.SUSPENDED, machine);
+        if (previous != EventStatus.SUSPENDED) {
+            statusBeforeSuspension = previous;
+        }
+    }
+
+    /**
+     * Goes back to the status it had before being suspended. An event loaded as suspended with no previous status
+     * (e.g. by the seeder) goes back to {@code PUBLISHED}.
+     */
+    public void resume(EventStatusMachine machine) {
+        EventStatus next = statusBeforeSuspension == null ? EventStatus.PUBLISHED : statusBeforeSuspension;
+        changeStatus(next, machine);
     }
 }

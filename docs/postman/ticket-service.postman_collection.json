@@ -1,0 +1,858 @@
+{
+  "info": {
+    "name": "TicketYa - Reserva de entradas",
+    "description": "Inventario, disponibilidad, reserva y abandono. Va directo a ticket-service (8083), que no necesita otros servicios. Cada corrida crea su propio evento con ids tomados de la fecha, así que se puede repetir sin reiniciar. El vencimiento de reservas (US-TKT-08) tarda 10 minutos y se prueba en ReservationMySqlIntegrationTest.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8083"
+    },
+    {
+      "key": "customerId",
+      "value": "501"
+    },
+    {
+      "key": "otherCustomerId",
+      "value": "502"
+    }
+  ],
+  "item": [
+    {
+      "name": "US-TKT-01 Crear el inventario",
+      "item": [
+        {
+          "name": "Publicar la venta → 204",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const base = Date.now();",
+                  "pm.collectionVariables.set('eventId', base);",
+                  "pm.collectionVariables.set('numberedSectorId', base + 1);",
+                  "pm.collectionVariables.set('generalSectorId', base + 2);",
+                  "pm.collectionVariables.set('seatsKey', 'seats-' + base);",
+                  "pm.collectionVariables.set('placesKey', 'places-' + base);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/internal/event-sales/{{eventId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"PUBLISHED\",\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"saleStart\": null,\n  \"highDemand\": false,\n  \"maxTicketsPerCustomer\": 4,\n  \"sectors\": [\n    {\"eventSectorId\": {{numberedSectorId}}, \"price\": 1000, \"seatIds\": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]},\n    {\"eventSectorId\": {{generalSectorId}}, \"price\": 500, \"capacity\": 3}\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Repetir la publicación → 204 sin duplicar",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/internal/event-sales/{{eventId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"PUBLISHED\",\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"saleStart\": null,\n  \"highDemand\": false,\n  \"maxTicketsPerCustomer\": 4,\n  \"sectors\": [\n    {\"eventSectorId\": {{numberedSectorId}}, \"price\": 1000, \"seatIds\": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]},\n    {\"eventSectorId\": {{generalSectorId}}, \"price\": 500, \"capacity\": 3}\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "US-TKT-02 Consultar la disponibilidad",
+      "item": [
+        {
+          "name": "Evento publicado → 200 por sector",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const sectors = pm.response.json().sectors;",
+                  "pm.test('10 asientos libres', () => pm.expect(sectors[0].availablePlaces).to.eql(10));",
+                  "pm.test('3 lugares libres', () => pm.expect(sectors[1].availablePlaces).to.eql(3));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/availability?eventId={{eventId}}",
+            "header": []
+          }
+        },
+        {
+          "name": "Evento sin venta → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404', () => pm.response.to.have.status(404));",
+                  "pm.test('error = resource_not_found', () => pm.expect(pm.response.json().error).to.eql('resource_not_found'));"
+                ]
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": []
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/availability?eventId=999999999",
+            "header": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "US-TKT-03 Reservar asientos numerados",
+      "item": [
+        {
+          "name": "Asientos libres → 201 PENDING",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "pm.test('status = PENDING', () => pm.expect(pm.response.json().status).to.eql('PENDING'));",
+                  "pm.test('Total = suma de precios', () => pm.expect(pm.response.json().total).to.eql(2000));",
+                  "pm.test('Una entrada por asiento', () => pm.expect(pm.response.json().tickets).to.have.lengthOf(2));",
+                  "pm.collectionVariables.set('seatsOrderId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{customerId}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"eventId\": {{eventId}}, \"idempotencyKey\": \"{{seatsKey}}\", \"seatIds\": [1, 2]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Uno de los asientos tomado → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));",
+                  "pm.test('error = seat_unavailable', () => pm.expect(pm.response.json().error).to.eql('seat_unavailable'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{otherCustomerId}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"eventId\": {{eventId}}, \"idempotencyKey\": \"taken-{{eventId}}\", \"seatIds\": [2, 3]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Asiento inexistente → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404', () => pm.response.to.have.status(404));",
+                  "pm.test('error = resource_not_found', () => pm.expect(pm.response.json().error).to.eql('resource_not_found'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{otherCustomerId}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"eventId\": {{eventId}}, \"idempotencyKey\": \"missing-{{eventId}}\", \"seatIds\": [999]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Sin asientos → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('error = validation_error', () => pm.expect(pm.response.json().error).to.eql('validation_error'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{customerId}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"eventId\": {{eventId}}, \"idempotencyKey\": \"empty-{{eventId}}\", \"seatIds\": []}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "US-TKT-04 Reservar lugares sin numerar",
+      "item": [
+        {
+          "name": "Lugares libres → 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "pm.test('status = PENDING', () => pm.expect(pm.response.json().status).to.eql('PENDING'));",
+                  "pm.test('Total', () => pm.expect(pm.response.json().total).to.eql(1000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{customerId}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"eventId\": {{eventId}}, \"idempotencyKey\": \"{{placesKey}}\", \"eventSectorId\": {{generalSectorId}}, \"quantity\": 2}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Más lugares que el cupo → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));",
+                  "pm.test('error = sector_sold_out', () => pm.expect(pm.response.json().error).to.eql('sector_sold_out'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{otherCustomerId}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"eventId\": {{eventId}}, \"idempotencyKey\": \"over-{{eventId}}\", \"eventSectorId\": {{generalSectorId}}, \"quantity\": 2}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Cantidad 0 → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('error = validation_error', () => pm.expect(pm.response.json().error).to.eql('validation_error'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{customerId}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"eventId\": {{eventId}}, \"idempotencyKey\": \"zero-{{eventId}}\", \"eventSectorId\": {{generalSectorId}}, \"quantity\": 0}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "US-TKT-05 Reintentar sin duplicar",
+      "item": [
+        {
+          "name": "Misma clave y mismos datos → la misma orden",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "pm.test('Misma orden', () => pm.expect(pm.response.json().id).to.eql(Number(pm.collectionVariables.get('seatsOrderId'))));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{customerId}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"eventId\": {{eventId}}, \"idempotencyKey\": \"{{seatsKey}}\", \"seatIds\": [2, 1]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Clave de otro cliente → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));",
+                  "pm.test('error = data_conflict', () => pm.expect(pm.response.json().error).to.eql('data_conflict'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{otherCustomerId}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"eventId\": {{eventId}}, \"idempotencyKey\": \"{{seatsKey}}\", \"seatIds\": [1, 2]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Misma clave con otros asientos → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));",
+                  "pm.test('error = data_conflict', () => pm.expect(pm.response.json().error).to.eql('data_conflict'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{customerId}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"eventId\": {{eventId}}, \"idempotencyKey\": \"{{seatsKey}}\", \"seatIds\": [5]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "US-TKT-06 Limitar las entradas por cliente",
+      "item": [
+        {
+          "name": "Pasar el límite de 4 → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));",
+                  "pm.test('error = ticket_limit_exceeded', () => pm.expect(pm.response.json().error).to.eql('ticket_limit_exceeded'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{customerId}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"eventId\": {{eventId}}, \"idempotencyKey\": \"limit-{{eventId}}\", \"seatIds\": [6]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "US-TKT-07 Vender solo con la venta abierta",
+      "item": [
+        {
+          "name": "Suspender la venta → 204",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/internal/event-sales/{{eventId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"SUSPENDED\",\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"saleStart\": null,\n  \"highDemand\": false,\n  \"maxTicketsPerCustomer\": 4,\n  \"sectors\": [\n    {\"eventSectorId\": {{numberedSectorId}}, \"price\": 1000, \"seatIds\": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]},\n    {\"eventSectorId\": {{generalSectorId}}, \"price\": 500, \"capacity\": 3}\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Reservar con la venta suspendida → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));",
+                  "pm.test('error = event_not_on_sale', () => pm.expect(pm.response.json().error).to.eql('event_not_on_sale'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{otherCustomerId}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"eventId\": {{eventId}}, \"idempotencyKey\": \"suspended-{{eventId}}\", \"seatIds\": [7]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Apertura futura → 204",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/internal/event-sales/{{eventId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"PUBLISHED\",\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"saleStart\": \"2099-01-01T10:00:00\",\n  \"highDemand\": false,\n  \"maxTicketsPerCustomer\": 4,\n  \"sectors\": [\n    {\"eventSectorId\": {{numberedSectorId}}, \"price\": 1000, \"seatIds\": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]},\n    {\"eventSectorId\": {{generalSectorId}}, \"price\": 500, \"capacity\": 3}\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Reservar antes de la apertura → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));",
+                  "pm.test('error = sale_not_started', () => pm.expect(pm.response.json().error).to.eql('sale_not_started'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{otherCustomerId}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"eventId\": {{eventId}}, \"idempotencyKey\": \"early-{{eventId}}\", \"seatIds\": [7]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Reabrir la venta → 204",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/internal/event-sales/{{eventId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"PUBLISHED\",\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"saleStart\": null,\n  \"highDemand\": false,\n  \"maxTicketsPerCustomer\": 4,\n  \"sectors\": [\n    {\"eventSectorId\": {{numberedSectorId}}, \"price\": 1000, \"seatIds\": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]},\n    {\"eventSectorId\": {{generalSectorId}}, \"price\": 500, \"capacity\": 3}\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "US-TKT-28 Abandonar una reserva",
+      "item": [
+        {
+          "name": "Orden de otro cliente → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404', () => pm.response.to.have.status(404));",
+                  "pm.test('error = order_not_found', () => pm.expect(pm.response.json().error).to.eql('order_not_found'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders/{{seatsOrderId}}/cancel",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{otherCustomerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Abandonar → 200 CANCELLED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = CANCELLED', () => pm.expect(pm.response.json().status).to.eql('CANCELLED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders/{{seatsOrderId}}/cancel",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{customerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Repetir → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = CANCELLED', () => pm.expect(pm.response.json().status).to.eql('CANCELLED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders/{{seatsOrderId}}/cancel",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{customerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "El asiento volvió a estar libre → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('10 asientos libres', () => pm.expect(pm.response.json().sectors[0].availablePlaces).to.eql(10));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/availability?eventId={{eventId}}",
+            "header": []
+          }
+        }
+      ]
+    }
+  ]
+}

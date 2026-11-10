@@ -1,5 +1,6 @@
 package org.group10.payment.mapper;
 
+import org.group10.payment.dto.OrderPaymentResponse;
 import org.group10.payment.dto.PaymentRequest;
 import org.group10.payment.dto.PaymentResponse;
 import org.group10.payment.entity.Payment;
@@ -18,6 +19,12 @@ public final class PaymentMapper {
                 .amount(request.amount())
                 .status(PaymentStatus.PENDING)
                 .build();
+    }
+
+    public static OrderPaymentResponse toOrderPaymentResponse(Payment payment) {
+        return new OrderPaymentResponse(payment.getId(), payment.getOrderId(), payment.getAmount(),
+                payment.getPaymentMethod(), payment.getStatus(), payment.getFailureReason(),
+                payment.getGatewayId(), payment.getCreatedAt());
     }
 
     public static PaymentResponse toResponse(Payment payment) {

@@ -137,8 +137,11 @@ public class EventSeeder implements ApplicationRunner {
         Participant central = participantRepository.save(participant("Club Atlético Central", ParticipantType.TEAM));
         Participant union = participantRepository.save(participant("Unión del Litoral", ParticipantType.TEAM));
         Participant martinIbarra = participantRepository.save(participant("Martín Ibarra", ParticipantType.SPEAKER));
+        // In no event: it can be deleted (204), while any of the others gives 409 participant_in_use
+        participantRepository.save(participant("Sofía Lanza", ParticipantType.SPEAKER));
 
-        // High demand whose sale opens in the future: the virtual queue isn't open yet
+        // The reference event with every field filled in: high demand whose sale opens in the future, several
+        // participants, and both a general admission and a numbered sector. EventSeederTest keeps it that way.
         Event festival = eventRepository.save(base("Festival de Verano", "Tres escenarios y una noche entera de música",
                 EventType.FESTIVAL, arena, at(60, 18, 0), EventStatus.PUBLISHED)
                 .highDemand(true)
@@ -161,6 +164,7 @@ public class EventSeeder implements ApplicationRunner {
 
         Event suspendedTour = eventRepository.save(base("Los Serranos en Rosario", "Gira nacional, suspendida por mal tiempo",
                 EventType.CONCERT, litoral, at(40, 21, 0), EventStatus.SUSPENDED)
+                .statusBeforeSuspension(EventStatus.PUBLISHED)
                 .maxTicketsPerCustomer(4)
                 .participants(participants(losSerranos))
                 .build());

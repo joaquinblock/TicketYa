@@ -67,15 +67,20 @@ GET /api/users/99/permissions
 | `EVENT_ADMIN`, `REFUND_RESOLVE`, `USER_MANAGE` | | | ✅ | |
 | `TICKET_VALIDATE` | | | | ✅ |
 
-Usuarios de prueba: `1` cliente, `2` organizador (org `1`), `3` admin, `4` personal de acceso, `5` organizador (org `2`).
+Usuarios de prueba: `1` cliente, `2` organizador (org `1`), `3` admin, `4` personal de acceso, `5` organizador (org `2`), `6` organizador (org `1`, sin eventos propios).
 
 ## Endpoints protegidos hoy
 
 | Servicio | Endpoint | Permiso |
 |---|---|---|
 | event-service | `POST /api/events` | `EVENT_MANAGE` |
+| event-service | `PUT /api/events/{id}/participants` | `EVENT_MANAGE` |
+| event-service | `PUT /api/events/{id}/sectors` | `EVENT_MANAGE` |
+| event-service | `PUT /api/events/{id}`, `DELETE /api/events/{id}` | `EVENT_MANAGE` |
+| event-service | `POST /api/events/{id}/publish` | `EVENT_MANAGE` |
+| event-service | `POST /api/events/{id}/cancel`, `/suspend`, `/resume` | `EVENT_ADMIN` **o** `EVENT_MANAGE` (y el service exige que sea el organizador que creó el evento) |
 
-El resto todavía no tiene `@RequiresPermission`. Los `POST`/`PUT`/`DELETE` de `/api/venues` quedan sin proteger hasta definir qué permiso los cubre: hoy no existe uno para administrar lugares (ver *Pendiente*).
+El resto todavía no tiene `@RequiresPermission`. Los `POST`/`PUT`/`DELETE` de `/api/venues` y de `/api/participants` quedan sin proteger hasta definir qué permiso los cubre: hoy no existe uno para administrar lugares (ver *Pendiente*).
 
 ## Errores
 
@@ -90,6 +95,12 @@ El resto todavía no tiene `@RequiresPermission`. Los `POST`/`PUT`/`DELETE` de `
 - **No hay un código nuevo.** `forbidden` ya existía en `CommonErrorCode`, así que el resto de los servicios lo puede usar sin tocar `common`. El mensaje dice qué permiso faltó: *"El usuario 1 no tiene el permiso EVENT_MANAGE"*.
 - **El permiso se revisa antes que el body.** Un usuario sin permiso que manda un body inválido recibe `403`, no `400`. Es intencional: a quien no puede usar el endpoint no se le explica qué campos espera.
 - **El permiso no reemplaza las reglas de negocio.** Responde "¿puede crear eventos?", no "¿este evento es de su organización?". Eso lo sigue validando el service: al crear, `organizer_not_in_organization`; al editar o publicar, comparar `event.organizationId` con el del organizador.
+
+## Varios permisos y quién llama
+
+- **`@RequiresPermission` acepta varios permisos, y alcanza con tener uno:** `@RequiresPermission({Permission.EVENT_ADMIN, Permission.EVENT_MANAGE})`. Si no tiene ninguno, el mensaje los lista: *"El usuario 1 no tiene ninguno de los permisos EVENT_ADMIN, EVENT_MANAGE"*.
+- **El interceptor deja un `Caller` (`userId` y `permissions`) en el request**, en el atributo `PermissionInterceptor.CALLER_ATTRIBUTE`. El controller lo recibe con `@RequestAttribute` y se lo pasa al service, que así distingue a un admin de un organizador sin volver a consultar al auth-service. Con JWT, el `Caller` sale del token.
+- **Ejemplo, suspender o cancelar:** el admin puede con cualquier evento. Un organizador, solo con los que creó (`event.createdBy`), y solo mientras siga siendo organizador de su organización. Otro organizador de la misma organización recibe `403 not_event_creator`. Así una sola cuenta no puede suspender, por error o a propósito, eventos que afectan a muchos compradores y artistas.
 
 ## Cómo proteger un endpoint nuevo
 
@@ -159,6 +170,7 @@ Cada request a un endpoint protegido hace **una llamada más al auth-service**. 
 | Tema | Detalle |
 |---|---|
 | Lugares | `POST`/`PUT`/`DELETE` de `/api/venues` no están protegidos. Hace falta decidir qué permiso los cubre (p. ej. un `VENUE_MANAGE` para el admin) |
+| Delegar la suspensión | Que el creador autorice a otro organizador de su organización a suspender o cancelar su evento. Necesita guardar quién autorizó a quién y cómo se revoca: se dejó afuera |
 | Otros servicios | ticket-service y los demás no tienen interceptor. Si lo necesitan, se puede mover `RequiresPermission` y `PermissionInterceptor` a `common` |
 | Timeouts | Configurar timeouts (y quizá un reintento) en el grupo `auth-service` de los clients HTTP |
 | `organizationId` en la respuesta | Ahorraría dos llamadas al crear eventos y permitiría sacar `X-Organization-Id` (ver `event-creation-pending.md`) |

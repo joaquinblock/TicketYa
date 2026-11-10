@@ -11,6 +11,9 @@ public interface EventSectorStockRepository extends JpaRepository<EventSectorSto
 
     List<EventSectorStock> findByEventId(Long eventId);
 
+    @Query("select count(s) from EventSectorStock s where s.eventId = :eventId and s.taken < s.capacity")
+    long countSectorsWithFreePlaces(Long eventId);
+
     @Modifying
     @Query("""
             update EventSectorStock s

@@ -2,6 +2,7 @@ package org.group10.ticket.repository;
 
 import org.group10.ticket.entity.EventSeat;
 import org.group10.ticket.entity.EventSeatId;
+import org.group10.ticket.entity.EventSeatStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -15,6 +16,8 @@ public interface EventSeatRepository extends JpaRepository<EventSeat, EventSeatI
     List<EventSeat> findByEventIdAndSeatIdInOrderBySeatId(Long eventId, Collection<Long> seatIds);
 
     List<EventSeat> findByEventIdOrderBySeatId(Long eventId);
+
+    long countByEventIdAndStatusNot(Long eventId, EventSeatStatus status);
 
     @Query("select s.seatId from EventSeat s where s.eventId = :eventId")
     Set<Long> findSeatIdsOfEvent(Long eventId);

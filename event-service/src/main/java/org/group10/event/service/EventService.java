@@ -251,6 +251,11 @@ public class EventService {
         });
     }
 
+    @Transactional
+    public void markSoldOut(Long id) {
+        getEvent(id).changeStatus(EventStatus.SOLD_OUT, statusMachine);
+    }
+
     /**
      * Suspends a published or sold out event, remembering which of the two it was so {@link #resume} goes back to it.
      *

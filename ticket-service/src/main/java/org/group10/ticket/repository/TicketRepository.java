@@ -17,6 +17,12 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
 
     @Query("""
             select count(t) from Ticket t
+            where t.order.eventId = :eventId and t.status = org.group10.ticket.entity.TicketStatus.RESERVED
+            """)
+    long countReservedTicketsOfEvent(Long eventId);
+
+    @Query("""
+            select count(t) from Ticket t
             where t.order.userId = :userId and t.order.eventId = :eventId and t.status in :statuses
             """)
     long countTicketsOfCustomerInEvent(Long userId, Long eventId, Collection<TicketStatus> statuses);

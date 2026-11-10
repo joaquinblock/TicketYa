@@ -3,7 +3,9 @@ package org.group10.event.controller;
 import org.group10.common.exception.TicketYaException;
 import org.group10.event.client.AuthClient;
 import org.group10.event.client.dto.UserPermissionsResponse;
+import org.group10.event.dto.EventDetailResponse;
 import org.group10.event.dto.EventResponse;
+import org.group10.event.dto.EventSectorResponse;
 import org.group10.event.dto.ParticipantResponse;
 import org.group10.event.dto.VenueSummaryResponse;
 import org.group10.event.entity.EventStatus;
@@ -21,14 +23,19 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.web.client.ResourceAccessException;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -230,6 +237,113 @@ class EventControllerTest {
                         .contentType(MediaType.APPLICATION_JSON).content("{\"participantIds\": [1]}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error").value("event_not_editable"));
+    }
+
+    @Test
+    void findById_isPublic_soItDoesNotCallAuth() throws Exception {
+        when(eventService.findById(1L)).thenReturn(detail(EventStatus.PUBLISHED));
+
+        mockMvc.perform(get("/api/events/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.capacity").value(5080))
+                .andExpect(jsonPath("$.sectors[0].price").value(45000));
+        verifyNoInteractions(authClient);
+    }
+
+    @Test
+    void findById_missing_returns404() throws Exception {
+        when(eventService.findById(99L)).thenThrow(new TicketYaException(EventErrorCode.EVENT_NOT_FOUND,
+                "No se encontró el evento con id 99"));
+
+        mockMvc.perform(get("/api/events/99"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("event_not_found"));
+    }
+
+    @Test
+    void update_valid_returns200() throws Exception {
+        when(eventService.update(eq(3L), eq(2L), any())).thenReturn(detail(EventStatus.DRAFT));
+
+        mockMvc.perform(put("/api/events/3").header("X-User-Id", 2)
+                        .contentType(MediaType.APPLICATION_JSON).content(VALID_EVENT))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DRAFT"));
+    }
+
+    @Test
+    void update_withInvalidBody_returns400WithoutCallingTheService() throws Exception {
+        mockMvc.perform(put("/api/events/3").header("X-User-Id", 2)
+                        .contentType(MediaType.APPLICATION_JSON).content(VALID_EVENT.replace("\"Los Serranos en vivo\"", "\" \"")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail.name").exists());
+        verifyNoInteractions(eventService);
+    }
+
+    @Test
+    void delete_draft_returns204() throws Exception {
+        mockMvc.perform(delete("/api/events/10").header("X-User-Id", 2)).andExpect(status().isNoContent());
+        verify(eventService).delete(10L, 2L);
+    }
+
+    @Test
+    void publish_notReady_returns409WithTheProblems() throws Exception {
+        when(eventService.publish(10L, 2L)).thenThrow(new TicketYaException(EventErrorCode.EVENT_NOT_PUBLISHABLE,
+                "El evento 10 todavía no se puede publicar", Map.of("problems", List.of("No tiene sectores a la venta"))));
+
+        mockMvc.perform(post("/api/events/10/publish").header("X-User-Id", 2))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("event_not_publishable"))
+                .andExpect(jsonPath("$.detail.problems[0]").value("No tiene sectores a la venta"));
+    }
+
+    @Test
+    void publish_withoutEventManage_returns403() throws Exception {
+        when(authClient.getPermissions(3L)).thenReturn(
+                new UserPermissionsResponse(3L, "ADMIN", Set.of("EVENT_SEARCH", "EVENT_ADMIN")));
+
+        mockMvc.perform(post("/api/events/10/publish").header("X-User-Id", 3))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(eventService);
+    }
+
+    @Test
+    void cancel_byAnAdmin_returns200() throws Exception {
+        when(authClient.getPermissions(3L)).thenReturn(
+                new UserPermissionsResponse(3L, "ADMIN", Set.of("EVENT_SEARCH", "EVENT_ADMIN")));
+        when(eventService.cancel(1L)).thenReturn(detail(EventStatus.CANCELLED));
+
+        mockMvc.perform(post("/api/events/1/cancel").header("X-User-Id", 3))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+    }
+
+    @Test
+    void cancel_byAnOrganizer_returns403BecauseOnlyAdminsCancel() throws Exception {
+        mockMvc.perform(post("/api/events/1/cancel").header("X-User-Id", 2))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("El usuario 2 no tiene el permiso EVENT_ADMIN"));
+        verifyNoInteractions(eventService);
+    }
+
+    @Test
+    void cancel_draft_returns409() throws Exception {
+        when(authClient.getPermissions(3L)).thenReturn(
+                new UserPermissionsResponse(3L, "ADMIN", Set.of("EVENT_ADMIN")));
+        when(eventService.cancel(10L)).thenThrow(new TicketYaException(EventErrorCode.INVALID_STATUS_TRANSITION,
+                "Un borrador no se cancela: se borra con DELETE /api/events/10"));
+
+        mockMvc.perform(post("/api/events/10/cancel").header("X-User-Id", 3))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("invalid_status_transition"));
+    }
+
+    private static EventDetailResponse detail(EventStatus status) {
+        return new EventDetailResponse(1L, "Los Serranos en vivo", "Presentación del nuevo disco", EventType.CONCERT, 1L,
+                2L, new VenueSummaryResponse(1L, "Estadio del Sur", "Av. del Estadio 1000", "Buenos Aires", -34.5453, -58.4498),
+                LocalDateTime.of(2099, 12, 12, 21, 0), status, true, LocalDateTime.of(2099, 11, 20, 10, 0), 4, 5080,
+                List.of(new EventSectorResponse(1L, "Campo", false, 5000, new BigDecimal("45000.00")),
+                        new EventSectorResponse(2L, "Platea", true, 80, new BigDecimal("70000.00"))),
+                List.of(new ParticipantResponse(1L, "Los Serranos", ParticipantType.ARTIST)));
     }
 
     private static MockHttpServletRequestBuilder createRequest(String body) {

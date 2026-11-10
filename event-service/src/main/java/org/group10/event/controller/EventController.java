@@ -104,13 +104,18 @@ public class EventController {
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Ver un evento", description = "Público. Trae el lugar, los sectores que vende con su precio y "
-            + "capacidad, los participantes y la capacidad total.")
+    @Operation(summary = "Ver un evento", description = """
+            Público, en cualquier estado salvo `DRAFT`: trae el lugar, los sectores que vende con su precio y             capacidad, los participantes y la capacidad total. Un borrador solo lo ve un organizador de su             organización, con `X-User-Id`; para cualquier otro da 404, igual que un id que no existe.""")
     @ApiResponse(responseCode = "200", description = "Evento encontrado")
-    @ApiResponse(responseCode = "404", description = "event_not_found",
+    @ApiResponse(responseCode = "404", description = "event_not_found (no existe, o es un borrador de otra organización)",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    public EventDetailResponse findById(@PathVariable Long id) {
-        return eventService.findById(id);
+    @ApiResponse(responseCode = "503", description = "service_unavailable: el auth-service no responde (solo al pedir un borrador)",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    public EventDetailResponse findById(
+            @PathVariable Long id,
+            @Parameter(description = "Opcional: solo hace falta para ver un borrador", example = "2")
+            @RequestHeader(value = USER_HEADER, required = false) Long userId) {
+        return eventService.findById(id, userId);
     }
 
     @PutMapping("/{id}")

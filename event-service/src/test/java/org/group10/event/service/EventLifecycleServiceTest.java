@@ -107,7 +107,7 @@ class EventLifecycleServiceTest {
         event.getParticipants().addAll(Set.of(participant(1L, "Los Serranos"), participant(5L, "DJ Marea")));
         givenSectors(event, stalls, field);
 
-        EventDetailResponse detail = eventService.findById(EVENT_ID);
+        EventDetailResponse detail = eventService.findById(EVENT_ID, null);
 
         assertThat(detail.capacity()).isEqualTo(350);
         assertThat(detail.sectors()).extracting(s -> s.name() + "=" + s.capacity()).containsExactly("Campo=300", "Platea=50");
@@ -118,7 +118,48 @@ class EventLifecycleServiceTest {
     void findById_missing_throwsNotFound() {
         when(eventRepository.findById(EVENT_ID)).thenReturn(Optional.empty());
 
-        assertError(() -> eventService.findById(EVENT_ID), EventErrorCode.EVENT_NOT_FOUND);
+        assertError(() -> eventService.findById(EVENT_ID, null), EventErrorCode.EVENT_NOT_FOUND);
+    }
+
+    @Test
+    void findById_publishedEvent_isPublicWithoutCallingAuth() {
+        givenEvent(EventStatus.CANCELLED);
+
+        assertThat(eventService.findById(EVENT_ID, null).status()).isEqualTo(EventStatus.CANCELLED);
+        verifyNoInteractions(authClient);
+    }
+
+    @Test
+    void findById_draftWithoutUser_isNotFound() {
+        givenEvent(EventStatus.DRAFT);
+
+        assertError(() -> eventService.findById(EVENT_ID, null), EventErrorCode.EVENT_NOT_FOUND);
+        verifyNoInteractions(authClient);
+    }
+
+    @Test
+    void findById_draftForAnOrganizerOfItsOrganization_isVisible() {
+        givenEvent(EventStatus.DRAFT);
+
+        assertThat(eventService.findById(EVENT_ID, ORGANIZER_ID).status()).isEqualTo(EventStatus.DRAFT);
+    }
+
+    @Test
+    void findById_draftForAnOrganizerOfAnotherOrganization_isNotFound() {
+        givenEvent(EventStatus.DRAFT);
+        when(authClient.getOrganizer(ORGANIZER_ID)).thenReturn(new OrganizerResponse(ORGANIZER_ID, 9L));
+
+        assertError(() -> eventService.findById(EVENT_ID, ORGANIZER_ID), EventErrorCode.EVENT_NOT_FOUND);
+    }
+
+    @Test
+    void findById_draftForAUserWhoIsNotAnOrganizer_isNotFound() {
+        givenEvent(EventStatus.DRAFT);
+        when(authClient.getOrganizer(1L)).thenThrow(
+                org.springframework.web.client.HttpClientErrorException.create(org.springframework.http.HttpStatus.NOT_FOUND,
+                        "Not Found", null, null, null));
+
+        assertError(() -> eventService.findById(EVENT_ID, 1L), EventErrorCode.EVENT_NOT_FOUND);
     }
 
     // ---- update ----

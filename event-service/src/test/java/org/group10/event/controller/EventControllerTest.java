@@ -244,7 +244,7 @@ class EventControllerTest {
 
     @Test
     void findById_isPublic_soItDoesNotCallAuth() throws Exception {
-        when(eventService.findById(1L)).thenReturn(detail(EventStatus.PUBLISHED));
+        when(eventService.findById(1L, null)).thenReturn(detail(EventStatus.PUBLISHED));
 
         mockMvc.perform(get("/api/events/1"))
                 .andExpect(status().isOk())
@@ -255,7 +255,7 @@ class EventControllerTest {
 
     @Test
     void findById_missing_returns404() throws Exception {
-        when(eventService.findById(99L)).thenThrow(new TicketYaException(EventErrorCode.EVENT_NOT_FOUND,
+        when(eventService.findById(99L, null)).thenThrow(new TicketYaException(EventErrorCode.EVENT_NOT_FOUND,
                 "No se encontró el evento con id 99"));
 
         mockMvc.perform(get("/api/events/99"))

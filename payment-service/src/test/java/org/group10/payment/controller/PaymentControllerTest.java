@@ -167,6 +167,16 @@ class PaymentControllerTest {
                 .andExpect(jsonPath("$.error").value("data_conflict"));
     }
 
+    @Test
+    void charge_paymentWithoutResult_returns503() throws Exception {
+        when(paymentService.charge(any())).thenThrow(new TicketYaException(PaymentErrorCode.PAYMENT_GATEWAY_UNAVAILABLE,
+                "El pago todavía no tiene resultado, se puede reintentar con la misma clave"));
+
+        postPayment(VALID_PAYMENT)
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error").value("payment_gateway_unavailable"));
+    }
+
     private ResultActions postPayment(String body) throws Exception {
         return mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content(body));
     }

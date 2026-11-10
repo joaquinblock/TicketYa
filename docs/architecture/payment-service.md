@@ -164,6 +164,7 @@ El enunciado pide que en la Entrega 1 sea simulada, así que `MockPaymentGateway
 | Aprobar un cobro | Devuelve `APPROVED` con un `gatewayId` |
 | No cobrar dos veces con la misma clave | El `gatewayId` se deriva de la `idempotency_key`, así que repetirla da el mismo resultado |
 | Rechazar un cobro | Decide por medio de pago, con una propiedad (`payment.mock.rejected-method: DEBIT_CARD`) |
+| Aprobar un reintegro | Devuelve `CREDITED` con un `gatewayId` derivado del `ticket_id`, que es único por reintegro. No depende del medio de pago |
 | Lentitud y caída (Entrega 2) | Propiedades `payment.mock.delay-ms` y otra para la caída |
 
 `PaymentService` solo conoce la interfaz `PaymentGateway` y recibe la respuesta como `ChargeResult`. Ahí quedan nuestras reglas, separadas de la simulación. Para conectar una pasarela real alcanza con otra implementación de la interfaz.

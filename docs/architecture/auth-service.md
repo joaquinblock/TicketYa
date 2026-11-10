@@ -61,6 +61,7 @@ Los consume el event-service con `AuthClient`. Swagger: `/swagger-ui.html` en el
 |---|---|---|---|
 | `GET` | `/api/organizations/{id}` | Una organización **activa** | 200 |
 | `GET` | `/api/organizers/{userId}` | Un organizador **activo** con el id de su organización | 200 |
+| `GET` | `/api/users/{id}/permissions` | Rol y permisos de un usuario **activo**. Lo usa `PermissionInterceptor` (ver [`permissions.md`](permissions.md)) | 200 |
 
 ```http
 GET /api/organizations/1
@@ -69,6 +70,10 @@ GET /api/organizations/1
 
 GET /api/organizers/2
 → { "userId": 2, "firstName": "María", "lastName": "Gómez", "organizationId": 1 }
+
+GET /api/users/2/permissions
+→ { "userId": 2, "role": "ORGANIZER",
+    "permissions": ["EVENT_MANAGE", "EVENT_SEARCH", "REFUND_REQUEST", "REPORT_VIEW", "TICKET_PURCHASE"] }
 ```
 
 ## Reglas
@@ -86,16 +91,17 @@ Todos usan el `ErrorDto` común (ver [`error-handling.md`](error-handling.md)). 
 |---|---|---|
 | `organization_not_found` | 404 | No existe la organización, o está dada de baja |
 | `organizer_not_found` | 404 | El usuario no es organizador, o está dado de baja él, su usuario o su organización |
+| `user_not_found` | 404 | No existe el usuario, o está dado de baja (`GET /api/users/{id}/permissions`) |
 
 ## Código
 
 | Capa | Clases |
 |---|---|
 | `entity` | `Organization`, `OrganizationType`, `Organizer` |
-| `repository` | `OrganizationRepository`, `OrganizerRepository` |
-| `dto` | `OrganizationResponse`, `OrganizerResponse` |
-| `service` | `OrganizationService`, `OrganizerService` |
-| `controller` | `OrganizationController`, `OrganizerController` |
+| `repository` | `OrganizationRepository`, `OrganizerRepository`, `UserRepository` |
+| `dto` | `OrganizationResponse`, `OrganizerResponse`, `UserPermissionsResponse` |
+| `service` | `OrganizationService`, `OrganizerService`, `UserService` |
+| `controller` | `OrganizationController`, `OrganizerController`, `UserController` |
 
 - **Datos de prueba.** `AuthSeeder` carga la organización `1` (*Del Sur Producciones*), con `organizer@ticketya.com` (user `2`) como organizador, que son los ids que asume `EventSeeder`. Carga además la organización `2` (*Cultura Serrana*), sin organizadores, para probar `organizer_not_in_organization`.
 - **El organizador se busca en una sola query.** `OrganizerRepository.findWithUserAndOrganizationByUserId` usa `@EntityGraph` para traer también el `user` y la `organization`, que son lazy. Sin eso, armar la respuesta haría una query más por cada relación, y fuera de la transacción tiraría `LazyInitializationException`.
@@ -105,4 +111,4 @@ Todos usan el `ErrorDto` común (ver [`error-handling.md`](error-handling.md)). 
 | Tema | Detalle |
 |---|---|
 | ABM | No hay endpoints para crear, modificar ni dar de baja organizaciones u organizadores |
-| Autorización | La Entrega 1 no tiene autenticación. Con la Épica 9, el id del organizador sale del JWT y no del request |
+| Autorización | La Entrega 1 no tiene autenticación: el usuario llega en `X-User-Id` y sus permisos se piden a `/api/users/{id}/permissions` (ver [`permissions.md`](permissions.md)). Con la Épica 9, el usuario y sus permisos salen del JWT |

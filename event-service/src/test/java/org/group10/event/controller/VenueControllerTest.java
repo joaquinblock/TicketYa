@@ -1,6 +1,7 @@
 package org.group10.event.controller;
 
 import org.group10.common.exception.TicketYaException;
+import org.group10.event.client.AuthClient;
 import org.group10.event.dto.VenueSummaryResponse;
 import org.group10.event.exception.EventErrorCode;
 import org.group10.event.service.VenueService;
@@ -13,6 +14,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -32,6 +34,20 @@ class VenueControllerTest {
 
     @MockitoBean
     private VenueService venueService;
+
+    /** Lo necesita {@code PermissionInterceptor}, que {@code @WebMvcTest} carga para cualquier controller. */
+    @MockitoBean
+    private AuthClient authClient;
+
+    @Test
+    void create_endpointWithoutRequiresPermission_doesNotCallAuth() throws Exception {
+        when(venueService.create(any())).thenReturn(
+                new VenueSummaryResponse(1L, "Estadio del Sur", "Av. del Estadio 1000", "Buenos Aires", -34.5453, -58.4498));
+
+        mockMvc.perform(post("/api/venues").contentType(MediaType.APPLICATION_JSON).content(VALID_VENUE))
+                .andExpect(status().isCreated());
+        verifyNoInteractions(authClient);
+    }
 
     @Test
     void create_validVenue_returns201() throws Exception {

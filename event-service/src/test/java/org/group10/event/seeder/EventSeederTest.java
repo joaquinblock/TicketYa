@@ -4,9 +4,11 @@ import org.group10.event.entity.Event;
 import org.group10.event.entity.EventSector;
 import org.group10.event.entity.EventStatus;
 import org.group10.event.entity.EventType;
+import org.group10.event.entity.Participant;
 import org.group10.event.entity.Seat;
 import org.group10.event.repository.EventRepository;
 import org.group10.event.repository.EventSectorRepository;
+import org.group10.event.repository.ParticipantRepository;
 import org.group10.event.repository.SeatRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,6 +38,9 @@ class EventSeederTest {
 
     @Autowired
     private SeatRepository seatRepository;
+
+    @Autowired
+    private ParticipantRepository participantRepository;
 
     // ---- Ids that ticket-service's TicketSeeder uses (ticket-service.md, "Datos de prueba") ----
 
@@ -114,6 +119,28 @@ class EventSeederTest {
         assertThat(eventRepository.findAll())
                 .filteredOn(e -> e.getParticipants().stream().anyMatch(p -> p.getName().equals("Los Serranos")))
                 .hasSize(3);
+    }
+
+    @Test
+    void events_theFestivalHasEveryFieldFilledIn() {
+        Event festival = eventRepository.findAll().stream()
+                .filter(e -> e.getName().equals("Festival de Verano")).findFirst().orElseThrow();
+
+        assertThat(festival).hasNoNullFieldsOrPropertiesExcept("participants");
+        assertThat(festival.isHighDemand()).isTrue();
+        assertThat(festival.getParticipants()).hasSizeGreaterThan(1);
+        assertThat(eventSectorRepository.findAll())
+                .filteredOn(es -> es.getEvent().getId().equals(festival.getId()))
+                .extracting(es -> es.getSector().isNumbered())
+                .containsExactlyInAnyOrder(true, false);
+    }
+
+    @Test
+    void participants_oneIsInNoEvent_soItCanBeDeleted() {
+        Participant unassigned = participantRepository.findAll().stream()
+                .filter(p -> p.getName().equals("Sofía Lanza")).findFirst().orElseThrow();
+
+        assertThat(eventRepository.existsByParticipantsId(unassigned.getId())).isFalse();
     }
 
     @Test

@@ -150,7 +150,18 @@ Con texto libre aparecerían variantes del mismo medio ("tarjeta", "TC", "credit
 
 ### Pasarela mock
 
-Decide por medio de pago, con una propiedad (`payment.mock.rejected-method: DEBIT_CARD`). En la Entrega 2 suma propiedades para simular lentitud y caída (`payment.mock.delay-ms` y otra para la caída).
+La pasarela de pagos es el sistema externo que mueve el dinero, como Mercado Pago. No tiene relación con el `api-gateway`. El payment-service no cobra por su cuenta: le pide el cobro a la pasarela y guarda lo que ella responde.
+
+El enunciado pide que en la Entrega 1 sea simulada, así que `MockPaymentGateway` hace de ese sistema externo. No mueve dinero ni se conecta a nada:
+
+| Qué simula | Cómo |
+|---|---|
+| Aprobar un cobro | Devuelve `APPROVED` con un `gatewayId` |
+| No cobrar dos veces con la misma clave | El `gatewayId` se deriva de la `idempotency_key`, así que repetirla da el mismo resultado |
+| Rechazar un cobro | Decide por medio de pago, con una propiedad (`payment.mock.rejected-method: DEBIT_CARD`) |
+| Lentitud y caída (Entrega 2) | Propiedades `payment.mock.delay-ms` y otra para la caída |
+
+`PaymentService` solo conoce la interfaz `PaymentGateway` y recibe la respuesta como `ChargeResult`. Ahí quedan nuestras reglas, separadas de la simulación. Para conectar una pasarela real alcanza con otra implementación de la interfaz.
 
 ### Rutas internas
 
@@ -194,4 +205,3 @@ La clave del pago `PENDING` de la orden 3 tiene que coincidir con `orders.paymen
 - Código nuevo `payment_not_refundable` en `PaymentErrorCode`.
 - `CANCELLED` en el estado de `Payment` (Entrega 2).
 - Clave fija en el pago `PENDING` del `PaymentSeeder`, hoy generada al azar.
-- Adaptador de pasarela, para cambiar el mock por una real sin tocar el resto.

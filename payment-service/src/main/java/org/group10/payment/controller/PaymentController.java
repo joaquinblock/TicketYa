@@ -6,17 +6,23 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import org.group10.common.dto.ErrorDto;
+import org.group10.payment.dto.OrderPaymentResponse;
 import org.group10.payment.dto.PaymentRequest;
 import org.group10.payment.dto.PaymentResponse;
 import org.group10.payment.service.PaymentService;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/internal/payments")
@@ -40,5 +46,16 @@ public class PaymentController {
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     public PaymentResponse charge(@Valid @RequestBody PaymentRequest request) {
         return paymentService.charge(request);
+    }
+
+    @GetMapping
+    @Operation(summary = "Consultar los pagos de una orden", description = "Misma respuesta que GET /api/payments, para las consultas entre servicios.")
+    @ApiResponse(responseCode = "200", description = "Pagos de la orden, del más antiguo al más nuevo")
+    @ApiResponse(responseCode = "400", description = "invalid_parameter o validation_error: falta orderId o no es válido",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "404", description = "payment_not_found: la orden no tiene pagos",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    public List<OrderPaymentResponse> findPaymentsOfOrder(@RequestParam @Positive Long orderId) {
+        return paymentService.findPaymentsOfOrder(orderId);
     }
 }

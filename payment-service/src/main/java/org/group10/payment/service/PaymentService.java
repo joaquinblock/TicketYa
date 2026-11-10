@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.group10.common.exception.CommonErrorCode;
 import org.group10.common.exception.TicketYaException;
+import org.group10.payment.dto.OrderPaymentResponse;
 import org.group10.payment.dto.PaymentRequest;
 import org.group10.payment.dto.PaymentResponse;
 import org.group10.payment.entity.Payment;
@@ -16,7 +17,10 @@ import org.group10.payment.repository.PaymentRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.function.Predicate;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +34,16 @@ public class PaymentService {
         return paymentRepository.findByIdempotencyKey(request.idempotencyKey())
                 .map(storedPayment -> answerWithTheStoredResult(storedPayment, request))
                 .orElseGet(() -> chargeNewAttempt(request));
+    }
+
+    public List<OrderPaymentResponse> findPaymentsOfOrder(Long orderId) {
+        return Optional.of(paymentRepository.findByOrderIdOrderByIdAsc(orderId))
+                .filter(Predicate.not(List::isEmpty))
+                .orElseThrow(() -> new TicketYaException(PaymentErrorCode.PAYMENT_NOT_FOUND,
+                        "La orden %d no tiene pagos".formatted(orderId)))
+                .stream()
+                .map(PaymentMapper::toOrderPaymentResponse)
+                .toList();
     }
 
     private PaymentResponse chargeNewAttempt(PaymentRequest request) {

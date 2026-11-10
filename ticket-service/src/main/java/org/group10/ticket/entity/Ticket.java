@@ -43,7 +43,15 @@ public class Ticket {
     @Column(nullable = false)
     private Long eventSectorId;
 
+    @Column(nullable = false)
+    private String sectorName;
+
     private Long seatId;
+
+    @Column(name = "seat_row")
+    private String row;
+
+    private Integer number;
 
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal price;

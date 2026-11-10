@@ -54,13 +54,15 @@ public class AvailabilityService {
     private static SectorAvailability availabilityOfSector(EventSectorPrice price, EventSectorStock stock,
                                                            List<EventSeat> seats, LocalDateTime now) {
         if (stock != null) {
-            return new SectorAvailability(price.getEventSectorId(), price.getPrice(), false,
+            return new SectorAvailability(price.getEventSectorId(), price.getSectorName(), price.getPrice(), false,
                     stock.getCapacity() - stock.getTaken(), null);
         }
         List<SeatAvailability> seatAvailabilities = seats.stream()
-                .map(seat -> new SeatAvailability(seat.getSeatId(), seat.isFreeAt(now)))
+                .map(seat -> new SeatAvailability(seat.getSeatId(), seat.getRow(), seat.getNumber(),
+                        seat.isFreeAt(now)))
                 .toList();
         int freeSeats = (int) seatAvailabilities.stream().filter(SeatAvailability::available).count();
-        return new SectorAvailability(price.getEventSectorId(), price.getPrice(), true, freeSeats, seatAvailabilities);
+        return new SectorAvailability(price.getEventSectorId(), price.getSectorName(), price.getPrice(), true,
+                freeSeats, seatAvailabilities);
     }
 }

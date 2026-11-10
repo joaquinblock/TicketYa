@@ -62,7 +62,9 @@ public class ReturnRequestController {
     @PostMapping("/return-requests/{id}/approve")
     @Operation(summary = "Aprobar una devolución", description = "Pide el reintegro, marca la entrada REFUNDED y libera el lugar. Si payment-service no responde, se puede reintentar sin un segundo reintegro.")
     @ApiResponse(responseCode = "200", description = "Solicitud aprobada")
-    @ApiResponse(responseCode = "404", description = "return_request_not_found",
+    @ApiResponse(responseCode = "403", description = "forbidden: el usuario no tiene el permiso REFUND_RESOLVE",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "404", description = "return_request_not_found o user_not_found",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "409", description = "refund_not_allowed o ticket_already_used",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
@@ -76,7 +78,9 @@ public class ReturnRequestController {
     @PostMapping("/return-requests/{id}/reject")
     @Operation(summary = "Rechazar una devolución", description = "La entrada sigue vigente y no se pide ningún reintegro.")
     @ApiResponse(responseCode = "200", description = "Solicitud rechazada")
-    @ApiResponse(responseCode = "404", description = "return_request_not_found",
+    @ApiResponse(responseCode = "403", description = "forbidden: el usuario no tiene el permiso REFUND_RESOLVE",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "404", description = "return_request_not_found o user_not_found",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "409", description = "refund_not_allowed",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))

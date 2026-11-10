@@ -1,8 +1,10 @@
 package org.group10.ticket;
 
+import org.group10.ticket.client.AuthClient;
 import org.group10.ticket.client.EventClient;
 import org.group10.ticket.client.PaymentClient;
 import org.group10.ticket.client.dto.RefundRequest;
+import org.group10.ticket.client.dto.UserPermissionsResponse;
 import org.group10.ticket.entity.EventSeatId;
 import org.group10.ticket.entity.EventSeatStatus;
 import org.group10.ticket.entity.OrderStatus;
@@ -32,6 +34,7 @@ import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -45,6 +48,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {"ticketya.reservation.expiration-check=PT1H", "ticketya.cancellation.refund-check=PT1H"})
@@ -64,6 +68,9 @@ class EventCancellationMySqlIntegrationTest {
 
     @MockitoBean
     private EventClient eventClient;
+
+    @MockitoBean
+    private AuthClient authClient;
 
     @Autowired
     private EventCancellationService eventCancellationService;
@@ -106,6 +113,8 @@ class EventCancellationMySqlIntegrationTest {
 
     @BeforeEach
     void publishEvent() {
+        when(authClient.getPermissions(ADMINISTRATOR))
+                .thenReturn(new UserPermissionsResponse(ADMINISTRATOR, "ADMIN", Set.of("REFUND_RESOLVE")));
         client = RestClient.builder().baseUrl("http://localhost:" + port).build();
         customer = IDS.incrementAndGet();
         eventId = IDS.incrementAndGet();
@@ -251,10 +260,13 @@ class EventCancellationMySqlIntegrationTest {
         return client.put().uri("/internal/event-sales/{eventId}", event)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("""
-                        {"status": "%s", "dateTime": "2099-12-12T21:00:00", "highDemand": false,
+                        {"status": "%s", "eventName": "Recital", "venueName": "Estadio",
+                         "venueAddress": "Calle 1", "venueCity": "Tandil", "dateTime": "2099-12-12T21:00:00",
+                         "highDemand": false,
                          "sectors": [
-                           {"eventSectorId": %d, "price": 1000, "seatIds": [1, 2]},
-                           {"eventSectorId": %d, "price": 500, "capacity": 3}
+                           {"eventSectorId": %d, "sectorName": "Platea", "price": 1000,
+                            "seats": [{"seatId": 1, "row": "A", "number": 1}, {"seatId": 2, "row": "A", "number": 2}]},
+                           {"eventSectorId": %d, "sectorName": "Campo", "price": 500, "capacity": 3}
                          ]}""".formatted(status, numberedSector, generalSector))
                 .exchange((request, response) -> response.getStatusCode().value());
     }

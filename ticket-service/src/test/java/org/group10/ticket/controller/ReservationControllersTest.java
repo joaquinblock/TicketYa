@@ -37,6 +37,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ReservationControllersTest {
 
     private static final String USER_HEADER = "X-User-Id";
+    private static final String PUBLISHED_SALE_DATA = """
+            "status": "PUBLISHED", "eventName": "Recital", "venueName": "Estadio", "venueAddress": "Calle 1",
+             "venueCity": "Tandil", "dateTime": "2099-12-12T21:00:00", "highDemand": false""";
 
     @Autowired
     private MockMvc mockMvc;
@@ -255,8 +258,49 @@ class ReservationControllersTest {
         mockMvc.perform(put("/internal/event-sales/1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"status": "PUBLISHED", "dateTime": "2099-12-12T21:00:00", "highDemand": false,
-                                 "sectors": [{"eventSectorId": 1, "price": 100, "capacity": 5, "seatIds": [1]}]}"""))
+                                {%s, "sectors": [{"eventSectorId": 1, "sectorName": "Platea", "price": 100,
+                                 "capacity": 5, "seats": [{"seatId": 1, "row": "A", "number": 1}]}]}"""
+                                .formatted(PUBLISHED_SALE_DATA)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("validation_error"));
+        verifyNoInteractions(eventSaleService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            """
+                    {"status": "PUBLISHED", "venueName": "Estadio", "venueAddress": "Calle 1", "venueCity": "Tandil",
+                     "dateTime": "2099-12-12T21:00:00", "highDemand": false, "sectors": []}""",
+            """
+                    {"status": "PUBLISHED", "eventName": " ", "venueName": "Estadio", "venueAddress": "Calle 1",
+                     "venueCity": "Tandil", "dateTime": "2099-12-12T21:00:00", "highDemand": false, "sectors": []}""",
+            """
+                    {"status": "PUBLISHED", "eventName": "Recital", "venueName": "Estadio", "venueAddress": "Calle 1",
+                     "dateTime": "2099-12-12T21:00:00", "highDemand": false, "sectors": []}""",
+            """
+                    {"status": "PUBLISHED", "eventName": "Recital", "venueName": "Estadio", "venueAddress": "Calle 1",
+                     "venueCity": "Tandil", "dateTime": "2099-12-12T21:00:00", "highDemand": false,
+                     "sectors": [{"eventSectorId": 1, "price": 100, "capacity": 5}]}""",
+            """
+                    {"status": "PUBLISHED", "eventName": "Recital", "venueName": "Estadio", "venueAddress": "Calle 1",
+                     "venueCity": "Tandil", "dateTime": "2099-12-12T21:00:00", "highDemand": false,
+                     "sectors": [{"eventSectorId": 1, "sectorName": "Platea", "price": 100,
+                                  "seats": [{"seatId": 1, "number": 1}]}]}""",
+            """
+                    {"status": "PUBLISHED", "eventName": "Recital", "venueName": "Estadio", "venueAddress": "Calle 1",
+                     "venueCity": "Tandil", "dateTime": "2099-12-12T21:00:00", "highDemand": false,
+                     "sectors": [{"eventSectorId": 1, "sectorName": "Platea", "price": 100,
+                                  "seats": [{"seatId": 1, "row": "A", "number": 0}]}]}""",
+            """
+                    {"status": "PUBLISHED", "eventName": "Recital", "venueName": "Estadio", "venueAddress": "Calle 1",
+                     "venueCity": "Tandil", "dateTime": "2099-12-12T21:00:00", "highDemand": false,
+                     "sectors": [{"eventSectorId": 1, "sectorName": "Platea", "price": 100,
+                                  "seats": [{"seatId": 1, "row": "ABCDEFGHIJK", "number": 1}]}]}"""
+    })
+    void synchronizeEventSale_withoutTheDataPrintedOnTheTicket_returnsValidationError(String body) throws Exception {
+        mockMvc.perform(put("/internal/event-sales/1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("validation_error"));
         verifyNoInteractions(eventSaleService);
@@ -268,7 +312,9 @@ class ReservationControllersTest {
         mockMvc.perform(put("/internal/event-sales/1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"status": "%s", "dateTime": "2099-12-12T21:00:00", "highDemand": false, "sectors": []}"""
+                                {"status": "%s", "eventName": "Recital", "venueName": "Estadio",
+                                 "venueAddress": "Calle 1", "venueCity": "Tandil", "dateTime": "2099-12-12T21:00:00",
+                                 "highDemand": false, "sectors": []}"""
                                 .formatted(saleStatus)))
                 .andExpect(status().isBadRequest());
         verifyNoInteractions(eventSaleService);
@@ -279,8 +325,10 @@ class ReservationControllersTest {
         mockMvc.perform(put("/internal/event-sales/1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"status": "CANCELLED", "dateTime": "2099-12-12T21:00:00", "highDemand": false,
-                                 "sectors": [{"eventSectorId": 1, "price": 100, "seatIds": []}]}"""))
+                                {"status": "CANCELLED", "eventName": "Recital", "venueName": "Estadio",
+                                 "venueAddress": "Calle 1", "venueCity": "Tandil", "dateTime": "2099-12-12T21:00:00",
+                                 "highDemand": false,
+                                 "sectors": [{"eventSectorId": 1, "sectorName": "Platea", "price": 100, "seats": []}]}"""))
                 .andExpect(status().isNoContent());
     }
 
@@ -290,7 +338,7 @@ class ReservationControllersTest {
     }
 
     private static OrderResponse pendingOrder() {
-        return new OrderResponse(1L, 1L, OrderStatus.PENDING, LocalDateTime.now().plusMinutes(10),
+        return new OrderResponse(1L, 1L, null, OrderStatus.PENDING, LocalDateTime.now().plusMinutes(10),
                 new BigDecimal("2000"), null, List.of());
     }
 }

@@ -2,7 +2,9 @@ package org.group10.ticket.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.group10.common.exception.CommonErrorCode;
 import org.group10.common.exception.TicketYaException;
+import org.group10.ticket.client.AuthClient;
 import org.group10.ticket.client.PaymentClient;
 import org.group10.ticket.client.dto.RefundRequest;
 import org.group10.ticket.dto.ReturnRequestPageResponse;
@@ -42,6 +44,7 @@ public class ReturnRequestService {
     private static final Sort OLDEST_FIRST = Sort.by("requestedAt", "id");
     private static final String RETURN_REQUEST_REASON = "RETURN_REQUEST";
     private static final long ONE_PLACE = 1;
+    private static final String REFUND_RESOLVE_PERMISSION = "REFUND_RESOLVE";
 
     private final ReturnRequestRepository returnRequestRepository;
     private final TicketRepository ticketRepository;
@@ -49,6 +52,7 @@ public class ReturnRequestService {
     private final EventSeatRepository eventSeatRepository;
     private final EventSectorStockRepository eventSectorStockRepository;
     private final PaymentClient paymentClient;
+    private final AuthClient authClient;
     private final TransactionOperations transactions;
     private final Clock clock;
 
@@ -72,6 +76,7 @@ public class ReturnRequestService {
     }
 
     public ReturnRequestResponse approve(Long administratorId, Long requestId) {
+        ensureCanResolveReturnRequests(administratorId);
         ReturnRequest request = findPendingRequest(requestId);
         ensureTicketCanBeRefunded(request.getTicket());
 
@@ -84,6 +89,7 @@ public class ReturnRequestService {
     }
 
     public ReturnRequestResponse reject(Long administratorId, Long requestId) {
+        ensureCanResolveReturnRequests(administratorId);
         findPendingRequest(requestId);
 
         Integer resolvedRequests = transactions.execute(transaction -> returnRequestRepository.resolvePendingRequest(
@@ -92,6 +98,13 @@ public class ReturnRequestService {
             throw requestAlreadyResolved(requestId);
         }
         return ReturnRequestMapper.toResponse(findRequest(requestId));
+    }
+
+    private void ensureCanResolveReturnRequests(Long userId) {
+        if (!authClient.getPermissions(userId).has(REFUND_RESOLVE_PERMISSION)) {
+            throw new TicketYaException(CommonErrorCode.FORBIDDEN,
+                    "El usuario %d no tiene el permiso %s".formatted(userId, REFUND_RESOLVE_PERMISSION));
+        }
     }
 
     private void ensureTicketCanBeReturned(Ticket ticket) {

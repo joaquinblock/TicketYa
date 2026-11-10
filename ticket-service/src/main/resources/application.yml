@@ -16,6 +16,8 @@ spring:
         read-timeout: 20s
       auth-service:
         base-url: ${AUTH_SERVICE_URL:http://localhost:8081}
+        connect-timeout: 1s
+        read-timeout: 5s
   task:
     scheduling:
       pool:
@@ -41,6 +43,7 @@ spring:
         fail-on-numbers-for-enums: true
 
 ticketya:
+  time-zone: America/Argentina/Buenos_Aires
   reservation:
     hold: 10m
     payment-margin: 1m

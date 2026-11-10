@@ -3,16 +3,19 @@ package org.group10.ticket.service;
 import lombok.RequiredArgsConstructor;
 import org.group10.common.exception.TicketYaException;
 import org.group10.ticket.dto.OrderResponse;
+import org.group10.ticket.entity.EventSale;
 import org.group10.ticket.entity.Order;
 import org.group10.ticket.entity.Ticket;
 import org.group10.ticket.exception.TicketErrorCode;
 import org.group10.ticket.mapper.OrderMapper;
+import org.group10.ticket.repository.EventSaleRepository;
 import org.group10.ticket.repository.OrderRepository;
 import org.group10.ticket.repository.TicketRepository;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -21,6 +24,7 @@ public class OrderQueryService {
 
     private final OrderRepository orderRepository;
     private final TicketRepository ticketRepository;
+    private final EventSaleRepository eventSaleRepository;
 
     public List<OrderResponse> findOrdersOfCustomer(Long userId) {
         List<Order> orders = orderRepository.findByUserIdOrderByIdDesc(userId);
@@ -28,9 +32,14 @@ public class OrderQueryService {
                 .findByOrderIdInOrderById(orders.stream().map(Order::getId).toList())
                 .stream()
                 .collect(Collectors.groupingBy(ticket -> ticket.getOrder().getId()));
+        Map<Long, EventSale> salesByEvent = eventSaleRepository
+                .findAllById(orders.stream().map(Order::getEventId).distinct().toList())
+                .stream()
+                .collect(Collectors.toMap(EventSale::getEventId, Function.identity()));
 
         return orders.stream()
-                .map(order -> OrderMapper.toResponse(order, ticketsByOrder.getOrDefault(order.getId(), List.of())))
+                .map(order -> OrderMapper.toResponse(order, salesByEvent.get(order.getEventId()),
+                        ticketsByOrder.getOrDefault(order.getId(), List.of())))
                 .toList();
     }
 
@@ -45,6 +54,10 @@ public class OrderQueryService {
     }
 
     public OrderResponse toResponse(Order order) {
-        return OrderMapper.toResponse(order, ticketRepository.findByOrderIdOrderById(order.getId()));
+        return toResponse(order, ticketRepository.findByOrderIdOrderById(order.getId()));
+    }
+
+    public OrderResponse toResponse(Order order, List<Ticket> tickets) {
+        return OrderMapper.toResponse(order, eventSaleRepository.findById(order.getEventId()).orElseThrow(), tickets);
     }
 }

@@ -28,6 +28,9 @@ public class EventSectorPrice {
     @Column(nullable = false)
     private Long eventId;
 
+    @Column(nullable = false)
+    private String sectorName;
+
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal price;
 }

@@ -7,7 +7,7 @@ La lista de transiciones de estado de un evento es:
 | `DRAFT`                 | `PUBLISHED`                                       |
 | `PUBLISHED`             | `SOLD_OUT`, `CANCELLED`, `SUSPENDED`, `FINISHED`  |
 | `SOLD_OUT`              | `PUBLISHED`, `CANCELLED`, `SUSPENDED`, `FINISHED` |
-| `SUSPENDED`             | `PUBLISHED`, `CANCELLED`                          |
+| `SUSPENDED`             | `PUBLISHED`, `SOLD_OUT`, `CANCELLED`              |
 | `CANCELLED`, `FINISHED` | ninguno (estados finales)                         |
 
 ## Explicación cambio de estados
@@ -21,6 +21,7 @@ La lista de transiciones de estado de un evento es:
 - `SOLD_OUT -> SUSPENDED`: Se suspendió temporalmente un evento con entradas agotadas.
 - `SOLD_OUT -> FINISHED`: Se concretó con éxito el evento cuyas entradas estaban agotadas.
 - `SUSPENDED -> PUBLISHED`: Se suspendió en su momento pero se re-programó y volvió a estar publicado. Hay que hacer devolución al cliente.
+- `SUSPENDED -> SOLD_OUT`: Un evento agotado que se suspendió y se reprogramó vuelve a estar agotado. Si solo pudiera volver a `PUBLISHED`, se vendería como si tuviera lugar.
 - `SUSPENDED -> CANCELLED`: Se suspendió temporalmente y se canceló definitivamente
 
 ## Estados finales
@@ -28,7 +29,8 @@ La lista de transiciones de estado de un evento es:
 - `FINISHED` es estado final porque el evento ya se realizó
 
 ## Excepciones
-Si intenta pasar de `null` a un estado o de un estado a `null` arroja excepción.
+- **Transición no permitida:** `TicketYaException(INVALID_STATUS_TRANSITION)`, que responde `409` con *"Un evento en X no puede pasar a Y"*.
+- **`null` como estado:** `IllegalArgumentException`. Es un bug del código, no un request que haya que rechazar.
 
 ### Chequeo de mismo estado
 Si se intenta pasar de un estado a el mismo, ejemplo `PUBLISHED` a `PUBLISHED`, la máquina simplemente devuelve ese mismo estado como `next`. Es decir, devuelve `PUBLISHED`.
@@ -37,7 +39,21 @@ Si se intenta pasar de un estado a el mismo, ejemplo `PUBLISHED` a `PUBLISHED`, 
 Es necesario agregarlo en el `HashMap` junto con los estados a los que puede pasar.
 
 ---
-## A considerar
-- Se puede saltear la máquina. `Event` tiene `@Setter` en toda la clase, así que cualquiera puede hacer `event.setStatus(...)` sin pasar por `transition`, y por ahora nadie la llama. Para que se respete, convendría quitar el setter de status y exponer un método como `event.changeStatus(next)` que la use.
--  Efectos al cambiar de estado. Llegar a `CANCELLED` desde `PUBLISHED`, `SOLD_OUT` o `SUSPENDED` tiene que disparar el aviso al ticket-service para los reintegros. Además, el ticket-service tiene que vender solo cuando el evento está en `PUBLISHED`; `SUSPENDED` también debe bloquear la venta. Durante la suspensión se aceptan devoluciones, con la regla de 72 horas (ver US-TKT-14 en `user-stories.md`)
-- Estados nuevos. Si alguien agrega un estado al enum y no lo carga en el mapa, transition falla con un NullPointerException en vez de un mensaje claro. Un test que recorra todos los valores lo detecta.
+## Cómo se usa
+
+- **Solo se cambia con `Event.changeStatus(next, machine)`.** `status` no tiene setter, así que nadie puede saltear la máquina. `EventStatusMachine` es un `@Component` y se inyecta en `EventService`.
+- **`EventStatusMachineTest`** recorre todas las combinaciones de estados contra esta tabla. Si se agrega un estado al enum y no a la tabla, el test falla.
+
+| Endpoint | Transición | Quién |
+|---|---|---|
+| `POST /api/events/{id}/publish` | `DRAFT → PUBLISHED`, con precondiciones (ver `eventservice.md`) | Organizador de la organización (`EVENT_MANAGE`) |
+| `POST /api/events/{id}/cancel` | `PUBLISHED`, `SOLD_OUT` o `SUSPENDED → CANCELLED` | Administrador, o el organizador que creó el evento |
+| `POST /api/events/{id}/suspend` | `PUBLISHED` o `SOLD_OUT → SUSPENDED` (guarda cuál era en `status_before_suspension`) | Ídem |
+| `POST /api/events/{id}/resume` | `SUSPENDED →` el estado que tenía antes (`PUBLISHED` o `SOLD_OUT`), con fecha nueva opcional | Ídem |
+
+Un borrador no se cancela: se borra con `DELETE /api/events/{id}`. `SOLD_OUT` y `FINISHED` todavía no tienen endpoint: agotarlo le toca al ticket-service cuando vende el último lugar (US-TKT-13, #55).
+
+## Pendiente
+
+- **Efectos al cambiar de estado.** Llegar a `CANCELLED` tiene que avisar al ticket-service para los reintegros (US-TKT-18, #61), y publicar tiene que pedirle que arme el inventario (US-TKT-01, #42). Hoy los dos son un `// TODO` en `EventService`.
+- **Venta según el estado.** El ticket-service tiene que vender solo cuando el evento está en `PUBLISHED`. `SUSPENDED` también bloquea la venta, y durante la suspensión se aceptan devoluciones con la regla de 72 horas (ver US-TKT-14 en `user-stories.md`).

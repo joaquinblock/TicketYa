@@ -44,6 +44,7 @@ erDiagram
         bigint venue_id FK
         datetime date_time
         enum status "DRAFT | PUBLISHED | SOLD_OUT | SUSPENDED | CANCELLED | FINISHED"
+        enum status_before_suspension "PUBLISHED | SOLD_OUT, only while SUSPENDED"
         boolean high_demand
         datetime sale_start
         int max_tickets_per_customer

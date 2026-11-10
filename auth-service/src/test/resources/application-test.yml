@@ -1,8 +1,0 @@
-spring:
-  docker:
-    compose:
-      skip:
-        in-tests: false
-  jpa:
-    hibernate:
-      ddl-auto: create-drop

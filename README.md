@@ -79,6 +79,17 @@ Los ids entre servicios coinciden (por ejemplo, el evento 1 del event-service es
 ./mvnw -pl ticket-service test   # uno solo
 ```
 
+Solo hay tests de lo que pide la consigna y de lo que no se puede romper:
+
+| Servicio | Qué prueba |
+|---|---|
+| ticket-service | Reserva y no doble venta con muchos hilos (`ReservationMySqlIntegrationTest`), pago y emisión (`OrderPaymentMySqlIntegrationTest`), devoluciones (`ReturnRequestMySqlIntegrationTest`) y reintegros al cancelar (`EventCancellationMySqlIntegrationTest`), todos contra MySQL |
+| payment-service | Cobro y rechazo (`PaymentServiceTest`), cobro idempotente ante reintentos (`PaymentIdempotencyIntegrationTest`) y reintegros sin duplicar (`RefundMySqlIntegrationTest`) |
+| event-service | Búsqueda (`EventSearchServiceTest`), alta, sectores, publicación, suspensión, cancelación y finalización (`EventServiceTest`, `SectorServiceTest`, `EventLifecycleServiceTest`, `EventStatusMachineTest`) y los ids que los otros seeders asumen (`EventSeederTest`) |
+| api-gateway | Que las rutas `/internal/**` no se expongan (`InternalRoutesTest`) |
+
+Los controllers, los ABM de lugares y participantes y el manejo de errores de `common` no tienen tests propios: se probaron a mano con las colecciones de Postman.
+
 - **Necesitan Docker:** varios tests corren contra el MySQL real de cada servicio. Usan las mismas bases que los servicios, así que conviene correrlos con los servicios apagados. Dejan la base recreada: después hay que reiniciar el servicio.
 - **Si la primera corrida falla con `Communications link failure`**, es MySQL inicializando un contenedor recién creado: alcanza con volver a correrlos.
 - **La prueba de no doble venta** que pide la consigna es `ReservationMySqlIntegrationTest`: muchos hilos compran a la vez el mismo asiento, o el último lugar de un sector, y solo uno lo consigue. El mecanismo está en [`concurrency-and-idempotency.md`](docs/quality-attributes/concurrency-and-idempotency.md).

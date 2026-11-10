@@ -529,7 +529,8 @@ Servicio: payment-service · Sirve a: US-TKT-11 · Consigna: 5 · Épica: #4 · 
 - Si el pago original fue rechazado, repite el 422 `payment_rejected` y no suma otro rechazo.
 - Si la misma clave llega con otra orden, otro monto u otro medio: 409 `data_conflict` y no se cobra nada.
 - Si dos pedidos con la misma clave llegan a la vez, se cobra una sola vez y existe un solo pago.
-- Si el pago de esa clave sigue sin resultado: 503 `payment_gateway_unavailable`, sin cobrar de nuevo, y se puede reintentar.
+- Si el pago de esa clave sigue sin resultado, se vuelve a llamar a la pasarela con la misma clave, sin crear otro pago. Si la pasarela falla: 503 `payment_gateway_unavailable`, el pago sigue `PENDING` y se puede reintentar.
+- Dos intentos simultáneos de la misma orden con claves distintas cobran una sola vez: el otro recibe 409 `data_conflict`.
 
 **Notas técnicas:** `payment.idempotency_key` UNIQUE. La clave también se reenvía a la pasarela. Ver *Idempotencia del cobro* en `payment-service.md`.
 

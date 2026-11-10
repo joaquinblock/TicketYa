@@ -23,7 +23,8 @@ public enum EventErrorCode implements ErrorCode {
     EVENT_NOT_EDITABLE(HttpStatus.CONFLICT),
     EVENT_NOT_PUBLISHABLE(HttpStatus.CONFLICT),
     INVALID_EVENT_CONFIGURATION(HttpStatus.BAD_REQUEST),
-    ORGANIZER_NOT_IN_ORGANIZATION(HttpStatus.FORBIDDEN);
+    ORGANIZER_NOT_IN_ORGANIZATION(HttpStatus.FORBIDDEN),
+    NOT_EVENT_CREATOR(HttpStatus.FORBIDDEN);
 
     private final HttpStatus status;
 

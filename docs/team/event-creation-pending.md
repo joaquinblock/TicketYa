@@ -15,7 +15,8 @@
 
 ## Para poder probar lo que ya está
 
-- [x] **Seeder del auth-service:** `AuthSeeder` carga la organización `1` con el organizador `2` (`organizer@ticketya.com`), que son los ids que asume `EventSeeder`, y la organización `2` sin organizadores para probar el `403` (PR #37)
+- [x] **Seeder del auth-service:** `AuthSeeder` carga la organización `1` con el organizador `2` (`organizer@ticketya.com`), que son los ids que asume `EventSeeder`, y la organización `2` con el organizador `5`. El `403` se prueba con el organizador `2` contra la organización `2` (PR #37 y #56)
+- [x] **Seeder del event-service:** eventos en todos los estados, tipos y ciudades, de las dos organizaciones (ver *Datos de prueba* en [`event-service.md`](../architecture/event-service.md))
 - [x] **Ruta del gateway:** `api-gateway` ya enruta `/api/organizers/**` al auth-service
 - [x] **Permisos:** `POST /api/events` exige `EVENT_MANAGE` con `@RequiresPermission` (ver [`permissions.md`](../architecture/permissions.md))
 - [ ] **Correr los tests:** `EventServiceTest` y `EventControllerTest` todavía no se ejecutaron. Maven desde la terminal usa JDK 24 y el proyecto pide 25

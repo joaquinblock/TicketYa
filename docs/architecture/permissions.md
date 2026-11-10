@@ -67,7 +67,7 @@ GET /api/users/99/permissions
 | `EVENT_ADMIN`, `REFUND_RESOLVE`, `USER_MANAGE` | | | ✅ | |
 | `TICKET_VALIDATE` | | | | ✅ |
 
-Usuarios de prueba: `1` cliente, `2` organizador, `3` admin, `4` personal de acceso.
+Usuarios de prueba: `1` cliente, `2` organizador (org `1`), `3` admin, `4` personal de acceso, `5` organizador (org `2`).
 
 ## Endpoints protegidos hoy
 

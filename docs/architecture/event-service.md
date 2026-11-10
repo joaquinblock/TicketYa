@@ -138,3 +138,49 @@ La **disponibilidad** no es parte del catálogo: vive en el **ticket-service**, 
 | No numerado | `event_sector_stock`, un contador por sector y evento |
 
 Por eso `event_sector` no tiene un campo de ocupados: el diagrama original lo tenía (`occupied`) y se movió al ticket-service. Ver `ticket-service.md`.
+
+## Datos de prueba
+
+`EventSeeder` carga los datos al arrancar, si la base está vacía. Como `ddl-auto` es `create`, eso pasa en cada arranque.
+
+- **Las fechas son relativas al día de arranque** (*hoy + 33 días*, etc.), así los eventos futuros nunca quedan en el pasado.
+- **El orden de los inserts es un contrato.** El `TicketSeeder` del ticket-service usa por id los eventos 1 y 2, los `event_sector` 1 a 4 y los asientos 1 a 154 (ver *Datos de prueba* en `ticket-service.md`). Lo nuevo va siempre al final y nunca en el medio. `EventSeederTest` lo verifica.
+
+### Lugares
+
+| Lugar | Ciudad | Sectores |
+|---|---|---|
+| Estadio del Sur | Buenos Aires | Campo (5.000), Platea numerada (80 asientos: 1–80) |
+| Teatro de la Sierra | Tandil | Platea (50 asientos: 81–130), Pullman (24 asientos: 131–154) |
+| Arena Córdoba | Córdoba | Campo (8.000), Platea Baja numerada (45 asientos) |
+| Estadio del Litoral | Rosario | Popular (12.000), Platea numerada (40 asientos) |
+| Sala del Puerto | Mar del Plata | Sala (300) |
+
+### Eventos
+
+Organización `1` (*Del Sur Producciones*, organizador `2`), salvo los dos últimos, que son de la `2` (*Cultura Serrana*, organizador `5`).
+
+| Id | Evento | Tipo | Ciudad | Estado | Fecha | Para probar |
+|---|---|---|---|---|---|---|
+| 1 | Los Serranos en vivo | `CONCERT` | Buenos Aires | `PUBLISHED` | +33 días | Alta demanda con la venta ya abierta. Lo usa el ticket-service |
+| 2 | La casa de las sierras | `THEATER` | Tandil | `PUBLISHED` | +26 días | Más de 72 h por delante: la devolución pendiente del ticket-service sigue valiendo |
+| 3 | Arquitectura de microservicios | `CONFERENCE` | Tandil | `DRAFT` | +126 días | Borrador con sector y precio: se puede publicar |
+| 4 | Festival de Verano | `FESTIVAL` | Córdoba | `PUBLISHED` | +60 días | Alta demanda con la venta todavía cerrada (abre en +20 días). Tres artistas |
+| 5 | Central vs. Unión | `SPORTS` | Rosario | `PUBLISHED` | +15 días | Dos participantes `TEAM` |
+| 6 | Jazz en el puerto | `CONCERT` | Mar del Plata | `SOLD_OUT` | +10 días | Agotado |
+| 7 | Los Serranos en Rosario | `CONCERT` | Rosario | `SUSPENDED` | +40 días | Suspendido |
+| 8 | Recital acústico | `CONCERT` | Córdoba | `CANCELLED` | +20 días | Cancelado |
+| 9 | Jornada de arquitectura de software | `CONFERENCE` | Mar del Plata | `FINISHED` | −30 días | El único en el pasado. Dos disertantes |
+| 10 | Muestra de fin de año | `THEATER` | Tandil | `DRAFT` | +50 días | Borrador sin sectores ni participantes: no se puede publicar |
+| 11 | Peña folklórica serrana | `CONCERT` | Tandil | `PUBLISHED` | +18 días | Organización `2` |
+| 12 | Cultura y territorio | `CONFERENCE` | Tandil | `DRAFT` | +70 días | Organización `2` |
+
+**Para la búsqueda (consigna 9):**
+- *Los Serranos* toca en tres eventos (1, 4 y 7).
+- Hay eventos en cinco ciudades y de los cinco tipos.
+- Los precios van de 3.000 a 70.000.
+
+### Lo que no es consistente con los otros servicios
+
+- **Inventario:** el ticket-service solo tiene inventario de los eventos 1 y 2. Los demás eventos publicados (4, 5 y 11) no se pueden comprar hasta que exista la creación del inventario al publicar.
+- **Estados sin historia:** `SOLD_OUT`, `CANCELLED` y `FINISHED` no tienen entradas vendidas ni reintegros detrás. Sirven para la búsqueda y las transiciones de estado, no para probar devoluciones.

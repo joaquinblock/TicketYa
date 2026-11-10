@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "TicketYa - Creación de eventos",
-    "description": "Casos de POST /api/events y de los endpoints del auth-service que usa, incluido el chequeo de permisos (ver docs/architecture/permissions.md). Necesita auth-service (8081), event-service (8082) y api-gateway (8080) levantados, y en AuthSeeder la organización 1 con el organizador 2 y la organización 2 sin él (ver docs/team/event-creation-pending.md).",
+    "description": "Casos de POST /api/events y de los endpoints del auth-service que usa, incluido el chequeo de permisos (ver docs/architecture/permissions.md). Necesita auth-service (8081), event-service (8082) y api-gateway (8080) levantados, y en AuthSeeder la organización 1 con el organizador 2 y la organización 2 con el organizador 5, así que el organizador 2 no pertenece a la 2 (ver docs/team/event-creation-pending.md).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [

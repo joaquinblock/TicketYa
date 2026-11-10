@@ -13,8 +13,10 @@ import org.group10.event.dto.EventCreateRequest;
 import org.group10.event.dto.EventDetailResponse;
 import org.group10.event.dto.EventParticipantsRequest;
 import org.group10.event.dto.EventResponse;
+import org.group10.event.dto.EventResumeRequest;
 import org.group10.event.dto.EventSectorsRequest;
 import org.group10.event.dto.ParticipantResponse;
+import org.group10.event.security.Caller;
 import org.group10.event.security.Permission;
 import org.group10.event.security.PermissionInterceptor;
 import org.group10.event.security.RequiresPermission;
@@ -25,6 +27,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -193,17 +196,66 @@ public class EventController {
     }
 
     @PostMapping("/{id}/cancel")
-    @RequiresPermission(Permission.EVENT_ADMIN)
+    @RequiresPermission({Permission.EVENT_ADMIN, Permission.EVENT_MANAGE})
     @Operation(summary = "Cancelar un evento", description = """
-            Solo administradores (`EVENT_ADMIN`), sobre cualquier evento `PUBLISHED`, `SOLD_OUT` o `SUSPENDED`.             Es definitivo. Cancelar uno ya cancelado no cambia nada. **Todavía no avisa al ticket-service**: las             entradas vendidas no pasan a reintegro hasta que exista ese endpoint.""")
+            Definitivo, desde `PUBLISHED`, `SOLD_OUT` o `SUSPENDED`. Lo puede hacer un administrador (`EVENT_ADMIN`), sobre cualquier evento, o el organizador que creó el evento (`EVENT_MANAGE`), mientras siga siendo organizador de su organización. Otro organizador de la misma organización no puede.             Cancelar uno ya cancelado no cambia nada. **Todavía no avisa al ticket-service**: las entradas vendidas             no pasan a reintegro hasta que exista ese endpoint.""")
     @ApiResponse(responseCode = "200", description = "Evento cancelado")
-    @ApiResponse(responseCode = "403", description = "forbidden (sin EVENT_ADMIN)",
+    @ApiResponse(responseCode = "403", description = "forbidden (sin EVENT_ADMIN ni EVENT_MANAGE) / not_event_creator / "
+            + "organizer_not_in_organization",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    @ApiResponse(responseCode = "404", description = "event_not_found / user_not_found",
+    @ApiResponse(responseCode = "404", description = "event_not_found / user_not_found / organizer_not_found",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "409", description = "invalid_status_transition: es un borrador (se borra) o ya terminó",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    public EventDetailResponse cancel(@PathVariable Long id) {
-        return eventService.cancel(id);
+    public EventDetailResponse cancel(
+            @PathVariable Long id,
+            @Parameter(description = "Administrador u organizador que creó el evento (id de usuario)", example = "3")
+            @RequestHeader(USER_HEADER) Long userId,
+            @Parameter(hidden = true) @RequestAttribute(PermissionInterceptor.CALLER_ATTRIBUTE) Caller caller) {
+        return eventService.cancel(id, caller);
+    }
+
+    @PostMapping("/{id}/suspend")
+    @RequiresPermission({Permission.EVENT_ADMIN, Permission.EVENT_MANAGE})
+    @Operation(summary = "Suspender un evento", description = """
+            Desde `PUBLISHED` o `SOLD_OUT`, y se recuerda cuál de los dos era para reanudarlo. Lo puede hacer un administrador (`EVENT_ADMIN`), sobre cualquier evento, o el organizador que creó el evento (`EVENT_MANAGE`), mientras siga siendo organizador de su organización. Otro organizador de la misma organización no puede.             Suspender uno ya suspendido no cambia nada.""")
+    @ApiResponse(responseCode = "200", description = "Evento suspendido")
+    @ApiResponse(responseCode = "403", description = "forbidden (sin EVENT_ADMIN ni EVENT_MANAGE) / not_event_creator / "
+            + "organizer_not_in_organization",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "404", description = "event_not_found / user_not_found / organizer_not_found",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "409", description = "invalid_status_transition: es un borrador, o está cancelado o finalizado",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    public EventDetailResponse suspend(
+            @PathVariable Long id,
+            @Parameter(description = "Administrador u organizador que creó el evento (id de usuario)", example = "3")
+            @RequestHeader(USER_HEADER) Long userId,
+            @Parameter(hidden = true) @RequestAttribute(PermissionInterceptor.CALLER_ATTRIBUTE) Caller caller) {
+        return eventService.suspend(id, caller);
+    }
+
+    @PostMapping("/{id}/resume")
+    @RequiresPermission({Permission.EVENT_ADMIN, Permission.EVENT_MANAGE})
+    @Operation(summary = "Reanudar un evento suspendido", description = """
+            Vuelve a `PUBLISHED` o `SOLD_OUT`, el que tenía antes de suspenderse. El body es opcional: con             `dateTime`, el evento queda reprogramado para esa fecha. Lo puede hacer un administrador (`EVENT_ADMIN`), sobre cualquier evento, o el organizador que creó el evento (`EVENT_MANAGE`), mientras siga siendo organizador de su organización. Otro organizador de la misma organización no puede.""")
+    @ApiResponse(responseCode = "200", description = "Evento reanudado")
+    @ApiResponse(responseCode = "400", description = "validation_error (fecha pasada) / invalid_event_configuration "
+            + "(fecha nueva anterior a saleStart)",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "403", description = "forbidden (sin EVENT_ADMIN ni EVENT_MANAGE) / not_event_creator / "
+            + "organizer_not_in_organization",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "404", description = "event_not_found / user_not_found / organizer_not_found",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "409", description = "invalid_status_transition: no está suspendido",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    public EventDetailResponse resume(
+            @PathVariable Long id,
+            @Parameter(description = "Administrador u organizador que creó el evento (id de usuario)", example = "3")
+            @RequestHeader(USER_HEADER) Long userId,
+            @Parameter(hidden = true) @RequestAttribute(PermissionInterceptor.CALLER_ATTRIBUTE) Caller caller,
+            @Valid @RequestBody(required = false) EventResumeRequest request) {
+        return eventService.resume(id, caller, request);
     }
 }

@@ -119,7 +119,10 @@ public class Event {
      * (e.g. by the seeder) goes back to {@code PUBLISHED}.
      */
     public void resume(EventStatusMachine machine) {
-        EventStatus next = statusBeforeSuspension == null ? EventStatus.PUBLISHED : statusBeforeSuspension;
-        changeStatus(next, machine);
+        changeStatus(statusToResumeTo(), machine);
+    }
+
+    public EventStatus statusToResumeTo() {
+        return statusBeforeSuspension == null ? EventStatus.PUBLISHED : statusBeforeSuspension;
     }
 }

@@ -14,7 +14,7 @@ spring:
       ticket-service:
         base-url: ${TICKET_SERVICE_URL:http://localhost:8083}
         connect-timeout: 1s
-        read-timeout: 2s
+        read-timeout: 10s
   docker:
     compose:
       file: compose.yaml

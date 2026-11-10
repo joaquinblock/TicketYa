@@ -20,6 +20,22 @@ spring:
     hibernate:
       ddl-auto: create
     open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 100
+        order_inserts: true
+  jackson:
+    deserialization:
+      accept-float-as-int: false
+    datatype:
+      enum:
+        fail-on-numbers-for-enums: true
+
+ticketya:
+  reservation:
+    hold: 10m
+    expiration-check: PT30S
 
 springdoc:
   swagger-ui:

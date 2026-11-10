@@ -1,7 +1,10 @@
 package org.group10.event.service;
 
+import org.group10.common.exception.CommonErrorCode;
 import org.group10.common.exception.TicketYaException;
 import org.group10.event.client.AuthClient;
+import org.group10.event.client.TicketClient;
+import org.group10.event.client.dto.EventSaleRequest;
 import org.group10.event.client.dto.OrganizationResponse;
 import org.group10.event.client.dto.OrganizerResponse;
 import org.group10.event.dto.EventCreateRequest;
@@ -14,6 +17,7 @@ import org.group10.event.entity.EventStatus;
 import org.group10.event.entity.EventType;
 import org.group10.event.entity.Participant;
 import org.group10.event.entity.ParticipantType;
+import org.group10.event.entity.Seat;
 import org.group10.event.entity.Sector;
 import org.group10.event.entity.Venue;
 import org.group10.event.exception.EventErrorCode;
@@ -29,6 +33,7 @@ import org.group10.event.statemachine.EventStatusMachine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -47,7 +52,10 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -80,6 +88,8 @@ class EventLifecycleServiceTest {
     private TransactionOperations transactions;
     @Mock
     private AuthClient authClient;
+    @Mock
+    private TicketClient ticketClient;
 
     private EventService eventService;
 
@@ -90,7 +100,7 @@ class EventLifecycleServiceTest {
     @BeforeEach
     void setUp() {
         eventService = new EventService(eventRepository, venueRepository, participantRepository, eventSectorRepository,
-                sectorRepository, seatRepository, new EventStatusMachine(), transactions, authClient);
+                sectorRepository, seatRepository, new EventStatusMachine(), transactions, authClient, ticketClient);
         when(transactions.execute(any())).thenAnswer(invocation ->
                 invocation.<TransactionCallback<?>>getArgument(0).doInTransaction(null));
         when(seatRepository.countBySectorOfVenue(theater.getId())).thenReturn(List.of(new SectorSeatCount(3L, 50)));
@@ -226,6 +236,44 @@ class EventLifecycleServiceTest {
     }
 
     @Test
+    void publish_readyDraft_sendsTheInventoryOfEverySectorToTheTicketService() {
+        Event event = givenEvent(EventStatus.DRAFT);
+        givenSectorsWithIds(event);
+        when(seatRepository.findBySectorIdIn(List.of(stalls.getId())))
+                .thenReturn(List.of(seat(301L, stalls), seat(302L, stalls)));
+
+        eventService.publish(EVENT_ID, ORGANIZER_ID);
+
+        ArgumentCaptor<EventSaleRequest> sale = ArgumentCaptor.forClass(EventSaleRequest.class);
+        verify(ticketClient).synchronizeEventSale(eq(EVENT_ID), sale.capture());
+        assertThat(sale.getValue().status()).isEqualTo(EventStatus.PUBLISHED);
+        assertThat(sale.getValue().sectors()).containsExactly(
+                new EventSaleRequest.SectorSale(30L, new BigDecimal("10000"), null, List.of(301L, 302L)),
+                new EventSaleRequest.SectorSale(31L, new BigDecimal("10000"), 300, null));
+    }
+
+    @Test
+    void publish_ticketServiceFails_keepsTheDraft() {
+        Event event = givenEvent(EventStatus.DRAFT);
+        givenSectorsWithIds(event);
+        doThrow(new TicketYaException(CommonErrorCode.SERVICE_UNAVAILABLE, "ticket-service caído"))
+                .when(ticketClient).synchronizeEventSale(eq(EVENT_ID), any());
+
+        assertThatThrownBy(() -> eventService.publish(EVENT_ID, ORGANIZER_ID)).isInstanceOf(TicketYaException.class);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.DRAFT);
+    }
+
+    @Test
+    void publish_notPublishable_doesNotCallTheTicketService() {
+        Event event = givenEvent(EventStatus.DRAFT);
+        givenSectors(event);
+
+        assertNotPublishable(event, "No tiene sectores a la venta");
+        verifyNoInteractions(ticketClient);
+    }
+
+    @Test
     void publish_withoutSectors_throwsNotPublishableWithTheProblem() {
         Event event = givenEvent(EventStatus.DRAFT);
         givenSectors(event);
@@ -312,19 +360,44 @@ class EventLifecycleServiceTest {
     }
 
     @Test
+    void cancel_published_tellsTheTicketServiceThatTheSaleIsCancelled() {
+        Event event = givenEvent(EventStatus.PUBLISHED);
+        givenSectorsWithIds(event);
+
+        eventService.cancel(EVENT_ID, ADMIN);
+
+        ArgumentCaptor<EventSaleRequest> sale = ArgumentCaptor.forClass(EventSaleRequest.class);
+        verify(ticketClient).synchronizeEventSale(eq(EVENT_ID), sale.capture());
+        assertThat(sale.getValue().status()).isEqualTo(EventStatus.CANCELLED);
+    }
+
+    @Test
+    void cancel_ticketServiceFails_keepsTheStatus() {
+        Event event = givenEvent(EventStatus.PUBLISHED);
+        doThrow(new TicketYaException(CommonErrorCode.SERVICE_UNAVAILABLE, "ticket-service caído"))
+                .when(ticketClient).synchronizeEventSale(eq(EVENT_ID), any());
+
+        assertThatThrownBy(() -> eventService.cancel(EVENT_ID, ADMIN)).isInstanceOf(TicketYaException.class);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.PUBLISHED);
+    }
+
+    @Test
     void cancel_draft_throwsInvalidTransitionAndPointsToDelete() {
         givenEvent(EventStatus.DRAFT);
 
         assertThatThrownBy(() -> eventService.cancel(EVENT_ID, ADMIN))
                 .isInstanceOf(TicketYaException.class)
                 .hasMessageContaining("se borra");
+        verifyNoInteractions(ticketClient);
     }
 
     @Test
-    void cancel_finished_throwsInvalidTransition() {
+    void cancel_finished_throwsInvalidTransitionWithoutCallingTheTicketService() {
         givenEvent(EventStatus.FINISHED);
 
         assertError(() -> eventService.cancel(EVENT_ID, ADMIN), EventErrorCode.INVALID_STATUS_TRANSITION);
+        verifyNoInteractions(ticketClient);
     }
 
     @Test
@@ -369,6 +442,68 @@ class EventLifecycleServiceTest {
         eventService.suspend(EVENT_ID, ADMIN);
 
         assertThat(event.getStatusBeforeSuspension()).isEqualTo(EventStatus.SOLD_OUT);
+    }
+
+    @Test
+    void suspend_published_tellsTheTicketServiceThatTheSaleIsSuspended() {
+        Event event = givenEvent(EventStatus.PUBLISHED);
+        givenSectorsWithIds(event);
+
+        eventService.suspend(EVENT_ID, ADMIN);
+
+        ArgumentCaptor<EventSaleRequest> sale = ArgumentCaptor.forClass(EventSaleRequest.class);
+        verify(ticketClient).synchronizeEventSale(eq(EVENT_ID), sale.capture());
+        assertThat(sale.getValue().status()).isEqualTo(EventStatus.SUSPENDED);
+    }
+
+    @Test
+    void suspend_ticketServiceFails_keepsTheStatus() {
+        Event event = givenEvent(EventStatus.PUBLISHED);
+        doThrow(new TicketYaException(CommonErrorCode.SERVICE_UNAVAILABLE, "ticket-service caído"))
+                .when(ticketClient).synchronizeEventSale(eq(EVENT_ID), any());
+
+        assertThatThrownBy(() -> eventService.suspend(EVENT_ID, ADMIN)).isInstanceOf(TicketYaException.class);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.PUBLISHED);
+        assertThat(event.getStatusBeforeSuspension()).isNull();
+    }
+
+    @Test
+    void resume_soldOutWithANewDate_tellsTheTicketServiceTheStatusAndDateItGoesBackTo() {
+        Event event = givenEvent(EventStatus.SOLD_OUT);
+        givenSectorsWithIds(event);
+        eventService.suspend(EVENT_ID, ADMIN);
+        LocalDateTime newDate = DATE.plusMonths(1);
+
+        eventService.resume(EVENT_ID, ADMIN, new EventResumeRequest(newDate));
+
+        ArgumentCaptor<EventSaleRequest> sale = ArgumentCaptor.forClass(EventSaleRequest.class);
+        verify(ticketClient, times(2)).synchronizeEventSale(eq(EVENT_ID), sale.capture());
+        assertThat(sale.getValue().status()).isEqualTo(EventStatus.SOLD_OUT);
+        assertThat(sale.getValue().dateTime()).isEqualTo(newDate);
+    }
+
+    @Test
+    void resume_ticketServiceFails_staysSuspendedWithTheOldDate() {
+        Event event = givenEvent(EventStatus.SUSPENDED);
+        doThrow(new TicketYaException(CommonErrorCode.SERVICE_UNAVAILABLE, "ticket-service caído"))
+                .when(ticketClient).synchronizeEventSale(eq(EVENT_ID), any());
+
+        assertThatThrownBy(() -> eventService.resume(EVENT_ID, ADMIN, new EventResumeRequest(DATE.plusMonths(1))))
+                .isInstanceOf(TicketYaException.class);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.SUSPENDED);
+        assertThat(event.getDateTime()).isEqualTo(DATE);
+    }
+
+    @Test
+    void resume_withANewDateBeforeTheSaleStart_doesNotCallTheTicketService() {
+        Event event = givenEvent(EventStatus.SUSPENDED);
+        event.setSaleStart(DATE.minusDays(5));
+
+        assertError(() -> eventService.resume(EVENT_ID, ADMIN, new EventResumeRequest(DATE.minusDays(10))),
+                EventErrorCode.INVALID_EVENT_CONFIGURATION);
+        verifyNoInteractions(ticketClient);
     }
 
     @Test
@@ -547,6 +682,16 @@ class EventLifecycleServiceTest {
         when(eventSectorRepository.findByEventId(EVENT_ID)).thenReturn(java.util.Arrays.stream(sectors)
                 .map(s -> EventSector.builder().event(event).sector(s).price(new BigDecimal("10000")).build())
                 .toList());
+    }
+
+    private void givenSectorsWithIds(Event event) {
+        when(eventSectorRepository.findByEventId(EVENT_ID)).thenReturn(List.of(
+                EventSector.builder().id(30L).event(event).sector(stalls).price(new BigDecimal("10000")).build(),
+                EventSector.builder().id(31L).event(event).sector(field).price(new BigDecimal("10000")).build()));
+    }
+
+    private static Seat seat(Long id, Sector sector) {
+        return Seat.builder().id(id).sector(sector).build();
     }
 
     private void givenVenueExists(Venue venue) {

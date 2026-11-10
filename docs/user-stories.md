@@ -179,6 +179,7 @@ Servicio: ticket-service · Involucra: event-service · Consigna: 3, 4 · Épica
 **Criterios de aceptación**
 - Solo se aceptan reservas si el evento está `PUBLISHED`.
 - En cualquier otro estado, incluido `SUSPENDED`: 409 `event_not_on_sale`.
+- Si la fecha del evento ya pasó, aunque el event-service todavía no lo haya pasado a `FINISHED`: 409 `event_not_on_sale`.
 - Antes de la apertura de la venta: 409 `sale_not_started`.
 - Cuando el event-service informa un cambio de estado del evento, la venta se bloquea o se habilita desde ese momento.
 
@@ -226,6 +227,7 @@ Servicio: ticket-service · Involucra: payment-service · Consigna: 4, 5 · Épi
 **Criterios de aceptación**
 - El cliente paga una orden propia indicando el medio de pago, por el total de la orden.
 - Si el pago se aprueba, la orden pasa a `PAID` y sus entradas a `ISSUED`, cada una con un QR distinto e impredecible.
+- Hay una entrada y un QR por cada lugar comprado. Al lado del QR, cada entrada trae lo que se imprime: nombre, fecha y lugar del evento (nombre, dirección y ciudad), sector y, si es numerado, fila y asiento. En un sector no numerado, `seatId`, `row` y `number` vienen en `null`.
 - Si la reserva venció antes de intentar el cobro: 409 `reservation_expired` y no se cobra nada.
 - Los intentos nuevos se aceptan hasta 1 minuto antes del vencimiento. Después: 409 `payment_window_closed` y no se cobra nada.
 - Si la reserva venció antes de que se confirme el pago, no se emiten entradas, la orden queda `EXPIRED`, el pago se reintegra y el cliente recibe 409 `reservation_expired`.
@@ -233,7 +235,7 @@ Servicio: ticket-service · Involucra: payment-service · Consigna: 4, 5 · Épi
 - Si la orden no existe o es de otro cliente: 404 `order_not_found`.
 - Si la orden está `EXPIRED`: 409 `reservation_expired`. Si está `REJECTED`, `CANCELLED` o `FAILED`: 409 `order_not_payable`.
 
-**Notas técnicas:** se cobra por `order_id` con `orders.total`; `orders.payment_method` guarda el medio del pago aprobado; `qr_code` UUID; `event_seat` pasa a `SOLD`. El reintegro es por `ticket` con motivo `PURCHASE_COMPENSATION`. El mecanismo está en las decisiones *Una sola transición desde `PENDING`* y *Verificar el asiento antes de emitir* de `ticket-service.md`.
+**Notas técnicas:** los datos que se imprimen se copian al ticket-service al publicar el evento (`PUT /internal/event-sales/{id}`), así que emitir no depende del event-service. Se cobra por `order_id` con `orders.total`; `orders.payment_method` guarda el medio del pago aprobado; `qr_code` UUID; `event_seat` pasa a `SOLD`. El reintegro es por `ticket` con motivo `PURCHASE_COMPENSATION`. El mecanismo está en las decisiones *Una sola transición desde `PENDING`* y *Verificar el asiento antes de emitir* de `ticket-service.md`.
 
 ### US-TKT-10: Reintentar con otro medio si el pago se rechaza
 
@@ -324,9 +326,10 @@ Servicio: ticket-service · Consigna: 7 · Épica: #5 · Entrega 1
 
 Como administrador quiero aprobar una devolución para liberar el lugar y que se reintegre el dinero.
 
-Servicio: ticket-service · Involucra: payment-service · Consigna: 7 · Épica: #5 · Entrega 1
+Servicio: ticket-service · Involucra: payment-service, auth-service · Consigna: 7 · Épica: #5 · Entrega 1
 
 **Criterios de aceptación**
+- Solo puede aprobar un usuario con el permiso `REFUND_RESOLVE` (administrador). Sin el permiso: 403 `forbidden` y no se toca la solicitud. Si el auth-service no responde: 503 `service_unavailable` y no se reintegra nada.
 - Se pide el reintegro del precio pagado por esa entrada.
 - Cuando el payment-service acepta el reintegro, la solicitud pasa a `APPROVED`, con quién la resolvió y cuándo, y la entrada a `REFUNDED`.
 - El lugar vuelve a estar disponible.
@@ -341,9 +344,10 @@ Servicio: ticket-service · Involucra: payment-service · Consigna: 7 · Épica:
 
 Como administrador quiero rechazar una devolución que no corresponde para que la entrada siga vigente.
 
-Servicio: ticket-service · Consigna: 7 · Épica: #5 · Entrega 1
+Servicio: ticket-service · Involucra: auth-service · Consigna: 7 · Épica: #5 · Entrega 1
 
 **Criterios de aceptación**
+- Solo puede rechazar un usuario con el permiso `REFUND_RESOLVE`. Sin el permiso: 403 `forbidden`. Si el auth-service no responde: 503 `service_unavailable`.
 - La solicitud pasa a `REJECTED`, con quién la resolvió y cuándo.
 - La entrada sigue `ISSUED`, el lugar no se libera y no se pide ningún reintegro.
 - Si la solicitud no existe: 404 `return_request_not_found`. Si ya no está `PENDING`: 409 `refund_not_allowed`.
@@ -773,8 +777,9 @@ Servicio: event-service · Involucra: auth-service, ticket-service · Consigna: 
 - Reanudar devuelve el evento al estado que tenía antes de suspenderse (`PUBLISHED` o `SOLD_OUT`). Opcionalmente recibe una fecha nueva para reprogramarlo, que tiene que ser futura y posterior a `saleStart`.
 - Cancelar es definitivo, desde `PUBLISHED`, `SOLD_OUT` o `SUSPENDED`, y las entradas vendidas pasan a reintegro (US-TKT-18).
 - Un borrador no se suspende ni se cancela: 409 `invalid_status_transition`. Repetir una suspensión o una cancelación no cambia nada.
+- Cuando pasa la fecha de un evento `PUBLISHED` o `SOLD_OUT`, el evento pasa solo a `FINISHED` (a lo sumo un minuto después), deja de aparecer en la búsqueda y el ticket-service deja de venderlo. Un evento `FINISHED` no cambia más de estado.
 
-**Notas técnicas:** el estado anterior a la suspensión se guarda en `event.status_before_suspension`. Delegar la suspensión a otro organizador queda afuera ([`permissions.md`](architecture/permissions.md)).
+**Notas técnicas:** el estado anterior a la suspensión se guarda en `event.status_before_suspension`. `FinishedEventsJob` corre cada minuto: avisa primero al ticket-service y después hace un `UPDATE` filtrado por estado y fecha, así que correrlo dos veces o desde dos instancias no rompe nada. Delegar la suspensión a otro organizador queda afuera ([`permissions.md`](architecture/permissions.md)).
 
 ### US-EVT-04: Buscar eventos con filtros y ordenamiento
 

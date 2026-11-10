@@ -3,13 +3,13 @@
 ## Entrega 1
 - [ ] Revisar error handling y comentarios en [PR #31](https://github.com/joaquinblock/TicketYa/pull/31)
 - [ ] Generar lista histórica de issues
-- [x] Subir diagramas de flujo: secuencia de compra en [`purchase-sequence.md`](../architecture/purchase-sequence.md) y módulos en [`microservices.md`](../architecture/microservices.md)
-- [ ] Subir DER (el de ticket-service está en [`ticket-service.md`](../architecture/ticket-service.md); faltan los otros servicios)
+- [x] Subir diagramas de flujo: secuencia de compra en [`purchase-sequence.md`](../architecture/purchase-sequence.md) y módulos en [`modules.md`](../architecture/modules.md)
+- [x] Subir DER: uno por servicio en `auth-service.md`, `event-service.md`, `ticket-service.md` y `payment-service.md`, con las referencias entre bases y los datos solapados
 - [ ] Subir diagrama de clases
-- [ ] Chequear si todos los endpoints se encuentran en Swagger
+- [x] Chequear si todos los endpoints se encuentran en Swagger: [`endpoints.md`](../architecture/endpoints.md) se generó de las anotaciones OpenAPI
 - [x] Chequear si todos los test corren
 - [x] Instrucciones para levantar los servicios (README, *Cómo ejecutar*)
-- [ ] Historias de usuario de event-service y auth-service: [`user-stories.md`](../user-stories.md) solo tiene las de ticket-service. Las tiene que escribir el grupo, no se inventan
+- [x] Historias de usuario de todo el sistema en [`user-stories.md`](../user-stories.md): las 58 de las dos entregas, con criterios de aceptación
 - [ ] US-EVT-05 (#56) es una tarea técnica, no una historia: decidir el nombre (ver [`user-story-naming.md`](user-story-naming.md))
 
 ## Entrega 2

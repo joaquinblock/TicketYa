@@ -75,6 +75,7 @@ Usuarios de prueba: `1` cliente, `2` organizador (org `1`), `3` admin, `4` perso
 |---|---|---|
 | event-service | `POST /api/events` | `EVENT_MANAGE` |
 | event-service | `PUT /api/events/{id}/participants` | `EVENT_MANAGE` |
+| event-service | `PUT /api/events/{id}/sectors` | `EVENT_MANAGE` |
 | event-service | `PUT /api/events/{id}`, `DELETE /api/events/{id}` | `EVENT_MANAGE` |
 | event-service | `POST /api/events/{id}/publish` | `EVENT_MANAGE` |
 | event-service | `POST /api/events/{id}/cancel` | `EVENT_ADMIN` |

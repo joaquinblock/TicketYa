@@ -170,6 +170,7 @@ El alta (`POST /api/events`) está en `event-creation-pending.md`. Las transicio
 |---|---|---|---|---|
 | `GET` | `/api/events/{id}` | El evento con su lugar, los sectores que vende (precio y capacidad), los participantes y la capacidad total | Público | 200 |
 | `PUT` | `/api/events/{id}` | Reemplaza los datos del alta. Usa el mismo body que `POST` | `EVENT_MANAGE` | 200 |
+| `PUT` | `/api/events/{id}/sectors` | Reemplaza los sectores que vende y sus precios | `EVENT_MANAGE` | 200 |
 | `DELETE` | `/api/events/{id}` | Borra un borrador con sus sectores y participantes | `EVENT_MANAGE` | 204 |
 | `POST` | `/api/events/{id}/publish` | `DRAFT → PUBLISHED` | `EVENT_MANAGE` | 200 |
 | `POST` | `/api/events/{id}/cancel` | `PUBLISHED`, `SOLD_OUT` o `SUSPENDED → CANCELLED` | `EVENT_ADMIN` | 200 |
@@ -177,7 +178,13 @@ El alta (`POST /api/events`) está en `event-creation-pending.md`. Las transicio
 ### Reglas
 
 - **Editar, borrar y publicar** son solo para un organizador de la organización del evento: si no, `403 organizer_not_in_organization`. Cancelar lo hace cualquier administrador, sobre cualquier evento, como dice la consigna 3.
-- **Editar y borrar, solo en `DRAFT`:** si no, `409 event_not_editable`. Un evento publicado se cancela, no se borra.
+- **Sectores y precios:** `{ "sectors": [{ "sectorId": 3, "price": 20000.00 }] }` reemplaza la lista completa, y `[]` los quita a todos. Solo en `DRAFT`. Además:
+  - cada sector tiene que ser del lugar del evento: si no, `404 sector_not_found` con los que no lo son en `detail.missingIds`;
+  - un sector va una sola vez, porque tendría dos precios: `400 invalid_event_configuration` con `detail.repeatedSectorIds`;
+  - el precio es mayor a 0 y tiene hasta dos decimales (`400 validation_error`), y se guarda siempre con dos. Se asume que está en pesos;
+  - **se actualiza en el lugar:** un sector que sigue conserva su fila de `event_sector` (y su id) y solo cambia el precio; los que se van se borran y los nuevos se insertan. Así el id queda estable si algún día se permite cambiar precios de un evento publicado, porque el ticket-service lo referencia.
+- **Eventos gratuitos:** no están soportados. El precio tiene que ser mayor a 0, y el payment-service tampoco cobra montos de 0. Si hicieran falta, habría que aceptar `price = 0` acá y que el ticket-service emita la entrada sin cobrar.
+- **Editar, borrar y cambiar sectores, solo en `DRAFT`:** si no, `409 event_not_editable`. Un evento publicado se cancela, no se borra.
 - **Si al editar cambia el lugar,** se borran los sectores que vendía, porque eran del lugar anterior. La organización, el estado, los sectores y los participantes no se cambian con `PUT`.
 - **Publicar** exige que esté en `DRAFT` (si no, `409 invalid_status_transition`) y que cumpla todas estas condiciones. Si falla alguna, responde `409 event_not_publishable` con todas en `detail.problems`:
   - al menos un sector a la venta;
@@ -197,5 +204,4 @@ POST /api/events/10/publish                  X-User-Id: 2
 |---|---|
 | Inventario | Publicar todavía no le pide al ticket-service que arme el inventario (US-TKT-01, #42). Un evento publicado por API no se puede comprar |
 | Reintegros | Cancelar todavía no avisa al ticket-service (US-TKT-18, #61). Las entradas vendidas siguen válidas allá |
-| Sectores y precios | No hay endpoint para elegir qué sectores vende un borrador. Hoy solo los carga el seeder: el evento 3 se puede publicar y el 10 no |
 | Otras transiciones | Suspender, reanudar, agotar y finalizar todavía no tienen endpoint |

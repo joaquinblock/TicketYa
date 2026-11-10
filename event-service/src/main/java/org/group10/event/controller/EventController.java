@@ -13,6 +13,7 @@ import org.group10.event.dto.EventCreateRequest;
 import org.group10.event.dto.EventDetailResponse;
 import org.group10.event.dto.EventParticipantsRequest;
 import org.group10.event.dto.EventResponse;
+import org.group10.event.dto.EventSectorsRequest;
 import org.group10.event.dto.ParticipantResponse;
 import org.group10.event.security.Permission;
 import org.group10.event.security.PermissionInterceptor;
@@ -128,6 +129,29 @@ public class EventController {
             @RequestHeader(USER_HEADER) Long organizerId,
             @Valid @RequestBody EventCreateRequest request) {
         return eventService.update(id, organizerId, request);
+    }
+
+    @PutMapping("/{id}/sectors")
+    @RequiresPermission(Permission.EVENT_MANAGE)
+    @Operation(summary = "Definir los sectores y precios de un evento", description = """
+            Reemplaza la lista completa: una lista vacía los quita a todos. Cada sector tiene que ser del lugar del             evento y aparecer una sola vez. Solo en `DRAFT`, y solo un organizador de la organización del evento.""")
+    @ApiResponse(responseCode = "200", description = "Evento con sus sectores, precios y capacidad")
+    @ApiResponse(responseCode = "400", description = "validation_error (precio inválido) / invalid_event_configuration "
+            + "(sectores repetidos, en detail.repeatedSectorIds)",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "403", description = "forbidden (sin EVENT_MANAGE) / organizer_not_in_organization",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "404", description = "event_not_found / sector_not_found (sectores que no son del lugar, "
+            + "en detail.missingIds) / user_not_found / organizer_not_found",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "409", description = "event_not_editable: el evento no está en DRAFT",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    public EventDetailResponse replaceSectors(
+            @PathVariable Long id,
+            @Parameter(description = "Organizador que hace el cambio (id de usuario)", example = "2")
+            @RequestHeader(USER_HEADER) Long organizerId,
+            @Valid @RequestBody EventSectorsRequest request) {
+        return eventService.replaceSectors(id, organizerId, request);
     }
 
     @DeleteMapping("/{id}")

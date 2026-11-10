@@ -70,6 +70,39 @@ Alternativas descartadas: **OpenFeign** (en mantenimiento), **WebClient** (react
 
 Cada client es una interfaz `@HttpExchange` en el paquete `client`, registrada en `config/HttpClientsConfig` con `@ImportHttpServices`. La URL base va en `spring.http.serviceclient.<servicio>.base-url` del `application.yml`, con variable de entorno para Docker (p. ej. `EVENT_SERVICE_URL`).
 
+### Timeouts y reintentos
+
+Hoy solo el event-service los tiene configurados. Los demás servicios tienen que copiar la misma configuración cuando agreguen sus clients.
+
+**Por qué:** Spring no pone timeouts por defecto. Si otro servicio acepta la conexión pero no contesta, el request espera para siempre y ocupa un thread de Tomcat. Con suficientes requests así se agotan los threads y el servicio deja de responder todo, incluso lo que no usa al otro. Es una falla en cascada.
+
+```yaml
+spring.http.serviceclient:
+  auth-service:
+    connect-timeout: 1s    # tiempo para abrir la conexión
+    read-timeout: 2s       # tiempo para recibir la respuesta
+ticketya.http.retry:
+  max-attempts: 2          # el intento original + 1 reintento
+  backoff: 200ms
+```
+
+**Qué pasa si el otro servicio no responde:**
+1. Se vence el timeout, o la conexión se rechaza.
+2. `RetryOnIoErrorInterceptor` reintenta una vez después de 200 ms.
+3. Si vuelve a fallar, el `RestClient` lanza `ResourceAccessException` y el `GlobalExceptionHandler` responde `503 service_unavailable`.
+
+**Qué se reintenta y qué no:**
+
+| Caso | ¿Se reintenta? | Por qué |
+|---|---|---|
+| `GET` sin respuesta (timeout o conexión rechazada) | Sí, una vez | Es idempotente: repetirlo no cambia nada |
+| `POST`/`PUT`/`DELETE` sin respuesta | No | Puede haberse aplicado igual, y repetirlo duplicaría el efecto (p. ej. dos cobros) |
+| Respuesta con error (4xx o 5xx) | No | Hubo respuesta: un `404` no se arregla reintentando, y el `GlobalExceptionHandler` ya lo reenvía o lo convierte en `503` |
+
+**Peor caso:** con auth colgado, un request espera unos 4,2 s (2 s + 0,2 s + 2 s) y recibe `503`. Ya no queda esperando sin límite.
+
+**Lo que falta:** un *circuit breaker*, para dejar de llamar un rato a un servicio que viene fallando en vez de esperar el timeout en cada request. Para la Entrega 1 alcanza con timeouts y reintentos.
+
 ## Módulos Maven
 
 | Módulo | Qué es |

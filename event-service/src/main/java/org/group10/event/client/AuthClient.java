@@ -3,6 +3,7 @@ package org.group10.event.client;
 import lombok.AllArgsConstructor;
 import org.group10.event.client.dto.OrganizationResponse;
 import org.group10.event.client.dto.OrganizerResponse;
+import org.group10.event.client.dto.UserPermissionsResponse;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.service.annotation.GetExchange;
 import org.springframework.web.service.annotation.HttpExchange;
@@ -23,4 +24,11 @@ public interface AuthClient {
      */
     @GetExchange("/organizers/{userId}")
     OrganizerResponse getOrganizer(@PathVariable Long userId);
+
+    /**
+     * Role and permissions of an active user. A deleted or missing user gives 404 {@code user_not_found}.
+     * {@code PermissionInterceptor} calls it before every endpoint annotated with {@code @RequiresPermission}.
+     */
+    @GetExchange("/users/{id}/permissions")
+    UserPermissionsResponse getPermissions(@PathVariable Long id);
 }

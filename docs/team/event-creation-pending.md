@@ -17,7 +17,8 @@
 
 - [x] **Seeder del auth-service:** `AuthSeeder` carga la organización `1` con el organizador `2` (`organizer@ticketya.com`), que son los ids que asume `EventSeeder`, y la organización `2` con el organizador `5`. El `403` se prueba con el organizador `2` contra la organización `2` (PR #37 y #56)
 - [x] **Seeder del event-service:** eventos en todos los estados, tipos y ciudades, de las dos organizaciones (ver *Datos de prueba* en [`event-service.md`](../architecture/event-service.md))
-- [ ] **Ruta del gateway:** `api-gateway` enruta `/api/organizations/**` al auth-service, pero no `/api/organizers/**`. El event-service no la necesita (llama directo a `:8081`), pero sin ella el endpoint no se puede usar desde `:8080`
+- [x] **Ruta del gateway:** `api-gateway` ya enruta `/api/organizers/**` al auth-service
+- [x] **Permisos:** `POST /api/events` exige `EVENT_MANAGE` con `@RequiresPermission` (ver [`permissions.md`](../architecture/permissions.md))
 - [ ] **Correr los tests:** `EventServiceTest` y `EventControllerTest` todavía no se ejecutaron. Maven desde la terminal usa JDK 24 y el proyecto pide 25
 - [ ] **Colección de Postman:** importar [`docs/postman/event-creation.postman_collection.json`](../postman/event-creation.postman_collection.json) y correrla con los tres servicios levantados
 
@@ -55,8 +56,8 @@
 
 ## Resiliencia de `AuthClient`
 
-- [ ] **Timeouts:** no están configurados. Si el auth-service se cuelga, el create queda esperando
-- [ ] **Reintentos:** no hay. Para lecturas como estas se podrían reintentar una vez, el enunciado pide reintentos y timeouts ante fallos de otros servicios
+- [x] **Timeouts:** 1 s para conectar y 2 s para leer. Si el auth-service se cuelga, responde `503` en vez de esperar para siempre (ver *Timeouts y reintentos* en [`microservices.md`](../architecture/microservices.md))
+- [x] **Reintentos:** un reintento a los 200 ms, solo para `GET` y solo si no hubo respuesta (`RetryOnIoErrorInterceptor`)
 
 ## Decisiones abiertas
 

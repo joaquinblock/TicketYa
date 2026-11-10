@@ -100,6 +100,8 @@ Están en [`docs/postman/`](docs/postman/). Se importan en Postman y cada una tr
 
 | Colección | Qué cubre | Apunta a | ¿Cambia datos? |
 |---|---|---|---|
+| `auth-service` | Permisos de cada rol, organizaciones y organizadores | Gateway | No: se puede repetir |
+| `venues` | ABM de lugares, sectores y asientos, y qué se bloquea si un evento los usa | Gateway | Crea su propio lugar y lo borra al final: se puede repetir |
 | `event-search` | Búsqueda de eventos y visibilidad del detalle | Gateway | No: se puede repetir |
 | `event-creation` | Alta de eventos y permisos | Gateway | Sí |
 | `participants` | ABM de participantes y asignación a un evento | Gateway | Sí |

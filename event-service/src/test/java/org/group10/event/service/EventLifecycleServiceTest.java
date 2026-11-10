@@ -42,7 +42,10 @@ import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionOperations;
 
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -67,7 +70,9 @@ class EventLifecycleServiceTest {
     private static final Long EVENT_ID = 3L;
     private static final Long ORGANIZATION_ID = 1L;
     private static final Long ORGANIZER_ID = 2L;
-    private static final LocalDateTime DATE = LocalDateTime.now().plusMonths(2);
+    private static final Clock CLOCK = Clock.fixed(Instant.now(), ZoneId.of("America/Argentina/Buenos_Aires"));
+    private static final LocalDateTime NOW = LocalDateTime.now(CLOCK);
+    private static final LocalDateTime DATE = NOW.plusMonths(2);
     private static final Caller ADMIN = new Caller(3L, Set.of("EVENT_ADMIN"));
     private static final Caller CREATOR = new Caller(ORGANIZER_ID, Set.of("EVENT_MANAGE"));
     private static final Caller OTHER_ORGANIZER = new Caller(7L, Set.of("EVENT_MANAGE"));
@@ -100,7 +105,7 @@ class EventLifecycleServiceTest {
     @BeforeEach
     void setUp() {
         eventService = new EventService(eventRepository, venueRepository, participantRepository, eventSectorRepository,
-                sectorRepository, seatRepository, new EventStatusMachine(), transactions, authClient, ticketClient);
+                sectorRepository, seatRepository, new EventStatusMachine(), transactions, authClient, ticketClient, CLOCK);
         when(transactions.execute(any())).thenAnswer(invocation ->
                 invocation.<TransactionCallback<?>>getArgument(0).doInTransaction(null));
         when(seatRepository.countBySectorOfVenue(theater.getId())).thenReturn(List.of(new SectorSeatCount(3L, 50)));
@@ -277,11 +282,11 @@ class EventLifecycleServiceTest {
     }
 
     @Test
-    void publish_readyDraft_sendsTheInventoryOfEverySectorToTheTicketService() {
+    void publish_readyDraft_sendsTheInventoryAndTheDataPrintedOnTheTicketToTheTicketService() {
         Event event = givenEvent(EventStatus.DRAFT);
         givenSectorsWithIds(event);
         when(seatRepository.findBySectorIdIn(List.of(stalls.getId())))
-                .thenReturn(List.of(seat(301L, stalls), seat(302L, stalls)));
+                .thenReturn(List.of(seat(301L, stalls, "A", 1), seat(302L, stalls, "A", 2)));
 
         eventService.publish(EVENT_ID, ORGANIZER_ID);
 
@@ -289,8 +294,13 @@ class EventLifecycleServiceTest {
         verify(ticketClient).synchronizeEventSale(eq(EVENT_ID), sale.capture());
         assertThat(sale.getValue().status()).isEqualTo(EventStatus.PUBLISHED);
         assertThat(sale.getValue().sectors()).containsExactly(
-                new EventSaleRequest.SectorSale(30L, new BigDecimal("10000"), null, List.of(301L, 302L)),
-                new EventSaleRequest.SectorSale(31L, new BigDecimal("10000"), 300, null));
+                new EventSaleRequest.SectorSale(30L, "Platea", new BigDecimal("10000"), null, List.of(
+                        new EventSaleRequest.SeatSale(301L, "A", 1), new EventSaleRequest.SeatSale(302L, "A", 2))),
+                new EventSaleRequest.SectorSale(31L, "Campo", new BigDecimal("10000"), 300, null));
+        assertThat(sale.getValue())
+                .extracting(EventSaleRequest::eventName, EventSaleRequest::venueName, EventSaleRequest::venueAddress,
+                        EventSaleRequest::venueCity)
+                .containsExactly("Arquitectura de microservicios", "Teatro de la Sierra", "Calle 1", "Tandil");
     }
 
     @Test
@@ -782,7 +792,49 @@ class EventLifecycleServiceTest {
         verifyNoInteractions(transactions);
     }
 
+    // ---- finishEventsThatAlreadyHappened ----
+
+    @Test
+    void finishEventsThatAlreadyHappened_pastPublishedEvent_notifiesTheTicketServiceAndThenFinishesIt() {
+        Event event = givenEvent(EventStatus.PUBLISHED);
+        event.setDateTime(NOW.minusHours(1));
+        givenSectorsWithIds(event);
+        when(eventRepository.findIdsOfOnSaleEventsThatAlreadyHappened(NOW)).thenReturn(List.of(EVENT_ID));
+        givenTransactionsWithoutResultRun();
+
+        eventService.finishEventsThatAlreadyHappened();
+
+        ArgumentCaptor<EventSaleRequest> sale = ArgumentCaptor.forClass(EventSaleRequest.class);
+        var order = org.mockito.Mockito.inOrder(ticketClient, eventRepository);
+        order.verify(ticketClient).synchronizeEventSale(eq(EVENT_ID), sale.capture());
+        order.verify(eventRepository).finishIfStillOnSaleAndAlreadyHappened(EVENT_ID, NOW);
+        assertThat(sale.getValue().status()).isEqualTo(EventStatus.FINISHED);
+    }
+
+    @Test
+    void finishEventsThatAlreadyHappened_ticketServiceDown_leavesTheEventOnSaleAndGoesOnWithTheNext() {
+        Event event = givenEvent(EventStatus.SOLD_OUT);
+        event.setDateTime(NOW.minusHours(1));
+        when(eventRepository.findIdsOfOnSaleEventsThatAlreadyHappened(NOW)).thenReturn(List.of(EVENT_ID, EVENT_ID));
+        givenTransactionsWithoutResultRun();
+        doThrow(new IllegalStateException("ticket-service caído"))
+                .doNothing()
+                .when(ticketClient).synchronizeEventSale(eq(EVENT_ID), any());
+
+        eventService.finishEventsThatAlreadyHappened();
+
+        verify(ticketClient, times(2)).synchronizeEventSale(eq(EVENT_ID), any());
+        verify(eventRepository, times(1)).finishIfStillOnSaleAndAlreadyHappened(EVENT_ID, NOW);
+    }
+
     // ---- helpers ----
+
+    private void givenTransactionsWithoutResultRun() {
+        org.mockito.Mockito.doAnswer(invocation -> {
+            invocation.<java.util.function.Consumer<Object>>getArgument(0).accept(null);
+            return null;
+        }).when(transactions).executeWithoutResult(any());
+    }
 
     private Event givenEvent(EventStatus status) {
         Event event = Event.builder().id(EVENT_ID).name("Arquitectura de microservicios").type(EventType.CONFERENCE)
@@ -805,8 +857,8 @@ class EventLifecycleServiceTest {
                 EventSector.builder().id(31L).event(event).sector(field).price(new BigDecimal("10000")).build()));
     }
 
-    private static Seat seat(Long id, Sector sector) {
-        return Seat.builder().id(id).sector(sector).build();
+    private static Seat seat(Long id, Sector sector, String row, int number) {
+        return Seat.builder().id(id).sector(sector).row(row).number(number).build();
     }
 
     private void givenVenueExists(Venue venue) {

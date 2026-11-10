@@ -1,6 +1,7 @@
 package org.group10.event.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.group10.common.exception.TicketYaException;
 import org.group10.event.client.AuthClient;
 import org.group10.event.client.TicketClient;
@@ -41,6 +42,7 @@ import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.web.client.HttpClientErrorException;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -54,6 +56,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 @Transactional(readOnly = true)
 public class EventService {
 
@@ -67,6 +70,7 @@ public class EventService {
     private final TransactionOperations transactions;
     private final AuthClient authClient;
     private final TicketClient ticketClient;
+    private final Clock clock;
 
     /**
      * The event with its venue, the sectors it sells with their price and capacity, and its participants.
@@ -233,7 +237,7 @@ public class EventService {
         EventSaleRequest sale = transactions.execute(tx -> {
             Event managed = getEvent(id);
             ensureStatus(managed, EventStatus.DRAFT, "Solo se publica un borrador");
-            List<String> problems = publishProblems(managed, sectorsOf(managed));
+            List<String> problems = publishProblems(managed, sectorsOf(managed), LocalDateTime.now(clock));
             if (!problems.isEmpty()) {
                 throw new TicketYaException(EventErrorCode.EVENT_NOT_PUBLISHABLE,
                         "El evento %d todavía no se puede publicar".formatted(id), Map.of("problems", problems));
@@ -274,6 +278,23 @@ public class EventService {
             managed.changeStatus(EventStatus.CANCELLED, statusMachine);
             return toDetail(managed);
         });
+    }
+
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public void finishEventsThatAlreadyHappened() {
+        LocalDateTime now = LocalDateTime.now(clock);
+        eventRepository.findIdsOfOnSaleEventsThatAlreadyHappened(now)
+                .forEach(id -> finishNotifyingTheTicketServiceFirst(id, now));
+    }
+
+    private void finishNotifyingTheTicketServiceFirst(Long id, LocalDateTime now) {
+        try {
+            ticketClient.synchronizeEventSale(id, transactions.execute(tx ->
+                    saleSnapshotOf(getEvent(id), EventStatus.FINISHED)));
+            transactions.executeWithoutResult(tx -> eventRepository.finishIfStillOnSaleAndAlreadyHappened(id, now));
+        } catch (RuntimeException failure) {
+            log.warn("No se pudo finalizar el evento {}; se reintenta en el próximo ciclo: {}", id, failure.getMessage());
+        }
     }
 
     @Transactional
@@ -466,7 +487,7 @@ public class EventService {
     /**
      * Every precondition that fails, so the organizer can fix them all at once.
      */
-    private static List<String> publishProblems(Event event, List<EventSectorResponse> sectors) {
+    private static List<String> publishProblems(Event event, List<EventSectorResponse> sectors, LocalDateTime now) {
         List<String> problems = new ArrayList<>();
         if (sectors.isEmpty()) {
             problems.add("No tiene sectores a la venta");
@@ -474,7 +495,7 @@ public class EventService {
         sectors.stream()
                 .filter(s -> s.numbered() && s.capacity() == 0)
                 .forEach(s -> problems.add("El sector numerado '%s' no tiene asientos".formatted(s.name())));
-        if (!event.getDateTime().isAfter(LocalDateTime.now())) {
+        if (!event.getDateTime().isAfter(now)) {
             problems.add("La fecha del evento ya pasó");
         }
         if (event.isHighDemand() && event.getSaleStart() == null) {
@@ -497,23 +518,28 @@ public class EventService {
                 .filter(Sector::isNumbered)
                 .map(Sector::getId)
                 .toList();
-        Map<Long, List<Long>> seatIdsBySector = seatRepository.findBySectorIdIn(numberedSectorIds).stream()
+        Map<Long, List<EventSaleRequest.SeatSale>> seatsBySector = seatRepository.findBySectorIdIn(numberedSectorIds)
+                .stream()
                 .collect(Collectors.groupingBy(seat -> seat.getSector().getId(),
-                        Collectors.mapping(Seat::getId, Collectors.toList())));
+                        Collectors.mapping(seat -> new EventSaleRequest.SeatSale(seat.getId(), seat.getRow(),
+                                seat.getNumber()), Collectors.toList())));
 
-        return new EventSaleRequest(status, dateTime, event.getSaleStart(), event.isHighDemand(),
-                event.getMaxTicketsPerCustomer(), sectors.stream()
-                .map(eventSector -> saleOfSector(eventSector, seatIdsBySector))
-                .toList());
+        Venue venue = event.getVenue();
+        return new EventSaleRequest(status, event.getName(), venue.getName(), venue.getAddress(), venue.getCity(),
+                dateTime, event.getSaleStart(), event.isHighDemand(), event.getMaxTicketsPerCustomer(),
+                sectors.stream()
+                        .map(eventSector -> saleOfSector(eventSector, seatsBySector))
+                        .toList());
     }
 
     private static EventSaleRequest.SectorSale saleOfSector(EventSector eventSector,
-                                                            Map<Long, List<Long>> seatIdsBySector) {
+                                                            Map<Long, List<EventSaleRequest.SeatSale>> seatsBySector) {
         Sector sector = eventSector.getSector();
         return sector.isNumbered()
-                ? new EventSaleRequest.SectorSale(eventSector.getId(), eventSector.getPrice(), null,
-                        seatIdsBySector.getOrDefault(sector.getId(), List.of()))
-                : new EventSaleRequest.SectorSale(eventSector.getId(), eventSector.getPrice(), sector.getCapacity(), null);
+                ? new EventSaleRequest.SectorSale(eventSector.getId(), sector.getName(), eventSector.getPrice(), null,
+                        seatsBySector.getOrDefault(sector.getId(), List.of()))
+                : new EventSaleRequest.SectorSale(eventSector.getId(), sector.getName(), eventSector.getPrice(),
+                        sector.getCapacity(), null);
     }
 
     private EventDetailResponse toDetail(Event event) {

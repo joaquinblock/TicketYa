@@ -29,6 +29,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -57,6 +58,7 @@ public class EventSearchService {
     private final EntityManager entityManager;
     private final EventRepository eventRepository;
     private final EventSectorRepository eventSectorRepository;
+    private final Clock clock;
 
     /**
      * @throws TicketYaException {@code INVALID_PARAMETER} if {@code from} is after {@code to}
@@ -66,7 +68,7 @@ public class EventSearchService {
             throw new TicketYaException(CommonErrorCode.INVALID_PARAMETER,
                     "from (%s) no puede ser posterior a to (%s)".formatted(request.from(), request.to()));
         }
-        Filters filters = Filters.of(request, LocalDateTime.now());
+        Filters filters = Filters.of(request, LocalDateTime.now(clock));
         CriteriaBuilder cb = entityManager.getCriteriaBuilder();
 
         CriteriaQuery<Long> count = cb.createQuery(Long.class);

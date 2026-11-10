@@ -26,6 +26,9 @@ spring:
     open-in-view: false
 
 ticketya:
+  time-zone: America/Argentina/Buenos_Aires
+  events:
+    finish-check: PT1M
   http:
     retry:
       max-attempts: 2   # el intento original + 1 reintento, solo GET y solo si no hubo respuesta

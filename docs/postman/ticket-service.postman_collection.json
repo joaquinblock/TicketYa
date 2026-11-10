@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "TicketYa - Reserva de entradas",
-    "description": "Inventario, disponibilidad, reserva y abandono. Va directo a ticket-service (8083), que no necesita otros servicios. Cada corrida crea su propio evento con ids tomados de la fecha, así que se puede repetir sin reiniciar. El vencimiento de reservas (US-TKT-08) tarda 10 minutos y se prueba en ReservationMySqlIntegrationTest.",
+    "name": "TicketYa - Venta de entradas",
+    "description": "Inventario, disponibilidad, reserva, abandono, pago, compras y devoluciones. Va directo a ticket-service (8083). Las carpetas de pago y devoluciones necesitan además el payment-service (8084) levantado; las demás no necesitan otros servicios. Cada corrida crea sus propios eventos con ids tomados de la fecha, así que se puede repetir sin reiniciar. La pasarela simulada rechaza DEBIT_CARD. El vencimiento de reservas (US-TKT-08) tarda 10 minutos y se prueba en ReservationMySqlIntegrationTest.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -16,6 +16,10 @@
     {
       "key": "otherCustomerId",
       "value": "502"
+    },
+    {
+      "key": "adminId",
+      "value": "3"
     }
   ],
   "item": [
@@ -850,6 +854,562 @@
             "method": "GET",
             "url": "{{baseUrl}}/api/availability?eventId={{eventId}}",
             "header": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "US-TKT-09 a 12 Pagar y ver mis compras",
+      "item": [
+        {
+          "name": "Publicar una venta para comprar → 204",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('204', () => {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const base = Date.now() + 500;",
+                  "pm.collectionVariables.set('payEventId', base);",
+                  "pm.collectionVariables.set('payNumberedSectorId', base + 1);",
+                  "pm.collectionVariables.set('payReserveKey', 'pay-reserve-' + base);",
+                  "pm.collectionVariables.set('payDebitKey', 'pay-debit-' + base);",
+                  "pm.collectionVariables.set('payCreditKey', 'pay-credit-' + base);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/internal/event-sales/{{payEventId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"PUBLISHED\",\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"saleStart\": null,\n  \"highDemand\": false,\n  \"maxTicketsPerCustomer\": 4,\n  \"sectors\": [\n    {\"eventSectorId\": {{payNumberedSectorId}}, \"price\": 1000, \"seatIds\": [1, 2, 3, 4]}\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Reservar dos asientos → 201 PENDING",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test('PENDING por 2000', () => { const b = pm.response.json(); pm.expect(b.status).to.eql('PENDING'); pm.expect(b.total).to.eql(2000); });",
+                  "pm.collectionVariables.set('payOrderId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{customerId}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"eventId\": {{payEventId}}, \"idempotencyKey\": \"{{payReserveKey}}\", \"seatIds\": [1, 2]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "US-TKT-10 · Pagar con DEBIT_CARD → 422 rechazado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('422 payment_rejected', () => {",
+                  "  pm.response.to.have.status(422);",
+                  "  pm.expect(pm.response.json().error).to.eql('payment_rejected');",
+                  "});",
+                  "pm.test('Dice el motivo y cuántos rechazos van', () => { const d = pm.response.json().detail; pm.expect(d.reason).to.be.a('string'); pm.expect(d.rejectedAttempts).to.eql(1); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders/{{payOrderId}}/pay",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{customerId}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"paymentMethod\": \"DEBIT_CARD\", \"idempotencyKey\": \"{{payDebitKey}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "US-TKT-10 · Después del rechazo la orden sigue PENDING",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Sigue PENDING, con los asientos reservados', () => { const b = pm.response.json(); pm.expect(b.status).to.eql('PENDING'); b.tickets.forEach(t => pm.expect(t.status).to.eql('RESERVED')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/orders/{{payOrderId}}",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{customerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "US-TKT-09 · Pagar con otro medio → 200 PAID con QR",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('PAID con CREDIT_CARD', () => { pm.expect(body.status).to.eql('PAID'); pm.expect(body.paymentMethod).to.eql('CREDIT_CARD'); });",
+                  "pm.test('Entradas ISSUED con un QR distinto cada una', () => { const qrs = body.tickets.map(t => t.qrCode); body.tickets.forEach(t => pm.expect(t.status).to.eql('ISSUED')); qrs.forEach(q => pm.expect(q).to.be.a('string')); pm.expect(new Set(qrs).size).to.eql(qrs.length); });",
+                  "pm.collectionVariables.set('payTicketId', body.tickets[0].id);",
+                  "pm.collectionVariables.set('payOtherTicketId', body.tickets[1].id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders/{{payOrderId}}/pay",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{customerId}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"paymentMethod\": \"CREDIT_CARD\", \"idempotencyKey\": \"{{payCreditKey}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "US-TKT-11 · Repetir el mismo pago → 200 sin cobrar dos veces",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('La misma orden PAID, con las mismas entradas', () => { const b = pm.response.json(); pm.expect(b.status).to.eql('PAID'); pm.expect(b.tickets[0].id).to.eql(Number(pm.collectionVariables.get('payTicketId'))); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders/{{payOrderId}}/pay",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{customerId}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"paymentMethod\": \"CREDIT_CARD\", \"idempotencyKey\": \"{{payCreditKey}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "US-TKT-12 · Ver mis compras → incluye la orden",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Está la orden pagada', () => pm.expect(pm.response.json().map(o => o.id)).to.include(Number(pm.collectionVariables.get('payOrderId'))));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/orders",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{customerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "US-TKT-12 · La compra de otro cliente → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404 order_not_found', () => {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error).to.eql('order_not_found');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/orders/{{payOrderId}}",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{otherCustomerId}}"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "US-TKT-14 a 17 Devoluciones",
+      "item": [
+        {
+          "name": "US-TKT-14 · Pedir la devolución de una entrada → 201 PENDING",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test('PENDING', () => pm.expect(pm.response.json().status).to.eql('PENDING'));",
+                  "pm.collectionVariables.set('returnRequestId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/tickets/{{payTicketId}}/return-requests",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{customerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "US-TKT-14 · Pedirla otra vez → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409 return_request_already_pending', () => {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error).to.eql('return_request_already_pending');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/tickets/{{payTicketId}}/return-requests",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{customerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "US-TKT-14 · Entrada de otro cliente → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404 ticket_not_found', () => {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error).to.eql('ticket_not_found');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/tickets/{{payOtherTicketId}}/return-requests",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{otherCustomerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "US-TKT-15 · Listar las pendientes → incluye la solicitud",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Está la solicitud', () => pm.expect(pm.response.json().content.map(r => r.id)).to.include(Number(pm.collectionVariables.get('returnRequestId'))));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/return-requests?status=PENDING&size=100",
+            "header": []
+          }
+        },
+        {
+          "name": "US-TKT-16 · Aprobar → 200 APPROVED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('APPROVED por el admin', () => { const b = pm.response.json(); pm.expect(b.status).to.eql('APPROVED'); pm.expect(b.resolvedBy).to.eql(Number(pm.collectionVariables.get('adminId'))); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/return-requests/{{returnRequestId}}/approve",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "US-TKT-16 · La entrada quedó REFUNDED y la otra sigue ISSUED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const tickets = pm.response.json().tickets;",
+                  "const byId = id => tickets.find(t => t.id === Number(pm.collectionVariables.get(id)));",
+                  "pm.test('REFUNDED', () => pm.expect(byId('payTicketId').status).to.eql('REFUNDED'));",
+                  "pm.test('La otra sigue ISSUED', () => pm.expect(byId('payOtherTicketId').status).to.eql('ISSUED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/orders/{{payOrderId}}",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{customerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "US-TKT-16 · Aprobarla otra vez → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409 refund_not_allowed', () => {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error).to.eql('refund_not_allowed');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/return-requests/{{returnRequestId}}/approve",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "US-TKT-17 · Pedir la devolución de la otra entrada → 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "pm.collectionVariables.set('rejectedRequestId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/tickets/{{payOtherTicketId}}/return-requests",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{customerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "US-TKT-17 · Rechazar → 200 REJECTED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('REJECTED', () => pm.expect(pm.response.json().status).to.eql('REJECTED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/return-requests/{{rejectedRequestId}}/reject",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "US-TKT-17 · Después del rechazo la entrada sigue ISSUED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Sigue ISSUED', () => pm.expect(pm.response.json().tickets.find(t => t.id === Number(pm.collectionVariables.get('payOtherTicketId'))).status).to.eql('ISSUED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/orders/{{payOrderId}}",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{customerId}}"
+              }
+            ]
           }
         }
       ]

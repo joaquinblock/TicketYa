@@ -1,12 +1,16 @@
 {
   "info": {
     "name": "TicketYa - Venta de entradas",
-    "description": "Inventario, disponibilidad, reserva, abandono, pago, compras y devoluciones. Va directo a ticket-service (8083). Las carpetas de pago y devoluciones necesitan además el payment-service (8084) levantado; las demás no necesitan otros servicios. Cada corrida crea sus propios eventos con ids tomados de la fecha, así que se puede repetir sin reiniciar. La pasarela simulada rechaza DEBIT_CARD. El vencimiento de reservas (US-TKT-08) tarda 10 minutos y se prueba en ReservationMySqlIntegrationTest.",
+    "description": "Inventario, disponibilidad, reserva, abandono, pago, compras y devoluciones. Lo público (/api/**) entra por el gateway (8080); el inventario (/internal/**) va directo a ticket-service (8083) porque el gateway no expone las rutas internas. Necesita levantados api-gateway, ticket-service, payment-service (pago y devoluciones) y auth-service (aprobar y rechazar devoluciones). Cada corrida crea sus propios eventos con ids tomados de la fecha, así que se puede repetir sin reiniciar. La pasarela simulada rechaza DEBIT_CARD. El vencimiento de reservas (US-TKT-08) tarda 10 minutos y se prueba en ReservationMySqlIntegrationTest.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     {
       "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "internalUrl",
       "value": "http://localhost:8083"
     },
     {
@@ -53,7 +57,7 @@
           ],
           "request": {
             "method": "PUT",
-            "url": "{{baseUrl}}/internal/event-sales/{{eventId}}",
+            "url": "{{internalUrl}}/internal/event-sales/{{eventId}}",
             "header": [
               {
                 "key": "Content-Type",
@@ -62,7 +66,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"status\": \"PUBLISHED\",\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"saleStart\": null,\n  \"highDemand\": false,\n  \"maxTicketsPerCustomer\": 4,\n  \"sectors\": [\n    {\"eventSectorId\": {{numberedSectorId}}, \"price\": 1000, \"seatIds\": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]},\n    {\"eventSectorId\": {{generalSectorId}}, \"price\": 500, \"capacity\": 3}\n  ]\n}",
+              "raw": "{\n  \"status\": \"PUBLISHED\",\n  \"eventName\": \"Recital de prueba\",\n  \"venueName\": \"Estadio del Sur\",\n  \"venueAddress\": \"Av. del Estadio 1000\",\n  \"venueCity\": \"Buenos Aires\",\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"saleStart\": null,\n  \"highDemand\": false,\n  \"maxTicketsPerCustomer\": 4,\n  \"sectors\": [\n    {\"eventSectorId\": {{numberedSectorId}}, \"sectorName\": \"Platea\", \"price\": 1000, \"seats\": [\n      {\"seatId\": 1, \"row\": \"A\", \"number\": 1}, {\"seatId\": 2, \"row\": \"A\", \"number\": 2},\n      {\"seatId\": 3, \"row\": \"A\", \"number\": 3}, {\"seatId\": 4, \"row\": \"A\", \"number\": 4},\n      {\"seatId\": 5, \"row\": \"A\", \"number\": 5}, {\"seatId\": 6, \"row\": \"A\", \"number\": 6},\n      {\"seatId\": 7, \"row\": \"A\", \"number\": 7}, {\"seatId\": 8, \"row\": \"A\", \"number\": 8},\n      {\"seatId\": 9, \"row\": \"A\", \"number\": 9}, {\"seatId\": 10, \"row\": \"A\", \"number\": 10}]},\n    {\"eventSectorId\": {{generalSectorId}}, \"sectorName\": \"Campo\", \"price\": 500, \"capacity\": 3}\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -85,7 +89,7 @@
           ],
           "request": {
             "method": "PUT",
-            "url": "{{baseUrl}}/internal/event-sales/{{eventId}}",
+            "url": "{{internalUrl}}/internal/event-sales/{{eventId}}",
             "header": [
               {
                 "key": "Content-Type",
@@ -94,7 +98,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"status\": \"PUBLISHED\",\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"saleStart\": null,\n  \"highDemand\": false,\n  \"maxTicketsPerCustomer\": 4,\n  \"sectors\": [\n    {\"eventSectorId\": {{numberedSectorId}}, \"price\": 1000, \"seatIds\": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]},\n    {\"eventSectorId\": {{generalSectorId}}, \"price\": 500, \"capacity\": 3}\n  ]\n}",
+              "raw": "{\n  \"status\": \"PUBLISHED\",\n  \"eventName\": \"Recital de prueba\",\n  \"venueName\": \"Estadio del Sur\",\n  \"venueAddress\": \"Av. del Estadio 1000\",\n  \"venueCity\": \"Buenos Aires\",\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"saleStart\": null,\n  \"highDemand\": false,\n  \"maxTicketsPerCustomer\": 4,\n  \"sectors\": [\n    {\"eventSectorId\": {{numberedSectorId}}, \"sectorName\": \"Platea\", \"price\": 1000, \"seats\": [\n      {\"seatId\": 1, \"row\": \"A\", \"number\": 1}, {\"seatId\": 2, \"row\": \"A\", \"number\": 2},\n      {\"seatId\": 3, \"row\": \"A\", \"number\": 3}, {\"seatId\": 4, \"row\": \"A\", \"number\": 4},\n      {\"seatId\": 5, \"row\": \"A\", \"number\": 5}, {\"seatId\": 6, \"row\": \"A\", \"number\": 6},\n      {\"seatId\": 7, \"row\": \"A\", \"number\": 7}, {\"seatId\": 8, \"row\": \"A\", \"number\": 8},\n      {\"seatId\": 9, \"row\": \"A\", \"number\": 9}, {\"seatId\": 10, \"row\": \"A\", \"number\": 10}]},\n    {\"eventSectorId\": {{generalSectorId}}, \"sectorName\": \"Campo\", \"price\": 500, \"capacity\": 3}\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -604,7 +608,7 @@
           ],
           "request": {
             "method": "PUT",
-            "url": "{{baseUrl}}/internal/event-sales/{{eventId}}",
+            "url": "{{internalUrl}}/internal/event-sales/{{eventId}}",
             "header": [
               {
                 "key": "Content-Type",
@@ -613,7 +617,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"status\": \"SUSPENDED\",\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"saleStart\": null,\n  \"highDemand\": false,\n  \"maxTicketsPerCustomer\": 4,\n  \"sectors\": [\n    {\"eventSectorId\": {{numberedSectorId}}, \"price\": 1000, \"seatIds\": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]},\n    {\"eventSectorId\": {{generalSectorId}}, \"price\": 500, \"capacity\": 3}\n  ]\n}",
+              "raw": "{\n  \"status\": \"SUSPENDED\",\n  \"eventName\": \"Recital de prueba\",\n  \"venueName\": \"Estadio del Sur\",\n  \"venueAddress\": \"Av. del Estadio 1000\",\n  \"venueCity\": \"Buenos Aires\",\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"saleStart\": null,\n  \"highDemand\": false,\n  \"maxTicketsPerCustomer\": 4,\n  \"sectors\": [\n    {\"eventSectorId\": {{numberedSectorId}}, \"sectorName\": \"Platea\", \"price\": 1000, \"seats\": [\n      {\"seatId\": 1, \"row\": \"A\", \"number\": 1}, {\"seatId\": 2, \"row\": \"A\", \"number\": 2},\n      {\"seatId\": 3, \"row\": \"A\", \"number\": 3}, {\"seatId\": 4, \"row\": \"A\", \"number\": 4},\n      {\"seatId\": 5, \"row\": \"A\", \"number\": 5}, {\"seatId\": 6, \"row\": \"A\", \"number\": 6},\n      {\"seatId\": 7, \"row\": \"A\", \"number\": 7}, {\"seatId\": 8, \"row\": \"A\", \"number\": 8},\n      {\"seatId\": 9, \"row\": \"A\", \"number\": 9}, {\"seatId\": 10, \"row\": \"A\", \"number\": 10}]},\n    {\"eventSectorId\": {{generalSectorId}}, \"sectorName\": \"Campo\", \"price\": 500, \"capacity\": 3}\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -673,7 +677,7 @@
           ],
           "request": {
             "method": "PUT",
-            "url": "{{baseUrl}}/internal/event-sales/{{eventId}}",
+            "url": "{{internalUrl}}/internal/event-sales/{{eventId}}",
             "header": [
               {
                 "key": "Content-Type",
@@ -682,7 +686,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"status\": \"PUBLISHED\",\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"saleStart\": \"2099-01-01T10:00:00\",\n  \"highDemand\": false,\n  \"maxTicketsPerCustomer\": 4,\n  \"sectors\": [\n    {\"eventSectorId\": {{numberedSectorId}}, \"price\": 1000, \"seatIds\": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]},\n    {\"eventSectorId\": {{generalSectorId}}, \"price\": 500, \"capacity\": 3}\n  ]\n}",
+              "raw": "{\n  \"status\": \"PUBLISHED\",\n  \"eventName\": \"Recital de prueba\",\n  \"venueName\": \"Estadio del Sur\",\n  \"venueAddress\": \"Av. del Estadio 1000\",\n  \"venueCity\": \"Buenos Aires\",\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"saleStart\": \"2099-01-01T10:00:00\",\n  \"highDemand\": false,\n  \"maxTicketsPerCustomer\": 4,\n  \"sectors\": [\n    {\"eventSectorId\": {{numberedSectorId}}, \"sectorName\": \"Platea\", \"price\": 1000, \"seats\": [\n      {\"seatId\": 1, \"row\": \"A\", \"number\": 1}, {\"seatId\": 2, \"row\": \"A\", \"number\": 2},\n      {\"seatId\": 3, \"row\": \"A\", \"number\": 3}, {\"seatId\": 4, \"row\": \"A\", \"number\": 4},\n      {\"seatId\": 5, \"row\": \"A\", \"number\": 5}, {\"seatId\": 6, \"row\": \"A\", \"number\": 6},\n      {\"seatId\": 7, \"row\": \"A\", \"number\": 7}, {\"seatId\": 8, \"row\": \"A\", \"number\": 8},\n      {\"seatId\": 9, \"row\": \"A\", \"number\": 9}, {\"seatId\": 10, \"row\": \"A\", \"number\": 10}]},\n    {\"eventSectorId\": {{generalSectorId}}, \"sectorName\": \"Campo\", \"price\": 500, \"capacity\": 3}\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -742,7 +746,7 @@
           ],
           "request": {
             "method": "PUT",
-            "url": "{{baseUrl}}/internal/event-sales/{{eventId}}",
+            "url": "{{internalUrl}}/internal/event-sales/{{eventId}}",
             "header": [
               {
                 "key": "Content-Type",
@@ -751,7 +755,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"status\": \"PUBLISHED\",\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"saleStart\": null,\n  \"highDemand\": false,\n  \"maxTicketsPerCustomer\": 4,\n  \"sectors\": [\n    {\"eventSectorId\": {{numberedSectorId}}, \"price\": 1000, \"seatIds\": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]},\n    {\"eventSectorId\": {{generalSectorId}}, \"price\": 500, \"capacity\": 3}\n  ]\n}",
+              "raw": "{\n  \"status\": \"PUBLISHED\",\n  \"eventName\": \"Recital de prueba\",\n  \"venueName\": \"Estadio del Sur\",\n  \"venueAddress\": \"Av. del Estadio 1000\",\n  \"venueCity\": \"Buenos Aires\",\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"saleStart\": null,\n  \"highDemand\": false,\n  \"maxTicketsPerCustomer\": 4,\n  \"sectors\": [\n    {\"eventSectorId\": {{numberedSectorId}}, \"sectorName\": \"Platea\", \"price\": 1000, \"seats\": [\n      {\"seatId\": 1, \"row\": \"A\", \"number\": 1}, {\"seatId\": 2, \"row\": \"A\", \"number\": 2},\n      {\"seatId\": 3, \"row\": \"A\", \"number\": 3}, {\"seatId\": 4, \"row\": \"A\", \"number\": 4},\n      {\"seatId\": 5, \"row\": \"A\", \"number\": 5}, {\"seatId\": 6, \"row\": \"A\", \"number\": 6},\n      {\"seatId\": 7, \"row\": \"A\", \"number\": 7}, {\"seatId\": 8, \"row\": \"A\", \"number\": 8},\n      {\"seatId\": 9, \"row\": \"A\", \"number\": 9}, {\"seatId\": 10, \"row\": \"A\", \"number\": 10}]},\n    {\"eventSectorId\": {{generalSectorId}}, \"sectorName\": \"Campo\", \"price\": 500, \"capacity\": 3}\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -890,7 +894,7 @@
           ],
           "request": {
             "method": "PUT",
-            "url": "{{baseUrl}}/internal/event-sales/{{payEventId}}",
+            "url": "{{internalUrl}}/internal/event-sales/{{payEventId}}",
             "header": [
               {
                 "key": "Content-Type",

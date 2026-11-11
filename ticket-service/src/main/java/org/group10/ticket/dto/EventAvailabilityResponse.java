@@ -14,6 +14,7 @@ public record EventAvailabilityResponse(
     @Schema(description = "Disponibilidad de un sector: seats si es numerado, availablePlaces siempre")
     public record SectorAvailability(
             @Schema(example = "1") Long eventSectorId,
+            @Schema(example = "Campo") String sectorName,
             @Schema(example = "45000.00") BigDecimal price,
             @Schema(example = "false") boolean numbered,
             @Schema(example = "4998") int availablePlaces,
@@ -23,6 +24,8 @@ public record EventAvailabilityResponse(
 
     public record SeatAvailability(
             @Schema(example = "15") Long seatId,
+            @Schema(example = "A") String row,
+            @Schema(example = "15") Integer number,
             @Schema(example = "true") boolean available
     ) {
     }

@@ -1,7 +1,7 @@
 # RFC-005: Quién administra el catálogo (lugares y participantes)
 
 - **Estado:** Propuesta, a decidir por el equipo antes de la Épica 9 (JWT y roles)
-- **Relacionado:** [`permissions.md`](../architecture/permissions.md) (sección *Pendiente*), [`eventservice.md`](../architecture/eventservice.md), PR #103 (ABM de participantes), RFC-001 (modalidad de autenticación)
+- **Relacionado:** [`permissions.md`](../architecture/permissions.md) (sección *Pendiente*), [`event-service-api.md`](../architecture/event-service-api.md), PR #103 (ABM de participantes), RFC-001 (modalidad de autenticación)
 
 ## Contexto
 

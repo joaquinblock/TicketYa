@@ -33,7 +33,7 @@ Usuarios, permisos, organizaciones y organizadores. Detalle de reglas y decision
 
 ## event-service
 
-Lugares, sectores, asientos, participantes y eventos (alta, configuración, estados y búsqueda). Detalle de reglas y decisiones: [`eventservice.md`](eventservice.md).
+Lugares, sectores, asientos, participantes y eventos (alta, configuración, estados y búsqueda). Detalle de reglas y decisiones: [`event-service-api.md`](event-service-api.md).
 
 ### Públicos
 

@@ -28,6 +28,8 @@ erDiagram
         bigint event_id PK "event-service, by ID"
         bigint seat_id PK "event-service, by ID"
         bigint event_sector_id "event-service, by ID"
+        varchar seat_row "copy of seat.row"
+        int number "copy of seat.number"
         enum status "AVAILABLE | RESERVED | SOLD"
         bigint order_id FK "NULL if available"
         datetime reserved_until
@@ -42,6 +44,10 @@ erDiagram
     event_sale {
         bigint event_id PK "event-service, by ID"
         enum status "copy of event.status"
+        varchar event_name "copy of event.name"
+        varchar venue_name "copy of venue.name"
+        varchar venue_address "copy of venue.address"
+        varchar venue_city "copy of venue.city"
         datetime date_time
         datetime sale_start
         boolean high_demand
@@ -50,13 +56,17 @@ erDiagram
     event_sector_price {
         bigint event_sector_id PK "event-service, by ID"
         bigint event_id "event-service, by ID"
+        varchar sector_name "copy of sector.name"
         decimal price
     }
     ticket {
         bigint id PK
         bigint order_id FK
         bigint event_sector_id "event-service, by ID"
+        varchar sector_name "copy of sector.name"
         bigint seat_id "event-service, by ID; NULL if non-numbered"
+        varchar seat_row "NULL if non-numbered"
+        int number "NULL if non-numbered"
         decimal price
         varchar qr_code UK "NULL until issued"
         enum status "RESERVED | ISSUED | USED | VOIDED | REFUNDED"
@@ -98,6 +108,9 @@ Todas van por ID, sin FK física, porque cada servicio tiene su propia base.
 | `event_sale` | `event` | Reservar sin llamar al event-service en cada compra |
 | `event_sector_price.price` | `event_sector.price` | Lo mismo para el precio que se copia en cada `ticket` |
 | `orders.payment_method` | `payment.payment_method` | Listar las compras sin depender del payment-service |
+| `event_sale.event_name`, `venue_name`, `venue_address`, `venue_city` | `event.name`, `venue` | Mostrar la entrada sin llamar al event-service |
+| `event_sector_price.sector_name`, `ticket.sector_name` | `sector.name` | Lo mismo para el sector de la entrada y de la disponibilidad |
+| `event_seat.seat_row`, `event_seat.number`, `ticket.seat_row`, `ticket.number` | `seat.row`, `seat.number` | Lo mismo para la fila y el número del asiento |
 
 ## Decisiones
 
@@ -151,6 +164,33 @@ Protege dos casos de la consigna 8 y la 7:
 ### `qr_code` aleatorio
 
 Se genera con un UUID, no a partir del ID de la entrada. Si fuera predecible, alguien podría generar QR válidos de entradas ajenas.
+
+El QR solo lleva ese UUID. Es la credencial de acceso: el lector lo escanea y el backend busca la entrada por ese código para validar que exista, que sea de ese evento y que no se haya usado (consigna 8). No lleva datos del evento ni del asiento: no hacen falta para validar, y si viajaran sin firmar alguien podría armar un QR falso con otros datos.
+
+La app genera la imagen del QR a partir de ese texto, así que el backend no devuelve imágenes.
+
+### Datos que se imprimen en la entrada
+
+Al lado del QR, la entrada muestra el evento, la fecha, el lugar con su dirección, el sector y, si es numerado, la fila y el número. Salen todos de la respuesta de la orden, sin que la app tenga que llamar al event-service:
+
+```json
+{
+  "id": 4, "eventId": 13, "status": "PAID",
+  "event": {"name": "Los Serranos en vivo", "dateTime": "2026-12-13T21:00:00",
+            "venueName": "Estadio del Sur", "venueAddress": "Av. del Estadio 1000", "venueCity": "Buenos Aires"},
+  "tickets": [
+    {"id": 6, "eventSectorId": 19, "sectorName": "Platea", "seatId": 1, "row": "A", "number": 1,
+     "price": 20000.00, "status": "ISSUED", "qrCode": "a7e54682-2c34-4d1f-af9c-65c1dcac4d8e"},
+    {"id": 8, "eventSectorId": 18, "sectorName": "Campo", "seatId": null, "row": null, "number": null,
+     "price": 10000.00, "status": "ISSUED", "qrCode": "cbc7fcc3-6c95-41c2-8b1d-c2db3f43331d"}
+  ]
+}
+```
+
+- **Sector no numerado** (p. ej. "Campo"): la entrada lleva solo el sector, con `seatId`, `row` y `number` en `null`. Cada lugar es una entrada distinta con su propio QR: comprar 3 lugares en el Campo da 3 entradas y 3 QR, y cada uno entra una sola vez.
+- **Copias.** El event-service manda esos datos en `PUT /internal/event-sales/{eventId}` al publicar, como ya hacía con precios y estado.
+- **Dónde se guardan.** El sector, la fila y el número se copian en cada `ticket` al reservar, porque no cambian después de publicar. Los datos del evento se leen de `event_sale` en cada respuesta, para que una reprogramación (`resume` con fecha nueva) se vea en las entradas ya vendidas.
+- La disponibilidad (`GET /api/availability`) también devuelve `sectorName` y la fila y el número de cada asiento, para que la app arme el mapa de la sala.
 
 ### Idempotencia de la orden
 
@@ -266,15 +306,23 @@ Si la orden se cancela mientras se confirma su pago, no se emiten entradas y el 
 
 ## Datos de prueba
 
-El `TicketSeeder` usa los IDs que generan los seeders del auth-service y del event-service:
+El `TicketSeeder` usa los IDs, fechas y nombres que generan los seeders del auth-service y del event-service. Carga cada venta con `EventSaleService.synchronizeEventSale`, el mismo método que usa la publicación real:
 
-| Dato | ID | Origen |
-|---|---|---|
-| Cliente | `user` 1 | auth-service |
-| Recital (alta demanda) | `event` 1, sectores `event_sector` 1 (Campo) y 2 (Platea), asientos 1–80 | event-service |
-| Obra de teatro | `event` 2, sectores `event_sector` 3 (Platea) y 4 (Pullman), asientos 81–154 | event-service |
+| Evento (`event`) | Estado | Sectores (`event_sector`) | Asientos |
+|---|---|---|---|
+| 1 Los Serranos en vivo | `PUBLISHED`, alta demanda | 1 Campo, 2 Platea | 1–80 |
+| 2 La casa de las sierras | `PUBLISHED` | 3 Platea, 4 Pullman | 81–154 |
+| 4 Festival de Verano | `PUBLISHED`, venta futura | 6 Campo, 7 Platea Baja | 155–199 |
+| 5 Central vs. Unión | `PUBLISHED` | 8 Popular, 9 Platea | 200–239 |
+| 6 Jazz en el puerto | `SOLD_OUT`, cupo completo | 10 Sala | — |
+| 7 Los Serranos en Rosario | `SUSPENDED` | 11 Popular, 12 Platea | 200–239 |
+| 8 Recital acústico | `CANCELLED` | 13 Platea Baja | 155–199 |
+| 9 Jornada de arquitectura | `FINISHED` | 14 Sala | — |
+| 11 Peña folklórica serrana | `PUBLISHED` | 15 Platea, 16 Pullman | 81–154 |
 
-Carga el inventario de los dos eventos publicados, una compra pagada en el Campo, una pagada con asientos en la obra (con una devolución pendiente) y una reserva en curso en la Platea del recital.
+Los eventos en `DRAFT` (3, 10 y 12) no tienen venta. Si se cambia el orden de los datos en el `EventSeeder`, hay que actualizar el `TicketSeeder`.
+
+Además carga, a nombre del cliente `user` 1, una compra pagada en el Campo del recital, una pagada con asientos en la obra (con una devolución pendiente) y una reserva en curso en la Platea del recital.
 
 ## User stories
 
@@ -304,14 +352,18 @@ Las historias y sus criterios de aceptación están en [`user-stories.md`](../us
 
 | Método y ruta | Qué hace | Errores |
 |---|---|---|
-| `PUT /internal/event-sales/{eventId}` | Sincroniza la venta y el inventario. Con estado `CANCELLED` cierra las compras abiertas y deja los reintegros al job. Solo entre servicios; el gateway no la expone | 400 `validation_error` |
+| `PUT /internal/event-sales/{eventId}` | Sincroniza la venta, el inventario y los datos que se imprimen en la entrada (nombre del evento, lugar, sectores, filas y números). Con estado `CANCELLED` cierra las compras abiertas y deja los reintegros al job. Solo entre servicios; el gateway no la expone | 400 `validation_error` |
 | `GET /api/availability?eventId=` | Disponibilidad por sector | 404 `resource_not_found` |
 | `POST /api/orders` | Reserva asientos (`seatIds`) o lugares (`eventSectorId` y `quantity`). Header `X-User-Id` | 400 `validation_error`, 404 `resource_not_found`, 409 `seat_unavailable`, `sector_sold_out`, `ticket_limit_exceeded`, `event_not_on_sale`, `sale_not_started`, `data_conflict` |
 | `POST /api/orders/{id}/cancel` | Abandona una reserva. Repetirlo responde 200. Header `X-User-Id` | 404 `order_not_found`, 409 `payment_in_progress`, `reservation_expired`, `order_not_cancellable` |
 | `POST /api/tickets/{ticketId}/return-requests` | Solicita la devolución de una entrada. Header `X-User-Id` | 404 `ticket_not_found`, 409 `refund_not_allowed`, `return_request_already_pending` |
 | `GET /api/return-requests?status=&page=&size=` | Lista paginada, primero las más antiguas. Por defecto, `PENDING` | 400 si un parámetro es inválido |
-| `POST /api/return-requests/{id}/approve` | Pide el reintegro, marca la entrada `REFUNDED` y libera el lugar. Header `X-User-Id` | 404 `return_request_not_found`, 409 `refund_not_allowed`, `ticket_already_used`, 503 `service_unavailable` |
-| `POST /api/return-requests/{id}/reject` | Rechaza la solicitud y la entrada sigue vigente. Header `X-User-Id` | 404 `return_request_not_found`, 409 `refund_not_allowed` |
+| `POST /api/return-requests/{id}/approve` | Pide el reintegro, marca la entrada `REFUNDED` y libera el lugar. Solo con el permiso `REFUND_RESOLVE` (administrador). Header `X-User-Id` | 403 `forbidden`, 404 `return_request_not_found`, `user_not_found`, 409 `refund_not_allowed`, `ticket_already_used`, 503 `service_unavailable` |
+| `POST /api/return-requests/{id}/reject` | Rechaza la solicitud y la entrada sigue vigente. Solo con `REFUND_RESOLVE`. Header `X-User-Id` | 403 `forbidden`, 404 `return_request_not_found`, `user_not_found`, 409 `refund_not_allowed`, 503 `service_unavailable` |
+
+**Quién resuelve una devolución.** Antes de tocar la solicitud, el ticket-service le pide los permisos del usuario al auth-service (`GET /api/users/{id}/permissions`). Sin `REFUND_RESOLVE` responde 403 y la solicitud sigue `PENDING`; si el auth-service no responde, 503 sin reintegrar nada. En el seeder del auth-service, el usuario 3 es el administrador.
+
+**Eventos que ya empezaron.** Además del estado de la copia, reservar exige que la fecha del evento no haya pasado (`event_not_on_sale`). Así no se vende entre que el evento ocurre y el job del event-service lo pasa a `FINISHED` (ver `event-state-machine.md`).
 
 ### Dependencias con otros servicios
 

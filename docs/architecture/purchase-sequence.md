@@ -53,7 +53,7 @@ sequenceDiagram
         PG-->>P: aprobado
         P-->>T: 201 APPROVED
         T->>TDB: reserva vigente → asientos SOLD, orden PAID,<br/>entradas ISSUED con QR único
-        T-->>C: 200 orden PAID con sus entradas y QR
+        T-->>C: 200 orden PAID: cada entrada con evento, fecha, lugar,<br/>sector, fila, asiento y QR
         T->>E: si no queda lugar: PUT /internal/events/{id}/sold-out
 
     else Pago rechazado
@@ -119,7 +119,7 @@ sequenceDiagram
 | Reservar | `409 seat_unavailable` | Otro cliente tomó alguno de los asientos |
 | Reservar | `409 data_conflict` | Otro cliente reservó el mismo asiento en el mismo instante y ganó (`@Version`) |
 | Reservar | `409 ticket_limit_exceeded` | Supera el máximo de entradas por cliente del evento |
-| Reservar | `409 event_not_on_sale` / `sale_not_started` | El evento no está a la venta, o la venta todavía no abrió |
+| Reservar | `409 event_not_on_sale` / `sale_not_started` | El evento no está a la venta (o ya empezó), o la venta todavía no abrió |
 | Pagar | `422 payment_rejected` | La pasarela rechazó el cobro; `detail` trae el motivo y cuántos rechazos van |
 | Pagar | `409 payment_in_progress` | Hay otro intento de pago en curso para esa orden |
 | Pagar | `409 payment_window_closed` | Falta menos de 1 minuto para que venza la reserva |

@@ -16,7 +16,6 @@ import org.group10.ticket.entity.OrderStatus;
 import org.group10.ticket.entity.Ticket;
 import org.group10.ticket.entity.TicketStatus;
 import org.group10.ticket.exception.TicketErrorCode;
-import org.group10.ticket.mapper.OrderMapper;
 import org.group10.ticket.repository.EventSaleRepository;
 import org.group10.ticket.repository.EventSeatRepository;
 import org.group10.ticket.repository.EventSectorPriceRepository;
@@ -35,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -52,6 +52,7 @@ public class ReservationService {
     private final EventSectorStockRepository eventSectorStockRepository;
     private final EventSectorPriceRepository eventSectorPriceRepository;
     private final TransactionOperations transactions;
+    private final OrderQueryService orderQueryService;
     private final ReservationProperties reservationProperties;
     private final Clock clock;
 
@@ -94,7 +95,7 @@ public class ReservationService {
             throw new TicketYaException(CommonErrorCode.DATA_CONFLICT,
                     "La clave de idempotencia ya se usó con otros datos");
         }
-        return OrderMapper.toResponse(order, tickets);
+        return orderQueryService.toResponse(order, tickets);
     }
 
     private static boolean repeatsTheReservation(Order order, List<Ticket> tickets, ReservationRequest request) {
@@ -117,7 +118,7 @@ public class ReservationService {
     }
 
     private static void ensureSaleIsOpen(EventSale sale, LocalDateTime now) {
-        if (sale.getStatus() != EventSaleStatus.PUBLISHED) {
+        if (sale.getStatus() != EventSaleStatus.PUBLISHED || sale.hasAlreadyStartedAt(now)) {
             throw new TicketYaException(TicketErrorCode.EVENT_NOT_ON_SALE,
                     "El evento %d no está a la venta".formatted(sale.getEventId()));
         }
@@ -142,16 +143,15 @@ public class ReservationService {
             throw placesAlreadyTaken(request);
         }
 
-        Map<Long, BigDecimal> prices = pricesOfEvent(request.eventId());
+        Map<Long, EventSectorPrice> sectors = sectorsOfEvent(request.eventId());
         BigDecimal total = seats.stream()
-                .map(seat -> prices.get(seat.getEventSectorId()))
+                .map(seat -> sectors.get(seat.getEventSectorId()).getPrice())
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         Order order = orderRepository.save(pendingOrder(userId, request, now, total));
         seats.forEach(seat -> seat.holdFor(order));
 
-        return OrderMapper.toResponse(order, ticketRepository.saveAll(seats.stream()
-                .map(seat -> reservedTicket(order, seat.getEventSectorId(), seat.getSeatId(),
-                        prices.get(seat.getEventSectorId())))
+        return orderQueryService.toResponse(order, ticketRepository.saveAll(seats.stream()
+                .map(seat -> reservedTicketForSeat(order, sectors.get(seat.getEventSectorId()), seat))
                 .toList()));
     }
 
@@ -174,12 +174,12 @@ public class ReservationService {
             throw placesAlreadyTaken(request);
         }
 
-        BigDecimal price = pricesOfEvent(request.eventId()).get(request.eventSectorId());
-        Order order = orderRepository.save(
-                pendingOrder(userId, request, now, price.multiply(BigDecimal.valueOf(request.quantity()))));
+        EventSectorPrice sector = sectorsOfEvent(request.eventId()).get(request.eventSectorId());
+        Order order = orderRepository.save(pendingOrder(userId, request, now,
+                sector.getPrice().multiply(BigDecimal.valueOf(request.quantity()))));
 
-        return OrderMapper.toResponse(order, ticketRepository.saveAll(IntStream.range(0, request.quantity())
-                .mapToObj(place -> reservedTicket(order, request.eventSectorId(), null, price))
+        return orderQueryService.toResponse(order, ticketRepository.saveAll(IntStream.range(0, request.quantity())
+                .mapToObj(place -> reservedTicketWithoutSeat(order, sector))
                 .toList()));
     }
 
@@ -191,9 +191,9 @@ public class ReservationService {
                                 .formatted(request.eventSectorId(), request.eventId())));
     }
 
-    private Map<Long, BigDecimal> pricesOfEvent(Long eventId) {
+    private Map<Long, EventSectorPrice> sectorsOfEvent(Long eventId) {
         return eventSectorPriceRepository.findByEventIdOrderByEventSectorId(eventId).stream()
-                .collect(Collectors.toMap(EventSectorPrice::getEventSectorId, EventSectorPrice::getPrice));
+                .collect(Collectors.toMap(EventSectorPrice::getEventSectorId, Function.identity()));
     }
 
     private Order pendingOrder(Long userId, ReservationRequest request, LocalDateTime now, BigDecimal total) {
@@ -207,14 +207,25 @@ public class ReservationService {
                 .build();
     }
 
-    private static Ticket reservedTicket(Order order, Long eventSectorId, Long seatId, BigDecimal price) {
+    private static Ticket reservedTicketForSeat(Order order, EventSectorPrice sector, EventSeat seat) {
+        return reservedTicketOf(order, sector)
+                .seatId(seat.getSeatId())
+                .row(seat.getRow())
+                .number(seat.getNumber())
+                .build();
+    }
+
+    private static Ticket reservedTicketWithoutSeat(Order order, EventSectorPrice sector) {
+        return reservedTicketOf(order, sector).build();
+    }
+
+    private static Ticket.TicketBuilder reservedTicketOf(Order order, EventSectorPrice sector) {
         return Ticket.builder()
                 .order(order)
-                .eventSectorId(eventSectorId)
-                .seatId(seatId)
-                .price(price)
-                .status(TicketStatus.RESERVED)
-                .build();
+                .eventSectorId(sector.getEventSectorId())
+                .sectorName(sector.getSectorName())
+                .price(sector.getPrice())
+                .status(TicketStatus.RESERVED);
     }
 
     private static TicketYaException placesAlreadyTaken(ReservationRequest request) {

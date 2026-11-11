@@ -42,7 +42,6 @@
         <lombok.version>1.18.48</lombok.version>
         <springdoc.version>3.0.3</springdoc.version>
         <spring-cloud.version>2025.1.4</spring-cloud.version>
-        <zxing.version>3.5.4</zxing.version>
     </properties>
 
     <!-- Comunes a todos los microservicios -->
@@ -115,18 +114,6 @@
                 <groupId>org.group10</groupId>
                 <artifactId>common</artifactId>
                 <version>${project.version}</version>
-            </dependency>
-
-            <!-- Generación de códigos QR (servicio que emita entradas) -->
-            <dependency>
-                <groupId>com.google.zxing</groupId>
-                <artifactId>core</artifactId>
-                <version>${zxing.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.google.zxing</groupId>
-                <artifactId>javase</artifactId>
-                <version>${zxing.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

@@ -113,7 +113,7 @@ El resto todavía no tiene `@RequiresPermission`. Los `POST`/`PUT`/`DELETE` de `
    ```
 3. Documentar el `403 forbidden` en su `@ApiResponse` y sumar el endpoint a la tabla de *Endpoints protegidos*.
 
-**En los tests de controller:** `@WebMvcTest` carga los interceptores, así que todo test de controller del event-service necesita `@MockitoBean AuthClient`. Si el endpoint está protegido, también tiene que mockear `getPermissions` con el permiso que corresponde.
+**Si se agrega un test de controller:** `@WebMvcTest` carga los interceptores, así que todo test de controller del event-service necesita `@MockitoBean AuthClient`. Si el endpoint está protegido, también tiene que mockear `getPermissions` con el permiso que corresponde.
 
 ## Código
 
@@ -162,8 +162,8 @@ Cada request a un endpoint protegido hace **una llamada más al auth-service**. 
 | Contrato con el front | Baja | Cambiaron los errores de `POST /api/events` (`403 forbidden`, `404 user_not_found`). La colección de Postman ya está actualizada |
 
 **Tests:**
-- `AuthServiceApplicationTests` levanta el MySQL de `compose.yaml` con `ddl-auto: create-drop`, así que correr `mvn test` en auth-service **borra la base local de auth**. El seeder vuelve a cargarla al arrancar el servicio.
-- `SectorController` y `SeatController` no tienen tests. Si se les agrega un `@WebMvcTest`, necesita `@MockitoBean AuthClient`.
+- El auth-service no tiene tests: la consulta de permisos se prueba a mano con Postman.
+- Los controllers no tienen tests. Si se les agrega un `@WebMvcTest`, necesita `@MockitoBean AuthClient`.
 
 ## Pendiente
 

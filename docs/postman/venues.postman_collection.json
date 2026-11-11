@@ -1,0 +1,686 @@
+{
+  "info": {
+    "name": "TicketYa - Lugares, sectores y asientos",
+    "description": "ABM de /api/venues, sus sectores y sus asientos. Necesita event-service (8082) y api-gateway (8080). Crea su propio lugar y lo borra al final, así que se puede repetir sin reiniciar. Usa del seeder el lugar 1 (Estadio del Sur), que tiene eventos, y su sector Campo, que vende el evento 1 publicado. Ver docs/architecture/event-service-api.md.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "seededVenueId",
+      "value": "1"
+    },
+    {
+      "key": "seededSoldSectorId",
+      "value": "1"
+    },
+    {
+      "key": "venueId",
+      "value": ""
+    },
+    {
+      "key": "generalSectorId",
+      "value": ""
+    },
+    {
+      "key": "numberedSectorId",
+      "value": ""
+    },
+    {
+      "key": "seatId",
+      "value": ""
+    },
+    {
+      "key": "venueName",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Lugares",
+      "item": [
+        {
+          "name": "Listar lugares",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('Incluye el Estadio del Sur', () => pm.expect(pm.response.json().map(v => v.name)).to.include('Estadio del Sur'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/venues"
+          }
+        },
+        {
+          "name": "Listar lugares de Tandil",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const venues = pm.response.json();",
+                  "pm.test('Al menos uno', () => pm.expect(venues).to.not.be.empty);",
+                  "pm.test('Todos son de Tandil', () => venues.forEach(v => pm.expect(v.city).to.eql('Tandil')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/venues?city=Tandil"
+          }
+        },
+        {
+          "name": "Ver un lugar con sus sectores",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const venue = pm.response.json();",
+                  "pm.test('Trae latitud y longitud', () => { pm.expect(venue.latitude).to.be.a('number'); pm.expect(venue.longitude).to.be.a('number'); });",
+                  "pm.test('Un sector no numerado y uno numerado', () => pm.expect(venue.sectors.map(s => s.numbered).sort()).to.eql([false, true]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/venues/{{seededVenueId}}"
+          }
+        },
+        {
+          "name": "Ver un lugar inexistente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404', () => pm.response.to.have.status(404));",
+                  "pm.test('venue_not_found', () => pm.expect(pm.response.json().error).to.eql('venue_not_found'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/venues/999999"
+          }
+        },
+        {
+          "name": "Crear un lugar",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('venueName', 'Sala Postman ' + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "const venue = pm.response.json();",
+                  "pm.collectionVariables.set('venueId', venue.id);",
+                  "pm.test('Sin sectores todavía', () => pm.expect(venue.sectors || []).to.be.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/venues",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{venueName}}\",\n  \"address\": \"Av. Siempre Viva 742\",\n  \"city\": \"Olavarría\",\n  \"latitude\": -36.8927,\n  \"longitude\": -60.3225\n}"
+            }
+          }
+        },
+        {
+          "name": "Crear un lugar con latitud inválida",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('validation_error', () => pm.expect(pm.response.json().error).to.eql('validation_error'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/venues",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sala inválida\",\n  \"address\": \"Calle 1\",\n  \"city\": \"Olavarría\",\n  \"latitude\": 100,\n  \"longitude\": -60.3\n}"
+            }
+          }
+        },
+        {
+          "name": "Modificar un lugar",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('Cambia la dirección', () => pm.expect(pm.response.json().address).to.eql('Av. Colón 123'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/venues/{{venueId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{venueName}}\",\n  \"address\": \"Av. Colón 123\",\n  \"city\": \"Olavarría\",\n  \"latitude\": -36.8927,\n  \"longitude\": -60.3225\n}"
+            }
+          }
+        },
+        {
+          "name": "Borrar un lugar con eventos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));",
+                  "pm.test('venue_in_use', () => pm.expect(pm.response.json().error).to.eql('venue_in_use'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/venues/{{seededVenueId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sectores",
+      "item": [
+        {
+          "name": "Crear un sector no numerado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "const sector = pm.response.json();",
+                  "pm.collectionVariables.set('generalSectorId', sector.id);",
+                  "pm.test('No numerado con su capacidad', () => { pm.expect(sector.numbered).to.eql(false); pm.expect(sector.capacity).to.eql(500); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/venues/{{venueId}}/sectors",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Campo\",\n  \"numbered\": false,\n  \"capacity\": 500\n}"
+            }
+          }
+        },
+        {
+          "name": "Crear un sector numerado con filas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "const sector = pm.response.json();",
+                  "pm.collectionVariables.set('numberedSectorId', sector.id);",
+                  "pm.test('La capacidad son sus asientos', () => { pm.expect(sector.numbered).to.eql(true); pm.expect(sector.capacity).to.eql(20); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/venues/{{venueId}}/sectors",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Platea\",\n  \"numbered\": true,\n  \"rows\": [\n    {\n      \"row\": \"A\",\n      \"seats\": 10\n    },\n    {\n      \"row\": \"B\",\n      \"seats\": 10\n    }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Crear un sector con un nombre repetido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));",
+                  "pm.test('sector_name_duplicated', () => pm.expect(pm.response.json().error).to.eql('sector_name_duplicated'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/venues/{{venueId}}/sectors",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Campo\",\n  \"numbered\": false,\n  \"capacity\": 100\n}"
+            }
+          }
+        },
+        {
+          "name": "Crear un sector no numerado sin capacidad",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('invalid_sector_configuration', () => pm.expect(pm.response.json().error).to.eql('invalid_sector_configuration'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/venues/{{venueId}}/sectors",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Popular\",\n  \"numbered\": false\n}"
+            }
+          }
+        },
+        {
+          "name": "Listar los sectores del lugar",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('Los dos sectores creados', () => pm.expect(pm.response.json()).to.have.lengthOf(2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/venues/{{venueId}}/sectors"
+          }
+        },
+        {
+          "name": "Ver un sector",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('Es el Campo', () => pm.expect(pm.response.json().name).to.eql('Campo'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/venues/{{venueId}}/sectors/{{generalSectorId}}"
+          }
+        },
+        {
+          "name": "Modificar la capacidad de un sector",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('Nueva capacidad', () => pm.expect(pm.response.json().capacity).to.eql(600));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/venues/{{venueId}}/sectors/{{generalSectorId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Campo\",\n  \"capacity\": 600\n}"
+            }
+          }
+        },
+        {
+          "name": "Modificar la capacidad de un sector que vende un evento publicado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));",
+                  "pm.test('sector_in_use', () => pm.expect(pm.response.json().error).to.eql('sector_in_use'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/venues/{{seededVenueId}}/sectors/{{seededSoldSectorId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Campo\",\n  \"capacity\": 4000\n}"
+            }
+          }
+        },
+        {
+          "name": "Borrar un sector que vende un evento",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));",
+                  "pm.test('sector_in_use', () => pm.expect(pm.response.json().error).to.eql('sector_in_use'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/venues/{{seededVenueId}}/sectors/{{seededSoldSectorId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Asientos",
+      "item": [
+        {
+          "name": "Listar los asientos de un sector numerado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const seats = pm.response.json();",
+                  "pm.collectionVariables.set('seatId', seats[0].id);",
+                  "pm.test('20 asientos', () => pm.expect(seats).to.have.lengthOf(20));",
+                  "pm.test('Filas A y B', () => pm.expect([...new Set(seats.map(s => s.row))].sort()).to.eql(['A', 'B']));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/venues/{{venueId}}/sectors/{{numberedSectorId}}/seats"
+          }
+        },
+        {
+          "name": "Agregar una fila",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "pm.test('5 asientos nuevos en la fila C', () => { const seats = pm.response.json(); pm.expect(seats).to.have.lengthOf(5); seats.forEach(s => pm.expect(s.row).to.eql('C')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/venues/{{venueId}}/sectors/{{numberedSectorId}}/seats",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rows\": [\n    {\n      \"row\": \"C\",\n      \"seats\": 5\n    }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Agregar una fila que ya existe",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));",
+                  "pm.test('seat_row_duplicated', () => pm.expect(pm.response.json().error).to.eql('seat_row_duplicated'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/venues/{{venueId}}/sectors/{{numberedSectorId}}/seats",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rows\": [\n    {\n      \"row\": \"A\",\n      \"seats\": 5\n    }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Agregar asientos a un sector no numerado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));",
+                  "pm.test('sector_not_numbered', () => pm.expect(pm.response.json().error).to.eql('sector_not_numbered'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/venues/{{venueId}}/sectors/{{generalSectorId}}/seats",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rows\": [\n    {\n      \"row\": \"A\",\n      \"seats\": 5\n    }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Borrar un asiento",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/venues/{{venueId}}/sectors/{{numberedSectorId}}/seats/{{seatId}}"
+          }
+        },
+        {
+          "name": "El sector queda con 24 asientos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('Capacidad 24', () => pm.expect(pm.response.json().capacity).to.eql(24));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/venues/{{venueId}}/sectors/{{numberedSectorId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Limpieza",
+      "item": [
+        {
+          "name": "Borrar el sector numerado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/venues/{{venueId}}/sectors/{{numberedSectorId}}"
+          }
+        },
+        {
+          "name": "Borrar el sector no numerado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/venues/{{venueId}}/sectors/{{generalSectorId}}"
+          }
+        },
+        {
+          "name": "Borrar el lugar",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/venues/{{venueId}}"
+          }
+        },
+        {
+          "name": "El lugar ya no existe",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404', () => pm.response.to.have.status(404));",
+                  "pm.test('venue_not_found', () => pm.expect(pm.response.json().error).to.eql('venue_not_found'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/venues/{{venueId}}"
+          }
+        }
+      ]
+    }
+  ]
+}

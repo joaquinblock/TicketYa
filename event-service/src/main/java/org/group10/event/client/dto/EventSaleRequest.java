@@ -8,6 +8,10 @@ import java.util.List;
 
 public record EventSaleRequest(
         EventStatus status,
+        String eventName,
+        String venueName,
+        String venueAddress,
+        String venueCity,
         LocalDateTime dateTime,
         LocalDateTime saleStart,
         boolean highDemand,
@@ -15,6 +19,10 @@ public record EventSaleRequest(
         List<SectorSale> sectors
 ) {
 
-    public record SectorSale(Long eventSectorId, BigDecimal price, Integer capacity, List<Long> seatIds) {
+    public record SectorSale(Long eventSectorId, String sectorName, BigDecimal price, Integer capacity,
+                             List<SeatSale> seats) {
+    }
+
+    public record SeatSale(Long seatId, String row, Integer number) {
     }
 }

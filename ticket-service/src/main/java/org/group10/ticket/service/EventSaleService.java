@@ -2,6 +2,7 @@ package org.group10.ticket.service;
 
 import lombok.RequiredArgsConstructor;
 import org.group10.ticket.dto.EventSaleRequest;
+import org.group10.ticket.dto.EventSaleRequest.SeatSale;
 import org.group10.ticket.dto.EventSaleRequest.SectorSale;
 import org.group10.ticket.entity.EventSale;
 import org.group10.ticket.entity.EventSaleStatus;
@@ -62,10 +63,10 @@ public class EventSaleService {
         Set<Long> existingSeats = eventSeatRepository.findSeatIdsOfEvent(eventId);
 
         eventSeatRepository.saveAll(sectors.stream()
-                .filter(sector -> sector.seatIds() != null)
-                .flatMap(sector -> sector.seatIds().stream()
-                        .filter(seatId -> !existingSeats.contains(seatId))
-                        .map(seatId -> availableSeat(eventId, sector.eventSectorId(), seatId)))
+                .filter(sector -> sector.seats() != null)
+                .flatMap(sector -> sector.seats().stream()
+                        .filter(seat -> !existingSeats.contains(seat.seatId()))
+                        .map(seat -> availableSeat(eventId, sector.eventSectorId(), seat)))
                 .toList());
     }
 
@@ -73,6 +74,10 @@ public class EventSaleService {
         return EventSale.builder()
                 .eventId(eventId)
                 .status(request.status())
+                .eventName(request.eventName())
+                .venueName(request.venueName())
+                .venueAddress(request.venueAddress())
+                .venueCity(request.venueCity())
                 .dateTime(request.dateTime())
                 .saleStart(request.saleStart())
                 .highDemand(request.highDemand())
@@ -84,6 +89,7 @@ public class EventSaleService {
         return EventSectorPrice.builder()
                 .eventSectorId(sector.eventSectorId())
                 .eventId(eventId)
+                .sectorName(sector.sectorName())
                 .price(sector.price())
                 .build();
     }
@@ -97,11 +103,13 @@ public class EventSaleService {
                 .build();
     }
 
-    private static EventSeat availableSeat(Long eventId, Long eventSectorId, Long seatId) {
+    private static EventSeat availableSeat(Long eventId, Long eventSectorId, SeatSale seat) {
         return EventSeat.builder()
                 .eventId(eventId)
-                .seatId(seatId)
+                .seatId(seat.seatId())
                 .eventSectorId(eventSectorId)
+                .row(seat.row())
+                .number(seat.number())
                 .status(EventSeatStatus.AVAILABLE)
                 .build();
     }

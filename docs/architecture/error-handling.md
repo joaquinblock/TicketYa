@@ -46,5 +46,5 @@ No se crea una clase por error. Cada servicio tiene su enum `<Servicio>ErrorCode
 
 ## Tests
 
-- `common` prueba cada handler con `GlobalExceptionHandlerTest` (MockMvc standalone, sin levantar Spring Boot).
-- En los servicios, los errores se prueban desde los tests de controller. `common` registra el handler también en `@WebMvcTest`, así que no hace falta importarlo.
+- No hay tests propios del handler ni de los controllers: los códigos de error se prueban a mano con las colecciones de Postman, y los tests de servicio verifican qué `ErrorCode` se tira.
+- Si se agrega un `@WebMvcTest`, `common` registra el handler también ahí, así que no hace falta importarlo.

@@ -24,6 +24,10 @@
 | **notification-service** | 2 | 🔴 `notificacion` | Email y push por compra, cancelación, cambios y artistas favoritos | Asíncrono (fire-and-forget o mensajería): si el proveedor de email falla, una compra no debe fallar |
 | **recommendation-service** | 2 | ⚪ `preferencia_tipo_evento`, `participante_favorito` | Preferencias del cliente y sugerencias ("quienes compraron esto también…") | Datos flexibles por usuario, el otro candidato a MongoDB. Lo de "quienes compraron" se arma con eventos de compra que manda el ticket-service |
 
+## Diagrama de módulos
+
+Está en [`modules.md`](modules.md), para la Entrega 1 y la 2.
+
 ## Preguntas frecuentes
 
 | Pregunta | Respuesta | Por qué |

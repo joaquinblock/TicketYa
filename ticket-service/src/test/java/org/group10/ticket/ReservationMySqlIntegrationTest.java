@@ -5,6 +5,7 @@ import org.group10.ticket.entity.EventSeatId;
 import org.group10.ticket.entity.EventSectorStock;
 import org.group10.ticket.entity.Order;
 import org.group10.ticket.entity.OrderStatus;
+import org.group10.ticket.repository.EventSaleRepository;
 import org.group10.ticket.repository.EventSeatRepository;
 import org.group10.ticket.repository.EventSectorStockRepository;
 import org.group10.ticket.repository.OrderRepository;
@@ -21,6 +22,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClient;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -58,6 +60,10 @@ class ReservationMySqlIntegrationTest {
     private TicketRepository ticketRepository;
     @Autowired
     private EventSeatRepository eventSeatRepository;
+    @Autowired
+    private EventSaleRepository eventSaleRepository;
+    @Autowired
+    private Clock clock;
     @Autowired
     private EventSectorStockRepository eventSectorStockRepository;
     @Autowired
@@ -259,6 +265,14 @@ class ReservationMySqlIntegrationTest {
     }
 
     @Test
+    void reserve_eventAlreadyStartedButStillPublished_returnsEventNotOnSale() {
+        transaction.executeWithoutResult(status -> eventSaleRepository.findById(eventId).orElseThrow()
+                .setDateTime(LocalDateTime.now(clock).minusMinutes(1)));
+
+        assertThat(reserveSeats(CUSTOMER, newKey(), 1).error()).isEqualTo("event_not_on_sale");
+    }
+
+    @Test
     void reserve_beforeTheSaleOpens_returnsSaleNotStarted() {
         assertThat(synchronizeSale("PUBLISHED", "\"2099-01-01T10:00:00\"", 1000, 3, 10).status()).isEqualTo(204);
 
@@ -284,6 +298,18 @@ class ReservationMySqlIntegrationTest {
         assertThat(stock().getTaken()).isEqualTo(2);
         assertThat(seat(1).getOrder()).isNotNull();
         assertThat(((Number) availabilityOf(numberedSector).get("price")).intValue()).isEqualTo(2500);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void findAvailability_showsTheSectorNamesAndTheRowAndNumberOfEachSeat() {
+        Map<String, Object> numbered = availabilityOf(numberedSector);
+        Map<String, Object> general = availabilityOf(generalSector);
+
+        assertThat(numbered.get("sectorName")).isEqualTo("Platea");
+        assertThat(general.get("sectorName")).isEqualTo("Campo");
+        assertThat(((List<Map<String, Object>>) numbered.get("seats")).getFirst())
+                .containsEntry("seatId", 1).containsEntry("row", "A").containsEntry("number", 1);
     }
 
     @Test
@@ -376,13 +402,22 @@ class ReservationMySqlIntegrationTest {
         return client.put().uri("/internal/event-sales/{eventId}", eventId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("""
-                        {"status": "%s", "dateTime": "2099-12-12T21:00:00", "saleStart": %s, "highDemand": false,
+                        {"status": "%s", "eventName": "Recital", "venueName": "Estadio", "venueAddress": "Calle 1",
+                         "venueCity": "Tandil", "dateTime": "2099-12-12T21:00:00", "saleStart": %s, "highDemand": false,
                          "maxTicketsPerCustomer": %d,
                          "sectors": [
-                           {"eventSectorId": %d, "price": %d, "seatIds": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]},
-                           {"eventSectorId": %d, "price": 500, "capacity": %d}
-                         ]}""".formatted(status, saleStart, maxTickets, numberedSector, price, generalSector, capacity))
+                           {"eventSectorId": %d, "sectorName": "Platea", "price": %d, "seats": [%s]},
+                           {"eventSectorId": %d, "sectorName": "Campo", "price": 500, "capacity": %d}
+                         ]}""".formatted(status, saleStart, maxTickets, numberedSector, price, tenSeatsInRowA(),
+                        generalSector, capacity))
                 .exchange((request, response) -> new HttpResult(response.getStatusCode().value(), Map.of()));
+    }
+
+    private static String tenSeatsInRowA() {
+        return String.join(", ", java.util.stream.IntStream.rangeClosed(1, 10)
+                .mapToObj(seat -> """
+                        {"seatId": %d, "row": "A", "number": %d}""".formatted(seat, seat))
+                .toList());
     }
 
     private HttpResult reserveSeats(long customer, String key, long... seatIds) {

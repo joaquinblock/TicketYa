@@ -39,6 +39,12 @@ public class EventSeat {
     @Column(nullable = false)
     private Long eventSectorId;
 
+    @Column(name = "seat_row", nullable = false)
+    private String row;
+
+    @Column(nullable = false)
+    private Integer number;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private EventSeatStatus status;

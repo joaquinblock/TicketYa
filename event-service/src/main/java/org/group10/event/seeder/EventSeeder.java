@@ -23,6 +23,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -57,6 +58,7 @@ public class EventSeeder implements ApplicationRunner {
     private final ParticipantRepository participantRepository;
     private final EventRepository eventRepository;
     private final EventSectorRepository eventSectorRepository;
+    private final Clock clock;
 
     private LocalDate today;
 
@@ -67,7 +69,7 @@ public class EventSeeder implements ApplicationRunner {
             log.info("EventSeeder: ya hay datos, se omite la carga");
             return;
         }
-        today = LocalDate.now();
+        today = LocalDate.now(clock);
 
         // ---- Used by ticket-service by id: do not reorder ----
 

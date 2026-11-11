@@ -33,7 +33,13 @@
 
 ### Levantarlo
 
-En cinco terminales, desde la raíz del repo y en este orden:
+La primera vez, instalar el módulo `common`, del que dependen todos los servicios:
+
+```bash
+./mvnw install -DskipTests
+```
+
+Después, en cinco terminales, desde la raíz del repo y en este orden:
 
 ```bash
 ./mvnw -pl auth-service spring-boot:run
@@ -43,11 +49,13 @@ En cinco terminales, desde la raíz del repo y en este orden:
 ./mvnw -pl api-gateway spring-boot:run
 ```
 
-En IntelliJ es lo mismo: se corre la clase `*Application` de cada módulo.
+En IntelliJ es lo mismo: se corre la clase `*Application` de cada módulo (las configuraciones están en `.run/`).
+
+Hay que usar `spring-boot:run`: con `java -jar` el servicio no arranca, porque `spring-boot-docker-compose` es una dependencia de desarrollo, no se empaqueta en el jar y sin ella no hay datasource. El despliegue con contenedores y un único `docker-compose.yml` es de la Entrega 2.
 
 - **Todo entra por el gateway (`http://localhost:8080`).** Las rutas `/internal/**` (llamadas entre servicios) no pasan por el gateway: se usan directo contra el puerto de cada servicio.
 - **Swagger de todo el sistema:** http://localhost:8080/swagger-ui.html. Arriba a la derecha se elige el servicio.
-- **La identidad va en el header `X-User-Id`.** La Entrega 1 no tiene autenticación (ver *Modalidad de entrega*). Los permisos se verifican contra el auth-service (ver [`permissions.md`](docs/architecture/permissions.md)).
+- **La identidad va en el header `X-User-Id`**, y al crear un evento el organizador manda además `X-Organization-Id`. La Entrega 1 no tiene autenticación (ver *Modalidad de entrega*). Los permisos se verifican contra el auth-service (ver [`permissions.md`](docs/architecture/permissions.md)).
 - **El primer request a un servicio recién levantado puede tardar unos segundos**, mientras se calienta.
 - **La primera vez que se crea el contenedor de una base, MySQL tarda en inicializarse**, y el servicio puede fallar al arrancar con `Communications link failure`. El contenedor queda levantado igual: alcanza con volver a arrancar el servicio.
 
@@ -59,7 +67,7 @@ Cada servicio recrea su base al arrancar (`ddl-auto: create`) y su seeder la vue
 |---|---|
 | `AuthSeeder` | 9 permisos, 4 roles y 6 usuarios: `1` cliente, `2` organizador de la org 1, `3` admin, `4` personal de acceso, `5` organizador de la org 2 y `6` organizador de la org 1 sin eventos propios. Organizaciones `1` *Del Sur Producciones* y `2` *Cultura Serrana* |
 | `EventSeeder` | 5 lugares en 5 ciudades, 239 asientos, 11 participantes y 12 eventos en todos los estados, con fechas relativas al día de arranque (ver *Datos de prueba* en [`event-service.md`](docs/architecture/event-service.md)) |
-| `TicketSeeder` | El inventario de los eventos 1 y 2, dos compras pagadas (una con una devolución pendiente) y una reserva en curso (ver [`ticket-service.md`](docs/architecture/ticket-service.md)) |
+| `TicketSeeder` | El inventario de todos los eventos del seeder, dos compras pagadas (una con una devolución pendiente) y una reserva en curso (ver [`ticket-service.md`](docs/architecture/ticket-service.md)) |
 | `PaymentSeeder` | Los pagos de esas órdenes: aprobados, uno rechazado y uno pendiente |
 
 Los ids entre servicios coinciden (por ejemplo, el evento 1 del event-service es el evento 1 del ticket-service), porque cada seeder asume los ids de los otros.
@@ -71,7 +79,19 @@ Los ids entre servicios coinciden (por ejemplo, el evento 1 del event-service es
 ./mvnw -pl ticket-service test   # uno solo
 ```
 
-- **Necesitan Docker:** varios tests corren contra el MySQL real de cada servicio. Dejan la base recreada, así que conviene reiniciar el servicio después.
+Solo hay tests de lo que pide la consigna y de lo que no se puede romper:
+
+| Servicio | Qué prueba |
+|---|---|
+| ticket-service | Reserva y no doble venta con muchos hilos (`ReservationMySqlIntegrationTest`), pago y emisión (`OrderPaymentMySqlIntegrationTest`), devoluciones (`ReturnRequestMySqlIntegrationTest`) y reintegros al cancelar (`EventCancellationMySqlIntegrationTest`), todos contra MySQL |
+| payment-service | Cobro y rechazo (`PaymentServiceTest`), cobro idempotente ante reintentos (`PaymentIdempotencyIntegrationTest`) y reintegros sin duplicar (`RefundMySqlIntegrationTest`) |
+| event-service | Búsqueda (`EventSearchServiceTest`), alta, sectores, publicación, suspensión, cancelación y finalización (`EventServiceTest`, `SectorServiceTest`, `EventLifecycleServiceTest`, `EventStatusMachineTest`) y los ids que los otros seeders asumen (`EventSeederTest`) |
+| api-gateway | Que las rutas `/internal/**` no se expongan (`InternalRoutesTest`) |
+
+Los controllers, los ABM de lugares y participantes y el manejo de errores de `common` no tienen tests propios: se probaron a mano con las colecciones de Postman.
+
+- **Necesitan Docker:** varios tests corren contra el MySQL real de cada servicio. Usan las mismas bases que los servicios, así que conviene correrlos con los servicios apagados. Dejan la base recreada: después hay que reiniciar el servicio.
+- **Si la primera corrida falla con `Communications link failure`**, es MySQL inicializando un contenedor recién creado: alcanza con volver a correrlos.
 - **La prueba de no doble venta** que pide la consigna es `ReservationMySqlIntegrationTest`: muchos hilos compran a la vez el mismo asiento, o el último lugar de un sector, y solo uno lo consigue. El mecanismo está en [`concurrency-and-idempotency.md`](docs/quality-attributes/concurrency-and-idempotency.md).
 
 ### Colecciones de Postman
@@ -80,13 +100,15 @@ Están en [`docs/postman/`](docs/postman/). Se importan en Postman y cada una tr
 
 | Colección | Qué cubre | Apunta a | ¿Cambia datos? |
 |---|---|---|---|
+| `auth-service` | Permisos de cada rol, organizaciones y organizadores | Gateway | No: se puede repetir |
+| `venues` | ABM de lugares, sectores y asientos, y qué se bloquea si un evento los usa | Gateway | Crea su propio lugar y lo borra al final: se puede repetir |
 | `event-search` | Búsqueda de eventos y visibilidad del detalle | Gateway | No: se puede repetir |
 | `event-creation` | Alta de eventos y permisos | Gateway | Sí |
 | `participants` | ABM de participantes y asignación a un evento | Gateway | Sí |
 | `event-lifecycle` | Ver, editar, borrar, publicar y cancelar | Gateway | Sí: **reiniciar el event-service antes** |
 | `event-sectors` | Sectores y precios de un borrador | Gateway | Sí: **reiniciar el event-service antes** |
 | `event-suspension` | Suspender, reanudar y quién puede hacerlo | Gateway | Sí: **reiniciar el event-service antes** |
-| `ticket-service` | Inventario, reserva, pago, compras y devoluciones | `:8083` (y necesita el payment-service) | Crea su propio evento: se puede repetir |
+| `ticket-service` | Inventario, reserva, pago, compras y devoluciones | Gateway, y `:8083` para `/internal/**` (necesita también el payment-service y el auth-service) | Crea su propio evento: se puede repetir |
 | `payment-service` | Cobros, rechazos, reintentos y reintegros | `:8084` | Crea sus propias órdenes: se puede repetir |
 
 ## Documentación
@@ -98,6 +120,7 @@ Están en [`docs/postman/`](docs/postman/). Se importan en Postman y cada una tr
 | Diagrama de módulos | [`docs/architecture/modules.md`](docs/architecture/modules.md) |
 | Diagrama de secuencia de la compra de una entrada numerada | [`docs/architecture/purchase-sequence.md`](docs/architecture/purchase-sequence.md) |
 | DER de cada servicio, con las relaciones entre servicios y los datos solapados | [`auth-service.md`](docs/architecture/auth-service.md), [`event-service.md`](docs/architecture/event-service.md), [`ticket-service.md`](docs/architecture/ticket-service.md), [`payment-service.md`](docs/architecture/payment-service.md) |
+| DER general de todo el sistema, agrupado por base (draw.io) | [`docs/architecture/diagrams/ticketya-data-model.drawio`](docs/architecture/diagrams/ticketya-data-model.drawio) |
 | Listado de endpoints | [`docs/architecture/endpoints.md`](docs/architecture/endpoints.md) y Swagger |
 | Errores y sus códigos | [`docs/architecture/error-handling.md`](docs/architecture/error-handling.md) |
 | Permisos | [`docs/architecture/permissions.md`](docs/architecture/permissions.md) |

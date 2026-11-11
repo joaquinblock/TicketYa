@@ -32,6 +32,18 @@ public class EventSale {
     private EventSaleStatus status;
 
     @Column(nullable = false)
+    private String eventName;
+
+    @Column(nullable = false)
+    private String venueName;
+
+    @Column(nullable = false)
+    private String venueAddress;
+
+    @Column(nullable = false)
+    private String venueCity;
+
+    @Column(nullable = false)
     private LocalDateTime dateTime;
 
     private LocalDateTime saleStart;
@@ -43,6 +55,10 @@ public class EventSale {
 
     @Column(nullable = false)
     private boolean availabilityNotificationPending;
+
+    public boolean hasAlreadyStartedAt(LocalDateTime moment) {
+        return !dateTime.isAfter(moment);
+    }
 
     public boolean hasNotOpenedAt(LocalDateTime moment) {
         return saleStart != null && saleStart.isAfter(moment);

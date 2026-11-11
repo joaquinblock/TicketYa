@@ -56,6 +56,7 @@ import java.util.function.Consumer;
 import java.util.function.IntFunction;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
@@ -138,10 +139,14 @@ class OrderPaymentMySqlIntegrationTest {
         int status = client.put().uri("/internal/event-sales/{eventId}", eventId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("""
-                        {"status": "PUBLISHED", "dateTime": "2099-12-12T21:00:00", "highDemand": false,
+                        {"status": "PUBLISHED", "eventName": "Recital", "venueName": "Estadio",
+                         "venueAddress": "Calle 1", "venueCity": "Tandil", "dateTime": "2099-12-12T21:00:00",
+                         "highDemand": false,
                          "sectors": [
-                           {"eventSectorId": %d, "price": 1000, "seatIds": [1, 2, 3, 4]},
-                           {"eventSectorId": %d, "price": 500, "capacity": 5}
+                           {"eventSectorId": %d, "sectorName": "Platea", "price": 1000,
+                            "seats": [{"seatId": 1, "row": "A", "number": 1}, {"seatId": 2, "row": "A", "number": 2},
+                                      {"seatId": 3, "row": "B", "number": 1}, {"seatId": 4, "row": "B", "number": 2}]},
+                           {"eventSectorId": %d, "sectorName": "Campo", "price": 500, "capacity": 5}
                          ]}""".formatted(numberedSector, generalSector))
                 .exchange((request, response) -> response.getStatusCode().value());
         assertThat(status).isEqualTo(204);
@@ -420,6 +425,34 @@ class OrderPaymentMySqlIntegrationTest {
         assertThat(pending.qrCodes()).containsOnlyNulls();
         assertThat(paid.qrCodes()).doesNotContainNull();
         assertThat(paid.body().get("paymentMethod")).isEqualTo("CREDIT_CARD");
+    }
+
+    @Test
+    void pay_seats_ticketsShowTheEventTheSectorAndTheSeatToPrintNextToTheQr() {
+        long orderId = reserveSeats(CUSTOMER, 3, 4);
+
+        HttpResult paid = pay(CUSTOMER, orderId, newKey());
+
+        assertThat(paid.body().get("event")).isEqualTo(Map.of("name", "Recital", "dateTime", "2099-12-12T21:00:00",
+                "venueName", "Estadio", "venueAddress", "Calle 1", "venueCity", "Tandil"));
+        assertThat(paid.tickets())
+                .extracting(ticket -> ticket.get("sectorName"), ticket -> ticket.get("row"), ticket -> ticket.get("number"))
+                .containsExactly(tuple("Platea", "B", 1), tuple("Platea", "B", 2));
+    }
+
+    @Test
+    void pay_placesWithoutSeat_eachTicketHasItsOwnQrAndOnlyTheSector() {
+        long orderId = reservePlaces(CUSTOMER, 2);
+
+        HttpResult paid = pay(CUSTOMER, orderId, newKey());
+
+        assertThat(paid.tickets()).hasSize(2).allSatisfy(ticket -> {
+            assertThat(ticket.get("sectorName")).isEqualTo("Campo");
+            assertThat(ticket.get("seatId")).isNull();
+            assertThat(ticket.get("row")).isNull();
+            assertThat(ticket.get("number")).isNull();
+        });
+        assertThat(paid.qrCodes()).doesNotContainNull().doesNotHaveDuplicates();
     }
 
     @Test

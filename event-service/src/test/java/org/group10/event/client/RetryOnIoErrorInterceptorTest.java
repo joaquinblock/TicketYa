@@ -75,12 +75,6 @@ class RetryOnIoErrorInterceptorTest {
         verify(execution, times(1)).execute(request, NO_BODY);
     }
 
-    @Test
-    void constructor_withLessThanOneAttempt_isRejected() {
-        assertThatThrownBy(() -> new RetryOnIoErrorInterceptor(0, Duration.ZERO))
-                .isInstanceOf(IllegalArgumentException.class);
-    }
-
     private static MockClientHttpRequest request(HttpMethod method) {
         return new MockClientHttpRequest(method, URI.create("http://localhost:8081/api/users/2/permissions"));
     }

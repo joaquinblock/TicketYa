@@ -6,3 +6,7 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
+
+ticketya:
+  events:
+    finish-check: PT24H

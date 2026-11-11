@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "TicketYa - Participantes",
-    "description": "ABM de /api/participants y PUT /api/events/{id}/participants. Necesita auth-service (8081), event-service (8082) y api-gateway (8080) levantados con los seeders recién cargados: el evento 10 es un borrador de la organización 1, el 1 está publicado y el participante 1 (Los Serranos) está en eventos. Ver docs/architecture/eventservice.md, sección Participantes.",
+    "description": "ABM de /api/participants y PUT /api/events/{id}/participants. Necesita auth-service (8081), event-service (8082) y api-gateway (8080) levantados con los seeders recién cargados: el evento 10 es un borrador de la organización 1, el 1 está publicado y el participante 1 (Los Serranos) está en eventos. Ver docs/architecture/event-service-api.md, sección Participantes.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [

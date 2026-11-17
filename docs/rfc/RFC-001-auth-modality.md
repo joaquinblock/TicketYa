@@ -52,7 +52,8 @@ sequenceDiagram
     A-->>F: JWT de TicketYa (rol y permisos)
     F->>G: Authorization: Bearer <JWT>
     G->>G: valida firma y vencimiento
-    G->>S: X-User-Id, X-User-Role, X-User-Permissions
+    G->>S: Authorization: Bearer <JWT> (sin X-User-* del cliente)
+    S->>S: valida el JWT y aplica @PreAuthorize
 ```
 
 ### Qué hay en cada servicio
@@ -64,10 +65,11 @@ sequenceDiagram
 | auth-service | `AuthController`, `AuthService` | `POST /api/auth/google`. `401 invalid_credentials` si el token de Google es inválido o está vencido |
 | api-gateway | `SecurityConfig` | `oauth2ResourceServer().jwt()` con la clave pública. El filtro que valida ya lo trae Spring Security (`BearerTokenAuthenticationFilter`), así que no se escribe uno propio |
 | api-gateway | Handlers de 401 y 403 | Responden `unauthorized` y `forbidden` con `ErrorDto` |
-| api-gateway | `IdentityHeadersFilter` | Borra los `X-User-*` que mande el cliente y pone `X-User-Id`, `X-User-Role` y `X-User-Permissions` sacados del token |
-| event-service y demás | `PermissionInterceptor` | Arma el `Caller` con esos headers en vez de llamar a `AuthClient`. Se puede mover a `common` para que lo use ticket-service |
+| api-gateway | `IdentityHeadersFilter` | Borra los `X-User-*` que mande el cliente y reenvía el `Authorization` al servicio, que valida el token por su cuenta |
+| `common` | `SecurityConfig` de resource server | Cada servicio también valida el JWT con la clave pública, así un header falso que llegue por la red interna no alcanza |
+| event-service y demás | `@PreAuthorize` | Reemplaza al `PermissionInterceptor`: los permisos salen del token ya validado |
 
-- **Rutas públicas en el gateway:** `POST /api/auth/google`, la búsqueda y el detalle de eventos, `/docs/**`, swagger y health.
+- **Rutas públicas en el gateway:** `POST /api/auth/google`, `POST /api/auth/dev-login` (solo en `dev`), los `GET` del catálogo (eventos, lugares y participantes), `/docs/**`, swagger y health.
 - **Configuración:** `GOOGLE_CLIENT_ID` y la clave privada van por variable de entorno, nunca en el repo.
 
 ### Riesgos
@@ -88,6 +90,21 @@ sequenceDiagram
   - el `X-User-Id` que mande el cliente se descarta.
 - **Postman:** un request de login que guarde el token en una variable de la colección.
 
+## Decisiones de diseño tomadas
+
+Acordadas el 17/11/2026, antes de implementar. La sección *Decisión* queda pendiente hasta cerrarla con el equipo.
+
+| Tema | Decisión | Por qué |
+|---|---|---|
+| Dónde se valida el JWT | En el gateway **y** en cada servicio, con la clave pública | La red interna sola no alcanza (US-PAY-14): un servicio no debe confiar en un `X-User-Role` que podría ser falso |
+| Permisos en los servicios | `@PreAuthorize`, en vez del `PermissionInterceptor` | Es lo que pide la US-AUTH-03 y aprovecha el token ya validado |
+| Llamadas entre servicios | Secreto compartido en un header, por variable de entorno | Lo propone la US-PAY-14 y sirve para los jobs, que corren sin usuario. Un JWT de servicio queda como alternativa futura. **Falta definir** si va solo en payment o en todos los `/internal` |
+| Cambios de rol o bajas | Se acepta que el token viejo valga hasta que vence, con un `exp` corto | Consultar a auth en cada request obliga a cambiar el código de todos los servicios y vuelve a acoplarlos |
+| Rutas públicas | Las de la lista de arriba | El catálogo es lo primero que ve alguien que todavía no se registró |
+| Criterio de la US-AUTH-03 | `invalid_credentials` pasa a significar un ID token de Google inválido, vencido, de otra audiencia o sin email verificado | No hay contraseña |
+| `userId` en rutas y bodies | Se mantienen y se comparan con el del token: si no coinciden, `403 forbidden` | No cambia los contratos ni las colecciones de Postman |
+| Perfil de Docker | El compose corre con `dev`, con `dev-login` activo | Ver el ADR-001 |
+
 ## Decisión
 
 Pendiente. Cuando se decida, registrar la decisión y su porqué como ADR y actualizar el modelo de `user` si corresponde.
@@ -105,6 +122,24 @@ Si el `sub` de Google no está en `user`, la opción más segura es darlo de alt
   - Si ya había entrado como cliente, el admin lo asciende en la misma cuenta.
   - `ORGANIZER` ya incluye los permisos de comprador.
 - **Costo:** el cambio de rol se aplica en el próximo token.
+
+#### El primer administrador
+
+Los usuarios del seeder tienen emails ficticios, así que nadie entra a ellos con Google. Para que exista un admin real, que después asciende a los demás:
+
+- La variable `BOOTSTRAP_ADMIN_EMAIL` indica qué email es admin. En el primer login con ese email **verificado**, el usuario se crea o se vincula como `ADMIN`.
+- No tiene valor por defecto. Sin la variable, nadie se vuelve admin por este camino.
+- El email real no va en el repo: se carga por variable de entorno.
+- **Riesgo:** si la variable queda mal cargada, esa persona es admin. Se mitiga con el email verificado y sin un valor por defecto.
+
+#### Cómo se obtiene el ID token sin front
+
+No hay front, y el ID token de Google se obtiene con un navegador. Se arma una **página mínima** con el botón de Google Sign-In:
+
+- Muestra el botón, recibe el ID token y llama a `POST /api/auth/google`.
+- Muestra el JWT de TicketYa, para copiarlo en Postman o Swagger.
+- Necesita un client id de OAuth de un proyecto de Google Cloud. No es secreto, así que va en la configuración.
+- **A definir:** dónde vive la página (`static/` del auth-service o `docs/`) y quién del equipo crea el proyecto de Google Cloud.
 
 ### ¿Cómo se prueba sin pasar por el login de Google?
 

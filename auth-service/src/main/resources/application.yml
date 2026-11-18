@@ -19,6 +19,10 @@ spring:
       # Cuando se estabilice, pasar a validate + migraciones (Flyway).
       ddl-auto: create
     open-in-view: false
+  jackson:
+    deserialization:
+      # Sin esto, {"userId": 1.5} se redondea a 1 en vez de dar 400
+      accept-float-as-int: false
 
 # Swagger del servicio: http://localhost:8081/swagger-ui.html
 springdoc:

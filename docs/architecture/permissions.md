@@ -126,17 +126,42 @@ El resto todavía no tiene `@RequiresPermission`. Los `POST`/`PUT`/`DELETE` de `
 | event-service | `security/PermissionInterceptor` | Lee `X-User-Id`, llama a auth y corta con `403` |
 | event-service | `config/WebConfig` | Registra el interceptor para `/api/**` |
 | event-service | `client/AuthClient.getPermissions` | La llamada HTTP |
+| `common` (Entrega 2) | `security/GatewayHeaders` | Los nombres de los headers que pone el gateway |
+| `common` (Entrega 2) | `security/Permission`, `security/RequiresPermission` | El enum con los 9 permisos del `AuthSeeder` y la anotación |
+| `common` (Entrega 2) | `security/Caller` | Quién llama, armado con los headers del gateway |
+| `common` (Entrega 2) | `security/PermissionInterceptor`, `security/CallerArgumentResolver` | El chequeo en `preHandle` y el `Caller` como parámetro |
+| `common` (Entrega 2) | `config/PermissionAutoConfiguration` | Registra los dos en `/api/**` de cada servicio |
 
-## Qué cambia con JWT (Épica 9, Entrega 2)
+## Con JWT (Épica 9, Entrega 2)
 
-| Hoy | Con JWT |
+La anotación y el interceptor se quedan, pero se mueven a `common` y **dejan de llamar al auth-service**: los permisos llegan del api-gateway, que es el único que valida el JWT ([ADR-003](../adr/ADR-003-jwt-validated-only-in-gateway.md)).
+
+```
+Cliente ── Bearer JWT ──▶ api-gateway ── X-User-Id, X-User-Role, X-User-Permissions, X-Organization-Id ──▶ servicio
+                          · valida el token                                                   · PermissionInterceptor
+                          · borra los X-User-* del cliente                                    · @RequiresPermission
+```
+
+1. Spring elige el método del controller.
+2. `PermissionInterceptor.preHandle`, **antes de leer el body**:
+    - sin `@RequiresPermission`, deja pasar: el endpoint es público;
+    - arma el `Caller` con los headers del gateway. Sin `X-User-Id`, o con un id que no es número: `401 unauthorized`;
+    - si el `Caller` no tiene ninguno de los permisos: `403 forbidden`.
+3. Recién ahí Spring lee el body y corre `@Valid`: el `400` solo le llega a quien tiene el permiso.
+4. El controller recibe el `Caller` como parámetro y se lo pasa al service, que aplica las reglas de negocio.
+
+| Entrega 1 | Entrega 2 |
 |---|---|
-| `X-User-Id` en cada request | El gateway valida el token y el usuario sale del `sub` |
-| El interceptor pregunta los permisos al auth-service en cada request | Los permisos viajan en el token: no hay llamada |
-| `@RequiresPermission(Permission.EVENT_MANAGE)` | `@PreAuthorize("hasAuthority('EVENT_MANAGE')")` de Spring Security |
-| `PermissionInterceptor` y `WebConfig` | Se borran |
+| `X-User-Id` lo manda el cliente y se confía en él | Lo pone el gateway a partir del `sub` del token, y borra el que mande el cliente |
+| El interceptor pide los permisos al auth-service en cada request | Llegan en `X-User-Permissions`: no hay llamada |
+| `RequiresPermission`, `Permission`, `Caller` y `PermissionInterceptor` en event-service | Los mismos en `org.group10.common.security`, para todos los servicios |
+| `WebConfig` registra el interceptor | `PermissionAutoConfiguration` lo registra en cada servicio que depende de `common` |
+| Falta `X-User-Id` → `400 invalid_parameter` | Falta `X-User-Id` → `401 unauthorized` |
+| `@RequestAttribute` para recibir el `Caller` | `Caller caller` como parámetro (`CallerArgumentResolver`) |
 
-La respuesta de `/api/users/{id}/permissions` tiene la forma de los *claims* del token (usuario, rol y permisos), como pide `microservices.md`. Los services no cambian, porque nunca supieron de dónde salía el permiso.
+**Por qué no `@PreAuthorize`:** Spring lo evalúa al invocar el método, después de leer el body y de `@Valid`. Un usuario sin permiso con un body inválido recibiría `400` en vez de `403`, en contra de la US-AUTH-02. `preHandle` corre antes: el `403` sale primero incluso con JSON roto. Además, como los servicios no validan el token, no necesitan Spring Security (ver *Decisiones de diseño tomadas* en el [RFC-001](../rfc/RFC-001-auth-modality.md)).
+
+**Migración:** cada servicio pasa a la anotación de `common` en su PR de roles. Hasta entonces, event-service sigue con su interceptor propio. Los dos conviven: el de `common` no es un bean, así no choca con el `permissionInterceptor` de event-service, y cada uno solo mira su propia anotación.
 
 ## Costo
 
@@ -171,6 +196,6 @@ Cada request a un endpoint protegido hace **una llamada más al auth-service**. 
 |---|---|
 | Lugares | `POST`/`PUT`/`DELETE` de `/api/venues` no están protegidos. Hace falta decidir qué permiso los cubre (p. ej. un `VENUE_MANAGE` para el admin) |
 | Delegar la suspensión | Que el creador autorice a otro organizador de su organización a suspender o cancelar su evento. Necesita guardar quién autorizó a quién y cómo se revoca: se dejó afuera |
-| Otros servicios | ticket-service y los demás no tienen interceptor. Si lo necesitan, se puede mover `RequiresPermission` y `PermissionInterceptor` a `common` |
+| Otros servicios | `RequiresPermission` y `PermissionInterceptor` ya están en `common` (Entrega 2). Falta que cada servicio anote sus endpoints, en su PR de roles |
 | Timeouts | Configurar timeouts (y quizá un reintento) en el grupo `auth-service` de los clients HTTP |
 | `organizationId` en la respuesta | Ahorraría dos llamadas al crear eventos y permitiría sacar `X-Organization-Id` (ver `event-creation-pending.md`) |

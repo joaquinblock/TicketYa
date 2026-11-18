@@ -1,1 +1,2 @@
 org.group10.common.config.ErrorHandlingAutoConfiguration
+org.group10.common.config.PermissionAutoConfiguration

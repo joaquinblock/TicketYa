@@ -159,6 +159,21 @@ Cliente ── Bearer JWT ──▶ api-gateway ── X-User-Id, X-User-Role, X
 | Falta `X-User-Id` → `400 invalid_parameter` | Falta `X-User-Id` → `401 unauthorized` |
 | `@RequestAttribute` para recibir el `Caller` | `Caller caller` como parámetro (`CallerArgumentResolver`) |
 
+### Qué hace el api-gateway
+
+`IdentityHeadersFilter` corre antes de rutear cada request:
+
+| El request trae | El gateway |
+|---|---|
+| Sin `Authorization: Bearer` | Lo deja pasar sin identidad. Cada servicio decide: un endpoint con `@RequiresPermission` responde `401` |
+| Un token válido | Pone `X-User-Id` (del `sub`), `X-User-Role`, `X-User-Permissions` (separados por coma) y `X-Organization-Id` (solo si el token lo trae) |
+| Un token con firma inválida, vencido, de otro `iss` u otro `aud`, o `Bearer` sin token | `401 unauthorized`, sin llegar al servicio |
+| Un token, pero el auth-service no responde y no se puede obtener la clave pública | `503 service_unavailable`: el token puede ser válido |
+
+- **Siempre borra los `X-User-*` y `X-Organization-Id` que mande el cliente,** con o sin token y en cualquier combinación de mayúsculas. Un cliente que manda `X-User-Permissions: EVENT_ADMIN` no consigue nada.
+- **La clave pública sale del JWKS del auth-service** (`ticketya.jwt.jwk-set-uri`, por defecto `${AUTH_SERVICE_URL}/.well-known/jwks.json`). Se descarga con el primer token y se vuelve a pedir si llega un `kid` desconocido, por ejemplo si el auth-service se reinició con otra clave efímera.
+- **`X-Organization-Id` ahora sale del token.** En la Entrega 1 lo mandaba el cliente al crear un evento: con el gateway, ese valor se descarta.
+
 **Por qué no `@PreAuthorize`:** Spring lo evalúa al invocar el método, después de leer el body y de `@Valid`. Un usuario sin permiso con un body inválido recibiría `400` en vez de `403`, en contra de la US-AUTH-02. `preHandle` corre antes: el `403` sale primero incluso con JSON roto. Además, como los servicios no validan el token, no necesitan Spring Security (ver *Decisiones de diseño tomadas* en el [RFC-001](../rfc/RFC-001-auth-modality.md)).
 
 **Migración:** cada servicio pasa a la anotación de `common` en su PR de roles. Hasta entonces, event-service sigue con su interceptor propio. Los dos conviven: el de `common` no es un bean, así no choca con el `permissionInterceptor` de event-service, y cada uno solo mira su propia anotación.

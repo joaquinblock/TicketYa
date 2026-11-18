@@ -62,7 +62,6 @@ Los consume el event-service con `AuthClient`. Swagger: `/swagger-ui.html` en el
 | `GET` | `/api/organizations/{id}` | Una organización **activa** | 200 |
 | `GET` | `/api/organizers/{userId}` | Un organizador **activo** con el id de su organización | 200 |
 | `GET` | `/api/users/{id}/permissions` | Rol y permisos de un usuario **activo**. Lo usa `PermissionInterceptor` (ver [`permissions.md`](permissions.md)) | 200 |
-| `GET` | `/.well-known/jwks.json` | Clave pública para verificar los JWT. La usa el api-gateway, directo contra el servicio | 200 |
 
 ```http
 GET /api/organizations/1
@@ -75,6 +74,9 @@ GET /api/organizers/2
 GET /api/users/2/permissions
 → { "userId": 2, "role": "ORGANIZER",
     "permissions": ["EVENT_MANAGE", "EVENT_SEARCH", "REFUND_REQUEST", "REPORT_VIEW", "TICKET_PURCHASE"] }
+
+POST /api/auth/dev-login   { "userId": 2 }
+→ { "accessToken": "eyJhbGciOiJSUzI1NiJ9...", "tokenType": "Bearer", "expiresIn": 1800 }
 ```
 
 ## Reglas
@@ -113,7 +115,7 @@ Todos usan el `ErrorDto` común (ver [`error-handling.md`](error-handling.md)). 
 
 ## Firma del JWT
 
-El auth-service emite el JWT de TicketYa con `JwtTokenProvider`, firmado con RS256 (diseño en el [RFC-001](../rfc/RFC-001-auth-modality.md)). Todavía no hay un endpoint que lo use: llega con `dev-login` y el login con Google.
+El auth-service emite el JWT de TicketYa con `JwtTokenProvider`, firmado con RS256 (diseño en el [RFC-001](../rfc/RFC-001-auth-modality.md)). Hoy lo usa `dev-login`; el login con Google llega después. `AuthService.issueTokenFor` arma el token: el organizador lleva su `organizationId` y el personal de acceso todavía no, hasta que exista `AccessStaff` (#19).
 
 | Claim | Valor |
 |---|---|

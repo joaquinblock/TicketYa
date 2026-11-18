@@ -110,6 +110,28 @@ Todos usan el `ErrorDto` común (ver [`error-handling.md`](error-handling.md)). 
   El user `2` no organiza para la `2`, así que crear un evento de la org `2` con `X-User-Id: 2` sigue dando `organizer_not_in_organization`.
 - **El organizador se busca en una sola query.** `OrganizerRepository.findWithUserAndOrganizationByUserId` usa `@EntityGraph` para traer también el `user` y la `organization`, que son lazy. Sin eso, armar la respuesta haría una query más por cada relación, y fuera de la transacción tiraría `LazyInitializationException`.
 
+## Firma del JWT
+
+El auth-service emite el JWT de TicketYa con `JwtTokenProvider`, firmado con RS256 (diseño en el [RFC-001](../rfc/RFC-001-auth-modality.md)). Todavía no hay un endpoint que lo use: llega con `dev-login` y el login con Google.
+
+| Claim | Valor |
+|---|---|
+| `iss` / `aud` | `ticketya-auth` / `ticketya-api` |
+| `sub` | Id del usuario |
+| `iat` / `exp` | Emisión y vencimiento, 30 min después |
+| `jti` | UUID distinto en cada token |
+| `role`, `permissions` | Rol y permisos del usuario |
+| `organizationId` | Solo si el usuario pertenece a una organización |
+
+**La clave privada nunca va en el repo** (`*.pem` está en `.gitignore`). Se pasa la ruta por `JWT_PRIVATE_KEY_LOCATION`:
+
+```bash
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out private.pem
+JWT_PRIVATE_KEY_LOCATION=/ruta/a/private.pem
+```
+
+Sin la variable, el servicio genera una clave efímera y loguea un `WARN`. Sirve para desarrollo, pero los tokens dejan de valer al reiniciar. Si la ruta no existe o el archivo no es una clave PKCS#8, el servicio no arranca.
+
 ## Pendiente
 
 | Tema | Detalle |

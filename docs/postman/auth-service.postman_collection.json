@@ -30,9 +30,16 @@
                   "const body = pm.response.json();",
                   "pm.test('Tipo Bearer', () => pm.expect(body.tokenType).to.eql('Bearer'));",
                   "pm.test('Vence en 30 min', () => pm.expect(body.expiresIn).to.eql(1800));",
-                  "const claims = JSON.parse(atob(body.accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));",
+                  "const decode = part => JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - part.length % 4) % 4)));",
+                  "const [header, claims] = body.accessToken.split('.').slice(0, 2).map(decode);",
+                  "pm.test('Firmado con RS256', () => pm.expect(header.alg).to.eql('RS256'));",
+                  "pm.test('iss = ticketya-auth', () => pm.expect(claims.iss).to.eql('ticketya-auth'));",
+                  "pm.test('aud = ticketya-api', () => pm.expect([].concat(claims.aud)).to.include('ticketya-api'));",
+                  "pm.test('exp 30 min después de iat', () => pm.expect(claims.exp - claims.iat).to.eql(1800));",
+                  "pm.test('Tiene jti', () => pm.expect(claims.jti).to.be.a('string').and.not.empty);",
                   "pm.test('sub = 1', () => pm.expect(claims.sub).to.eql('1'));",
                   "pm.test('Rol CLIENT', () => pm.expect(claims.role).to.eql('CLIENT'));",
+                  "pm.test('Permisos de comprador', () => pm.expect(claims.permissions).to.include.members(['EVENT_SEARCH', 'TICKET_PURCHASE', 'REFUND_REQUEST']));",
                   "pm.test('Sin organizationId', () => pm.expect(claims).to.not.have.property('organizationId'));",
                   "pm.collectionVariables.set('token', body.accessToken);"
                 ]
@@ -62,7 +69,8 @@
               "script": {
                 "exec": [
                   "pm.test('200', () => pm.response.to.have.status(200));",
-                  "const claims = JSON.parse(atob(pm.response.json().accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));",
+                  "const decode = part => JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - part.length % 4) % 4)));",
+                  "const claims = decode(pm.response.json().accessToken.split('.')[1]);",
                   "pm.test('Rol ORGANIZER', () => pm.expect(claims.role).to.eql('ORGANIZER'));",
                   "pm.test('Organización 1', () => pm.expect(claims.organizationId).to.eql(1));",
                   "pm.test('Tiene EVENT_MANAGE', () => pm.expect(claims.permissions).to.include('EVENT_MANAGE'));"
@@ -93,7 +101,8 @@
               "script": {
                 "exec": [
                   "pm.test('200', () => pm.response.to.have.status(200));",
-                  "const claims = JSON.parse(atob(pm.response.json().accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));",
+                  "const decode = part => JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - part.length % 4) % 4)));",
+                  "const claims = decode(pm.response.json().accessToken.split('.')[1]);",
                   "pm.test('Rol ADMIN', () => pm.expect(claims.role).to.eql('ADMIN'));"
                 ]
               }
@@ -110,6 +119,38 @@
             "body": {
               "mode": "raw",
               "raw": "{\"userId\": 3}"
+            },
+            "url": "{{baseUrl}}/api/auth/dev-login"
+          }
+        },
+        {
+          "name": "Token del personal de acceso",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const decode = part => JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - part.length % 4) % 4)));",
+                  "const claims = decode(pm.response.json().accessToken.split('.')[1]);",
+                  "pm.test('Rol ACCESS_STAFF', () => pm.expect(claims.role).to.eql('ACCESS_STAFF'));",
+                  "pm.test('Tiene TICKET_VALIDATE', () => pm.expect(claims.permissions).to.include('TICKET_VALIDATE'));",
+                  "pm.test('Sin organizationId hasta AccessStaff (#19)', () => pm.expect(claims).to.not.have.property('organizationId'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"userId\": 4}"
             },
             "url": "{{baseUrl}}/api/auth/dev-login"
           }

@@ -8,9 +8,170 @@
     {
       "key": "baseUrl",
       "value": "http://localhost:8080"
+    },
+    {
+      "key": "token",
+      "value": ""
     }
   ],
   "item": [
+    {
+      "name": "Login de desarrollo",
+      "description": "Solo con el perfil dev (la run config de IntelliJ ya lo activa). Emite el JWT de TicketYa de un usuario del seeder sin pasar por Google. El primer request guarda el token en {{token}}. Ver docs/adr/ADR-002-dev-login.md.",
+      "item": [
+        {
+          "name": "Token del cliente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Tipo Bearer', () => pm.expect(body.tokenType).to.eql('Bearer'));",
+                  "pm.test('Vence en 30 min', () => pm.expect(body.expiresIn).to.eql(1800));",
+                  "const claims = JSON.parse(atob(body.accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));",
+                  "pm.test('sub = 1', () => pm.expect(claims.sub).to.eql('1'));",
+                  "pm.test('Rol CLIENT', () => pm.expect(claims.role).to.eql('CLIENT'));",
+                  "pm.test('Sin organizationId', () => pm.expect(claims).to.not.have.property('organizationId'));",
+                  "pm.collectionVariables.set('token', body.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"userId\": 1}"
+            },
+            "url": "{{baseUrl}}/api/auth/dev-login"
+          }
+        },
+        {
+          "name": "Token del organizador",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const claims = JSON.parse(atob(pm.response.json().accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));",
+                  "pm.test('Rol ORGANIZER', () => pm.expect(claims.role).to.eql('ORGANIZER'));",
+                  "pm.test('Organización 1', () => pm.expect(claims.organizationId).to.eql(1));",
+                  "pm.test('Tiene EVENT_MANAGE', () => pm.expect(claims.permissions).to.include('EVENT_MANAGE'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"userId\": 2}"
+            },
+            "url": "{{baseUrl}}/api/auth/dev-login"
+          }
+        },
+        {
+          "name": "Token del administrador",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const claims = JSON.parse(atob(pm.response.json().accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));",
+                  "pm.test('Rol ADMIN', () => pm.expect(claims.role).to.eql('ADMIN'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"userId\": 3}"
+            },
+            "url": "{{baseUrl}}/api/auth/dev-login"
+          }
+        },
+        {
+          "name": "Usuario inexistente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404', () => pm.response.to.have.status(404));",
+                  "pm.test('user_not_found', () => pm.expect(pm.response.json().error).to.eql('user_not_found'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"userId\": 99}"
+            },
+            "url": "{{baseUrl}}/api/auth/dev-login"
+          }
+        },
+        {
+          "name": "userId inválido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('validation_error', () => pm.expect(pm.response.json().error).to.eql('validation_error'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"userId\": 1.5}"
+            },
+            "url": "{{baseUrl}}/api/auth/dev-login"
+          }
+        }
+      ]
+    },
     {
       "name": "Permisos",
       "item": [

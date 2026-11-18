@@ -31,6 +31,14 @@ springdoc:
     path: /api-docs
 
 
+ticketya:
+  jwt:
+    issuer: ticketya-auth
+    audience: ticketya-api
+    ttl: 30m
+    # Ruta al .pem PKCS#8 con la clave privada RSA. Nunca va en el repo. Vacía: clave efímera (solo desarrollo)
+    private-key-location: ${JWT_PRIVATE_KEY_LOCATION:}
+
 management:
   endpoints:
     web:

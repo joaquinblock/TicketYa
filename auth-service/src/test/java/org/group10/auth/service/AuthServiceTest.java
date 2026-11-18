@@ -8,7 +8,9 @@ import org.group10.auth.entity.Role;
 import org.group10.auth.entity.User;
 import org.group10.auth.exception.AuthErrorCode;
 import org.group10.auth.repository.OrganizerRepository;
+import org.group10.auth.repository.RoleRepository;
 import org.group10.auth.repository.UserRepository;
+import org.group10.auth.security.GoogleIdTokenVerifier;
 import org.group10.auth.security.JwtProperties;
 import org.group10.auth.security.JwtTokenProvider;
 import org.group10.auth.security.TokenSubject;
@@ -49,12 +51,18 @@ class AuthServiceTest {
     @Mock
     private JwtTokenProvider jwtTokenProvider;
 
+    @Mock
+    private RoleRepository roleRepository;
+
+    @Mock
+    private GoogleIdTokenVerifier googleIdTokenVerifier;
+
     private AuthService authService;
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(new UserService(userRepository), organizerRepository, jwtTokenProvider,
-                PROPERTIES);
+        authService = new AuthService(new UserService(userRepository), userRepository, roleRepository,
+                organizerRepository, jwtTokenProvider, googleIdTokenVerifier, PROPERTIES);
     }
 
     @Test

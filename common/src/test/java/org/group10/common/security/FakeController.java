@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 class FakeController {
@@ -31,6 +32,11 @@ class FakeController {
         return Map.of("userId", caller.userId(), "role", caller.role(),
                 "permissions", caller.permissions(),
                 "organizationId", caller.organizationId() == null ? "none" : caller.organizationId());
+    }
+
+    @GetMapping("/api/things/{id}")
+    String publicThingSeenBy(Optional<Caller> caller) {
+        return caller.map(c -> "user " + c.userId()).orElse("anonymous");
     }
 
     @PostMapping("/internal/things")

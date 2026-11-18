@@ -1,5 +1,6 @@
 package org.group10.auth.security;
 
+import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
@@ -49,12 +50,33 @@ public class JwtKeyConfig {
         return readPkcs8Pem(Path.of(location));
     }
 
+    /**
+     * La clave con su {@code kid}: el thumbprint de la pública (RFC 7638). Cambia si cambia la clave, así quien
+     * valida sabe cuándo tiene que volver a pedir el JWKS.
+     */
     @Bean
-    JwtEncoder jwtEncoder(KeyPair jwtKeyPair) {
-        RSAKey key = new RSAKey.Builder((RSAPublicKey) jwtKeyPair.getPublic())
-                .privateKey((RSAPrivateKey) jwtKeyPair.getPrivate())
-                .build();
-        return new NimbusJwtEncoder(new ImmutableJWKSet<>(new JWKSet(key)));
+    RSAKey jwtSigningKey(KeyPair jwtKeyPair) {
+        try {
+            return new RSAKey.Builder((RSAPublicKey) jwtKeyPair.getPublic())
+                    .privateKey((RSAPrivateKey) jwtKeyPair.getPrivate())
+                    .keyIDFromThumbprint()
+                    .build();
+        } catch (JOSEException e) {
+            throw new IllegalStateException("No se pudo calcular el kid de la clave RSA", e);
+        }
+    }
+
+    @Bean
+    JwtEncoder jwtEncoder(RSAKey jwtSigningKey) {
+        return new NimbusJwtEncoder(new ImmutableJWKSet<>(new JWKSet(jwtSigningKey)));
+    }
+
+    /**
+     * Solo la parte pública: es lo que publica {@code /.well-known/jwks.json} para que el gateway verifique la firma.
+     */
+    @Bean
+    JWKSet publicJwkSet(RSAKey jwtSigningKey) {
+        return new JWKSet(jwtSigningKey.toPublicJWK());
     }
 
     @Bean

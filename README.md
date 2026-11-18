@@ -42,14 +42,16 @@ La primera vez, instalar el módulo `common`, del que dependen todos los servici
 Después, en cinco terminales, desde la raíz del repo y en este orden:
 
 ```bash
-./mvnw -pl auth-service spring-boot:run
+./mvnw -pl auth-service spring-boot:run -Dspring-boot.run.profiles=dev
 ./mvnw -pl event-service spring-boot:run
 ./mvnw -pl ticket-service spring-boot:run
 ./mvnw -pl payment-service spring-boot:run
 ./mvnw -pl api-gateway spring-boot:run
 ```
 
-En IntelliJ es lo mismo: se corre la clase `*Application` de cada módulo (las configuraciones están en `.run/`).
+En IntelliJ es lo mismo: se corre la clase `*Application` de cada módulo (las configuraciones están en `.run/`). La del auth-service ya activa el perfil `dev`.
+
+El perfil `dev` del auth-service habilita `POST /api/auth/dev-login {"userId": 2}`, que devuelve el JWT de cualquier usuario del seeder sin pasar por Google. Cómo y cuándo usarlo: [ADR-002](docs/adr/ADR-002-dev-login.md).
 
 Hay que usar `spring-boot:run`: con `java -jar` el servicio no arranca, porque `spring-boot-docker-compose` es una dependencia de desarrollo, no se empaqueta en el jar y sin ella no hay datasource. El despliegue con contenedores y un único `docker-compose.yml` es de la Entrega 2.
 

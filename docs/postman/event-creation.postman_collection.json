@@ -1,9 +1,31 @@
 {
   "info": {
     "name": "TicketYa - Creación de eventos",
-    "description": "Casos de POST /api/events y de los endpoints del auth-service que usa, incluido el chequeo de permisos (ver docs/architecture/permissions.md). Necesita auth-service (8081), event-service (8082) y api-gateway (8080) levantados, y en AuthSeeder la organización 1 con el organizador 2 y la organización 2 con el organizador 5, así que el organizador 2 no pertenece a la 2 (ver docs/team/event-creation-pending.md).",
+    "description": "Cada request dice con qué usuario del seeder va en el header X-User-Id: el script de la colección pide su token con dev-login y lo manda como Authorization: Bearer. Necesita el auth-service con el perfil dev (ADR-002) y el api-gateway que valida el token. Casos de POST /api/events y de los endpoints del auth-service que usa, incluido el chequeo de permisos (ver docs/architecture/permissions.md). Necesita auth-service (8081), event-service (8082) y api-gateway (8080) levantados, y en AuthSeeder la organización 1 con el organizador 2 y la organización 2 con el organizador 5, así que el organizador 2 no pertenece a la 2 (ver docs/team/event-creation-pending.md).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
+  "event": [{ "listen": "prerequest", "script": { "type": "text/javascript", "exec": [
+    "// El api-gateway valida el JWT y borra los X-User-* que mande el cliente (ADR-003). Este script pide el token",
+    "// con dev-login (perfil dev, ADR-002) para el usuario del header X-User-Id y lo manda como Authorization.",
+    "// No lo guarda: lo pide en cada request, así sigue andando si el auth-service se reinicia con otra clave.",
+    "const userHeader = pm.request.headers.get('X-User-Id');",
+    "if (userHeader) {",
+    "    const userId = pm.variables.replaceIn(userHeader);",
+    "    pm.request.headers.remove('X-User-Id');",
+    "    pm.sendRequest({",
+    "        url: pm.variables.replaceIn('{{baseUrl}}') + '/api/auth/dev-login',",
+    "        method: 'POST',",
+    "        header: { 'Content-Type': 'application/json' },",
+    "        body: { mode: 'raw', raw: JSON.stringify({ userId: Number(userId) }) }",
+    "    }, (error, response) => {",
+    "        if (error || response.code !== 200) {",
+    "            console.warn(`dev-login no dio un token para el usuario ${userId}: el request sale sin identidad`);",
+    "            return;",
+    "        }",
+    "        pm.request.headers.upsert({ key: 'Authorization', value: 'Bearer ' + response.json().accessToken });",
+    "    });",
+    "}"
+  ] } }],
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:8080" },
     { "key": "organizationId", "value": "1" },
@@ -102,7 +124,7 @@
             "pm.test('201', () => pm.response.to.have.status(201));",
             "const body = pm.response.json();",
             "pm.test('Nace en DRAFT', () => pm.expect(body.status).to.eql('DRAFT'));",
-            "pm.test('Toma la organización y el organizador de los headers', () => {",
+            "pm.test('Toma la organización y el organizador del token', () => {",
             "  pm.expect(body.organizationId).to.eql(Number(pm.collectionVariables.get('organizationId')));",
             "  pm.expect(body.createdBy).to.eql(Number(pm.collectionVariables.get('organizerId')));",
             "});",
@@ -113,7 +135,6 @@
             "method": "POST",
             "header": [
               { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-Organization-Id", "value": "{{organizationId}}" },
               { "key": "X-User-Id", "value": "{{organizerId}}" }
             ],
             "body": { "mode": "raw", "raw": "{\n  \"name\": \"Los Serranos en vivo\",\n  \"description\": \"Presentación del nuevo disco\",\n  \"type\": \"CONCERT\",\n  \"venueId\": {{venueId}},\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"highDemand\": true,\n  \"saleStart\": \"2099-11-20T10:00:00\",\n  \"maxTicketsPerCustomer\": 4\n}" },
@@ -135,7 +156,6 @@
             "method": "POST",
             "header": [
               { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-Organization-Id", "value": "{{organizationId}}" },
               { "key": "X-User-Id", "value": "{{organizerId}}" }
             ],
             "body": { "mode": "raw", "raw": "{\n  \"name\": \"Charla abierta\",\n  \"type\": \"CONFERENCE\",\n  \"venueId\": {{venueId}},\n  \"dateTime\": \"2099-03-15T18:00:00\",\n  \"highDemand\": false\n}" },
@@ -143,36 +163,17 @@
           }
         },
         {
-          "name": "Sin X-Organization-Id → 400",
+          "name": "Sin token → 401",
           "event": [{ "listen": "test", "script": { "exec": [
-            "pm.test('400 invalid_parameter', () => {",
-            "  pm.response.to.have.status(400);",
-            "  pm.expect(pm.response.json().error).to.eql('invalid_parameter');",
+            "pm.test('401 unauthorized', () => {",
+            "  pm.response.to.have.status(401);",
+            "  pm.expect(pm.response.json().error).to.eql('unauthorized');",
             "});"
           ] } }],
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-User-Id", "value": "{{organizerId}}" }
-            ],
-            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Los Serranos en vivo\",\n  \"type\": \"CONCERT\",\n  \"venueId\": {{venueId}},\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"highDemand\": false\n}" },
-            "url": "{{baseUrl}}/api/events"
-          }
-        },
-        {
-          "name": "Sin X-User-Id → 400",
-          "event": [{ "listen": "test", "script": { "exec": [
-            "pm.test('400 invalid_parameter', () => {",
-            "  pm.response.to.have.status(400);",
-            "  pm.expect(pm.response.json().error).to.eql('invalid_parameter');",
-            "});"
-          ] } }],
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-Organization-Id", "value": "{{organizationId}}" }
+              { "key": "Content-Type", "value": "application/json" }
             ],
             "body": { "mode": "raw", "raw": "{\n  \"name\": \"Los Serranos en vivo\",\n  \"type\": \"CONCERT\",\n  \"venueId\": {{venueId}},\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"highDemand\": false\n}" },
             "url": "{{baseUrl}}/api/events"
@@ -192,7 +193,6 @@
             "method": "POST",
             "header": [
               { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-Organization-Id", "value": "{{organizationId}}" },
               { "key": "X-User-Id", "value": "{{organizerId}}" }
             ],
             "body": { "mode": "raw", "raw": "{\n  \"name\": \"Los Serranos en vivo\",\n  \"type\": \"CONCERT\",\n  \"venueId\": {{venueId}},\n  \"dateTime\": \"2020-01-01T21:00:00\",\n  \"highDemand\": false\n}" },
@@ -211,7 +211,6 @@
             "method": "POST",
             "header": [
               { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-Organization-Id", "value": "{{organizationId}}" },
               { "key": "X-User-Id", "value": "{{organizerId}}" }
             ],
             "body": { "mode": "raw", "raw": "{\n  \"name\": \"Los Serranos en vivo\",\n  \"type\": \"PICNIC\",\n  \"venueId\": {{venueId}},\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"highDemand\": false\n}" },
@@ -230,7 +229,6 @@
             "method": "POST",
             "header": [
               { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-Organization-Id", "value": "{{organizationId}}" },
               { "key": "X-User-Id", "value": "{{organizerId}}" }
             ],
             "body": { "mode": "raw", "raw": "{\n  \"name\": \"Los Serranos en vivo\",\n  \"type\": \"CONCERT\",\n  \"venueId\": {{venueId}},\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"highDemand\": true\n}" },
@@ -249,7 +247,6 @@
             "method": "POST",
             "header": [
               { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-Organization-Id", "value": "{{organizationId}}" },
               { "key": "X-User-Id", "value": "{{organizerId}}" }
             ],
             "body": { "mode": "raw", "raw": "{\n  \"name\": \"Los Serranos en vivo\",\n  \"type\": \"CONCERT\",\n  \"venueId\": {{venueId}},\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"highDemand\": false,\n  \"saleStart\": \"2099-12-13T10:00:00\"\n}" },
@@ -268,29 +265,9 @@
             "method": "POST",
             "header": [
               { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-Organization-Id", "value": "{{organizationId}}" },
               { "key": "X-User-Id", "value": "{{organizerId}}" }
             ],
             "body": { "mode": "raw", "raw": "{\n  \"name\": \"Los Serranos en vivo\",\n  \"type\": \"CONCERT\",\n  \"venueId\": 999,\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"highDemand\": false\n}" },
-            "url": "{{baseUrl}}/api/events"
-          }
-        },
-        {
-          "name": "Organización inexistente → 404 (de auth)",
-          "event": [{ "listen": "test", "script": { "exec": [
-            "pm.test('404 organization_not_found reenviado por el event-service', () => {",
-            "  pm.response.to.have.status(404);",
-            "  pm.expect(pm.response.json().error).to.eql('organization_not_found');",
-            "});"
-          ] } }],
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-Organization-Id", "value": "999" },
-              { "key": "X-User-Id", "value": "{{organizerId}}" }
-            ],
-            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Los Serranos en vivo\",\n  \"type\": \"CONCERT\",\n  \"venueId\": {{venueId}},\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"highDemand\": false\n}" },
             "url": "{{baseUrl}}/api/events"
           }
         },
@@ -308,7 +285,6 @@
             "method": "POST",
             "header": [
               { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-Organization-Id", "value": "{{organizationId}}" },
               { "key": "X-User-Id", "value": "{{clientId}}" }
             ],
             "body": { "mode": "raw", "raw": "{\n  \"name\": \"Los Serranos en vivo\",\n  \"type\": \"CONCERT\",\n  \"venueId\": {{venueId}},\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"highDemand\": false\n}" },
@@ -327,7 +303,6 @@
             "method": "POST",
             "header": [
               { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-Organization-Id", "value": "{{organizationId}}" },
               { "key": "X-User-Id", "value": "{{clientId}}" }
             ],
             "body": { "mode": "raw", "raw": "{\n  \"name\": \"  \",\n  \"type\": \"CONCERT\",\n  \"venueId\": {{venueId}},\n  \"dateTime\": \"2020-01-01T21:00:00\",\n  \"highDemand\": false\n}" },
@@ -335,18 +310,17 @@
           }
         },
         {
-          "name": "Usuario inexistente → 404 (de auth)",
+          "name": "Usuario inexistente: dev-login no da token → 401",
           "event": [{ "listen": "test", "script": { "exec": [
-            "pm.test('404 user_not_found reenviado por el event-service', () => {",
-            "  pm.response.to.have.status(404);",
-            "  pm.expect(pm.response.json().error).to.eql('user_not_found');",
+            "pm.test('401 unauthorized', () => {",
+            "  pm.response.to.have.status(401);",
+            "  pm.expect(pm.response.json().error).to.eql('unauthorized');",
             "});"
           ] } }],
           "request": {
             "method": "POST",
             "header": [
               { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-Organization-Id", "value": "{{organizationId}}" },
               { "key": "X-User-Id", "value": "999" }
             ],
             "body": { "mode": "raw", "raw": "{\n  \"name\": \"Los Serranos en vivo\",\n  \"type\": \"CONCERT\",\n  \"venueId\": {{venueId}},\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"highDemand\": false\n}" },
@@ -354,11 +328,11 @@
           }
         },
         {
-          "name": "Organizador de otra organización → 403",
+          "name": "Mandar otra organización no sirve: se crea en la del token → 201",
           "event": [{ "listen": "test", "script": { "exec": [
-            "pm.test('403 organizer_not_in_organization', () => {",
-            "  pm.response.to.have.status(403);",
-            "  pm.expect(pm.response.json().error).to.eql('organizer_not_in_organization');",
+            "pm.test('201', () => pm.response.to.have.status(201));",
+            "pm.test('El gateway descarta el X-Organization-Id del cliente: queda en la organización del token', () => {",
+            "  pm.expect(pm.response.json().organizationId).to.eql(Number(pm.collectionVariables.get('organizationId')));",
             "});"
           ] } }],
           "request": {

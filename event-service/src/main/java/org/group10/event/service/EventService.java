@@ -3,10 +3,10 @@ package org.group10.event.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.group10.common.exception.TicketYaException;
-import org.group10.event.client.AuthClient;
+import org.group10.common.security.Caller;
+import org.group10.common.security.Permission;
 import org.group10.event.client.TicketClient;
 import org.group10.event.client.dto.EventSaleRequest;
-import org.group10.event.client.dto.OrganizerResponse;
 import org.group10.event.dto.EventCreateRequest;
 import org.group10.event.dto.EventDetailResponse;
 import org.group10.event.dto.EventParticipantsRequest;
@@ -32,14 +32,11 @@ import org.group10.event.repository.SeatRepository;
 import org.group10.event.repository.SectorRepository;
 import org.group10.event.repository.SectorSeatCount;
 import org.group10.event.repository.VenueRepository;
-import org.group10.event.security.Caller;
-import org.group10.event.security.Permission;
 import org.group10.event.statemachine.EventStatusMachine;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionOperations;
-import org.springframework.web.client.HttpClientErrorException;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -50,6 +47,7 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -68,7 +66,6 @@ public class EventService {
     private final SeatRepository seatRepository;
     private final EventStatusMachine statusMachine;
     private final TransactionOperations transactions;
-    private final AuthClient authClient;
     private final TicketClient ticketClient;
     private final Clock clock;
 
@@ -78,45 +75,36 @@ public class EventService {
      * A draft is private: only an organizer of its organization sees it. For anyone else it doesn't exist, with the
      * same 404 as a missing id, so its id doesn't reveal that the event is being prepared.
      *
-     * @param userId optional {@code X-User-Id}; only needed to see a draft
+     * @param caller who is asking, if anyone; only needed to see a draft
      * @throws TicketYaException {@code EVENT_NOT_FOUND}
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public EventDetailResponse findById(Long id, Long userId) {
+    public EventDetailResponse findById(Long id, Optional<Caller> caller) {
         Event event = getEvent(id);
-        if (event.getStatus() == EventStatus.DRAFT && !organizesFor(userId, event.getOrganizationId())) {
+        boolean ownDraft = caller.filter(c -> organizesFor(c, event.getOrganizationId())).isPresent();
+        if (event.getStatus() == EventStatus.DRAFT && !ownDraft) {
             throw eventNotFound(id);
         }
         return transactions.execute(tx -> toDetail(getEvent(id)));
     }
 
     /**
-     * Whether the user is an active organizer of the organization. A user who isn't an organizer at all comes back
-     * from the auth-service as a 404, which here just means "no".
+     * Whether the caller organizes for the organization, according to its token: the auth-service only puts the
+     * organization there while both the organizer and the organization are active.
      */
-    private boolean organizesFor(Long userId, Long organizationId) {
-        if (userId == null) {
-            return false;
-        }
-        try {
-            return organizationId.equals(authClient.getOrganizer(userId).organizationId());
-        } catch (HttpClientErrorException.NotFound notAnOrganizer) {
-            return false;
-        }
+    private static boolean organizesFor(Caller caller, Long organizationId) {
+        return organizationId.equals(caller.organizationId());
     }
 
     /**
      * Replaces the data of a draft event. If the venue changes, the sectors it sold are removed, because they belong
      * to the old venue.
-     * <p>
-     * The checks against the auth-service run outside the transaction, like in {@link #create}; only the write runs
-     * inside one.
      *
      * @throws TicketYaException {@code EVENT_NOT_FOUND}, {@code EVENT_NOT_EDITABLE}, {@code VENUE_NOT_FOUND},
      *                           {@code INVALID_EVENT_CONFIGURATION} or {@code ORGANIZER_NOT_IN_ORGANIZATION}
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public EventDetailResponse update(Long id, Long organizerId, EventCreateRequest request) {
+    public EventDetailResponse update(Long id, Caller caller, EventCreateRequest request) {
         Event event = getEvent(id);
         ensureDraft(event, "editar");
         validateSaleWindow(request);
@@ -124,7 +112,7 @@ public class EventService {
             throw new TicketYaException(EventErrorCode.VENUE_NOT_FOUND,
                     "No se encontró el lugar con id %d".formatted(request.venueId()));
         }
-        verifyOrganizer(event.getOrganizationId(), organizerId);
+        ensureOrganizes(caller, event.getOrganizationId());
 
         return transactions.execute(tx -> {
             Event managed = getEvent(id);
@@ -151,7 +139,7 @@ public class EventService {
      *                           aren't sectors of the venue in {@code detail}
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public EventDetailResponse replaceSectors(Long id, Long organizerId, EventSectorsRequest request) {
+    public EventDetailResponse replaceSectors(Long id, Caller caller, EventSectorsRequest request) {
         Event event = getEvent(id);
         ensureDraft(event, "cambiar los sectores");
         List<Long> repeated = request.sectors().stream()
@@ -162,7 +150,7 @@ public class EventService {
                     "Cada sector va una sola vez, con un solo precio: se repiten %s".formatted(repeated),
                     Map.of("repeatedSectorIds", repeated));
         }
-        verifyOrganizer(event.getOrganizationId(), organizerId);
+        ensureOrganizes(caller, event.getOrganizationId());
 
         return transactions.execute(tx -> {
             Event managed = getEvent(id);
@@ -208,10 +196,10 @@ public class EventService {
      *                           {@code ORGANIZER_NOT_IN_ORGANIZATION}
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public void delete(Long id, Long organizerId) {
+    public void delete(Long id, Caller caller) {
         Event event = getEvent(id);
         ensureDraft(event, "borrar");
-        verifyOrganizer(event.getOrganizationId(), organizerId);
+        ensureOrganizes(caller, event.getOrganizationId());
 
         transactions.execute(tx -> {
             ensureDraft(getEvent(id), "borrar");
@@ -229,10 +217,10 @@ public class EventService {
      *                           failed precondition in {@code detail.problems}
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public EventDetailResponse publish(Long id, Long organizerId) {
+    public EventDetailResponse publish(Long id, Caller caller) {
         Event event = getEvent(id);
         ensureStatus(event, EventStatus.DRAFT, "Solo se publica un borrador");
-        verifyOrganizer(event.getOrganizationId(), organizerId);
+        ensureOrganizes(caller, event.getOrganizationId());
 
         EventSaleRequest sale = transactions.execute(tx -> {
             Event managed = getEvent(id);
@@ -388,24 +376,21 @@ public class EventService {
             throw new TicketYaException(EventErrorCode.NOT_EVENT_CREATOR,
                     "Solo el organizador que creó el evento %d, o un administrador, puede %s".formatted(event.getId(), action));
         }
-        verifyOrganizer(event.getOrganizationId(), caller.userId());
+        ensureOrganizes(caller, event.getOrganizationId());
     }
 
     /**
      * Replaces the participants of a draft event with the given ones. Repeated ids count once, and an empty list
      * removes them all.
-     * <p>
-     * Runs without a surrounding transaction, like {@link #create}, so the call to the auth-service doesn't hold a
-     * database connection.
      *
-     * @param organizerId user making the change; has to organize for the event's organization
+     * @param caller user making the change; has to organize for the event's organization
      * @return the event's participants, ordered by name
      * @throws TicketYaException {@code EVENT_NOT_FOUND}, {@code EVENT_NOT_EDITABLE} if it isn't a draft,
      *                           {@code ORGANIZER_NOT_IN_ORGANIZATION} or {@code PARTICIPANT_NOT_FOUND} with the
      *                           missing ids in {@code detail}
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public List<ParticipantResponse> replaceParticipants(Long eventId, Long organizerId,
+    public List<ParticipantResponse> replaceParticipants(Long eventId, Caller caller,
                                                          EventParticipantsRequest request) {
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new TicketYaException(EventErrorCode.EVENT_NOT_FOUND,
@@ -415,7 +400,7 @@ public class EventService {
                     "El evento %d está %s: solo se le pueden cambiar los participantes en DRAFT"
                             .formatted(eventId, event.getStatus()));
         }
-        verifyOrganizer(event.getOrganizationId(), organizerId);
+        ensureOrganizes(caller, event.getOrganizationId());
 
         Set<Long> ids = new LinkedHashSet<>(request.participantIds());
         List<Participant> participants = participantRepository.findAllById(ids);
@@ -435,26 +420,22 @@ public class EventService {
     }
 
     /**
-     * Creates an event in {@code DRAFT} for an organization, on behalf of one of its organizers.
-     * <p>
-     * Runs without a surrounding transaction so the calls to the auth-service don't hold a database connection
-     * while they wait; the venue lookup and the insert each use their own.
+     * Creates an event in {@code DRAFT} for the organization of the organizer who creates it. The organization comes
+     * from the token, not from the client: an organizer can only create events for their own organization.
      *
-     * @param organizationId organization the event belongs to, validated against the auth-service
-     * @param organizerId    user creating it; has to be an active organizer of that organization
-     * @throws TicketYaException {@code INVALID_EVENT_CONFIGURATION}, {@code VENUE_NOT_FOUND} or
-     *                           {@code ORGANIZER_NOT_IN_ORGANIZATION}; the auth-service's
-     *                           {@code organization_not_found} and {@code organizer_not_found} reach the caller as is
+     * @param caller organizer creating it; their token has to carry an organization
+     * @throws TicketYaException {@code INVALID_EVENT_CONFIGURATION}, {@code ORGANIZER_NOT_IN_ORGANIZATION} or
+     *                           {@code VENUE_NOT_FOUND}
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public EventResponse create(Long organizationId, Long organizerId, EventCreateRequest request) {
+    public EventResponse create(Caller caller, EventCreateRequest request) {
         validateSaleWindow(request);
+        Long organizationId = organizationOf(caller);
         Venue venue = venueRepository.findById(request.venueId())
                 .orElseThrow(() -> new TicketYaException(EventErrorCode.VENUE_NOT_FOUND,
                         "No se encontró el lugar con id %d".formatted(request.venueId())));
-        verifyOrganizer(organizationId, organizerId);
 
-        Event event = eventRepository.save(EventMapper.toEntity(request, venue, organizationId, organizerId));
+        Event event = eventRepository.save(EventMapper.toEntity(request, venue, organizationId, caller.userId()));
         return EventMapper.toResponse(event);
     }
 
@@ -472,15 +453,26 @@ public class EventService {
     }
 
     /**
-     * Checks both ids against the auth-service. A missing organization or organizer comes back as a 404 that
-     * the common exception handler forwards unchanged.
+     * The organization the caller organizes for, according to its token.
+     *
+     * @throws TicketYaException {@code ORGANIZER_NOT_IN_ORGANIZATION} if the token carries none
      */
-    private void verifyOrganizer(Long organizationId, Long organizerId) {
-        authClient.getOrganization(organizationId);
-        OrganizerResponse organizer = authClient.getOrganizer(organizerId);
-        if (!organizationId.equals(organizer.organizationId())) {
+    private static Long organizationOf(Caller caller) {
+        if (caller.organizationId() == null) {
             throw new TicketYaException(EventErrorCode.ORGANIZER_NOT_IN_ORGANIZATION,
-                    "El organizador %d no pertenece a la organización %d".formatted(organizerId, organizationId));
+                    "El usuario %d no organiza para ninguna organización activa".formatted(caller.userId()));
+        }
+        return caller.organizationId();
+    }
+
+    /**
+     * @throws TicketYaException {@code ORGANIZER_NOT_IN_ORGANIZATION} if the caller doesn't organize for the event's
+     *                           organization
+     */
+    private static void ensureOrganizes(Caller caller, Long organizationId) {
+        if (!organizesFor(caller, organizationId)) {
+            throw new TicketYaException(EventErrorCode.ORGANIZER_NOT_IN_ORGANIZATION,
+                    "El usuario %d no organiza para la organización %d".formatted(caller.userId(), organizationId));
         }
     }
 

@@ -279,7 +279,7 @@ class PaymentIdempotencyIntegrationTest {
 
     private HttpAnswer postPayment(String body) {
         return RestClient.create("http://localhost:" + port).post()
-                .uri("/internal/payments")
+                .uri("/internal/payments").header("X-Internal-Secret", "dev-internal-secret")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .exchange((request, response) ->

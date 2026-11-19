@@ -399,7 +399,7 @@ class ReservationMySqlIntegrationTest {
     }
 
     private HttpResult synchronizeSale(String status, String saleStart, int price, int capacity, int maxTickets) {
-        return client.put().uri("/internal/event-sales/{eventId}", eventId)
+        return client.put().uri("/internal/event-sales/{eventId}", eventId).header("X-Internal-Secret", "dev-internal-secret")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("""
                         {"status": "%s", "eventName": "Recital", "venueName": "Estadio", "venueAddress": "Calle 1",

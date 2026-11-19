@@ -128,10 +128,11 @@ Si el `sub` de Google no está en `user`, la opción más segura es darlo de alt
 
 Los usuarios del seeder tienen emails ficticios, así que nadie entra a ellos con Google. Para que exista un admin real, que después asciende a los demás:
 
-- La variable `BOOTSTRAP_ADMIN_EMAIL` indica qué email es admin. En el primer login con ese email **verificado**, el usuario se crea o se vincula como `ADMIN`.
-- No tiene valor por defecto. Sin la variable, nadie se vuelve admin por este camino.
+- ~~La variable `BOOTSTRAP_ADMIN_EMAIL` indica qué email es admin. En el primer login con ese email **verificado**, el usuario se crea o se vincula como `ADMIN`.~~
+- **Decidido (#134):** `BOOTSTRAP_ADMIN_EMAIL` le pone ese email al admin del seeder (id `3`). En el primer login con Google, la vinculación por email que ya existe lo deja como `ADMIN`. No hace falta lógica nueva en el login.
+- Sin la variable, el admin queda con `admin@ticketya.com`, que solo se usa con `dev-login`.
 - El email real no va en el repo: se carga por variable de entorno.
-- **Riesgo:** si la variable queda mal cargada, esa persona es admin. Se mitiga con el email verificado y sin un valor por defecto.
+- **Riesgo:** si la variable queda mal cargada, esa persona es admin. Se mitiga con el email verificado de Google.
 
 #### Cómo se obtiene el ID token sin front
 
@@ -140,7 +141,8 @@ No hay front, y el ID token de Google se obtiene con un navegador. Se arma una *
 - Muestra el botón, recibe el ID token y llama a `POST /api/auth/google`.
 - Muestra el JWT de TicketYa, para copiarlo en Postman o Swagger.
 - Necesita un client id de OAuth de un proyecto de Google Cloud. No es secreto, así que va en la configuración.
-- **A definir:** dónde vive la página (`static/` del auth-service o `docs/`) y quién del equipo crea el proyecto de Google Cloud.
+- ~~**A definir:** dónde vive la página (`static/` del auth-service o `docs/`) y quién del equipo crea el proyecto de Google Cloud.~~
+- **Decidido (PR5c):** `GET /login` del auth-service, solo con el perfil `dev`. Es el mismo origen que `POST /api/auth/google`, así que no hace falta CORS. El proyecto de Google Cloud lo crea un integrante del equipo, con los pasos de [`auth-service.md`](../architecture/auth-service.md).
 
 ### ¿Cómo se prueba sin pasar por el login de Google?
 

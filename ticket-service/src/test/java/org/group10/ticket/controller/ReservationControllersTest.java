@@ -79,7 +79,7 @@ class ReservationControllersTest {
 
     @Test
     void synchronizeEventSale_sectorWithCapacityAndSeats_returnsValidationError() throws Exception {
-        mockMvc.perform(put("/internal/event-sales/1")
+        mockMvc.perform(put("/internal/event-sales/1").header("X-Internal-Secret", "dev-internal-secret")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {%s, "sectors": [{"eventSectorId": 1, "sectorName": "Platea", "price": 100,

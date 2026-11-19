@@ -257,7 +257,7 @@ class EventCancellationMySqlIntegrationTest {
     }
 
     private int synchronizeSale(long event, String status) {
-        return client.put().uri("/internal/event-sales/{eventId}", event)
+        return client.put().uri("/internal/event-sales/{eventId}", event).header("X-Internal-Secret", "dev-internal-secret")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("""
                         {"status": "%s", "eventName": "Recital", "venueName": "Estadio",

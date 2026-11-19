@@ -13,6 +13,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -33,11 +34,20 @@ class PaymentControllerTest {
                 "El pago fue rechazado: Fondos insuficientes",
                 Map.of("reason", "Fondos insuficientes", "rejectedAttempts", 1L)));
 
-        mockMvc.perform(post("/internal/payments").contentType(MediaType.APPLICATION_JSON).content("""
+        mockMvc.perform(post("/internal/payments").header("X-Internal-Secret", "dev-internal-secret").contentType(MediaType.APPLICATION_JSON).content("""
                         {"orderId": 10, "amount": 25000.00, "paymentMethod": "CREDIT_CARD", "idempotencyKey": "attempt-1"}"""))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.error").value("payment_rejected"))
                 .andExpect(jsonPath("$.detail.reason").value("Fondos insuficientes"))
                 .andExpect(jsonPath("$.detail.rejectedAttempts").value(1));
+    }
+
+    @Test
+    void charge_withoutTheServiceSecret_returns401WithoutCharging() throws Exception {
+        mockMvc.perform(post("/internal/payments").contentType(MediaType.APPLICATION_JSON).content("""
+                        {"orderId": 10, "amount": 25000.00, "paymentMethod": "CREDIT_CARD", "idempotencyKey": "attempt-1"}"""))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("unauthorized"));
+        verifyNoInteractions(paymentService);
     }
 }

@@ -87,8 +87,11 @@ Usuarios de prueba: `1` cliente, `2` organizador (org `1`), `3` admin, `4` perso
 | event-service | `POST`/`PUT`/`DELETE` de `/api/participants` | `PARTICIPANT_MANAGE`: organizadores y admin |
 | auth-service | `POST /api/organizations/{id}/organizers`, `DELETE /api/organizations/{id}/organizers/{userId}` | `USER_MANAGE`: solo el admin promueve o quita organizadores |
 | auth-service | `GET /api/users/{id}/permissions` | `USER_MANAGE`: solo el admin |
+| ticket-service | `POST /api/orders`, `POST /api/orders/{id}/pay`, `/cancel`, `GET /api/orders` y `GET /api/orders/{id}` | `TICKET_PURCHASE` |
+| ticket-service | `POST /api/tickets/{id}/return-requests` | `REFUND_REQUEST` |
+| ticket-service | `GET /api/return-requests`, `POST /api/return-requests/{id}/approve` y `/reject` | `REFUND_RESOLVE`: solo el admin |
 
-Todo lo demás de event-service es público: buscar y ver eventos, lugares, sectores, asientos y participantes. El detalle de un evento recibe un `Optional<Caller>`: un borrador solo lo ve un organizador de su organización.
+La disponibilidad del ticket-service (`GET /api/availability`) es pública. Todo lo demás de event-service es público: buscar y ver eventos, lugares, sectores, asientos y participantes. El detalle de un evento recibe un `Optional<Caller>`: un borrador solo lo ve un organizador de su organización.
 
 **La organización sale del token.** Al crear un evento, el organizador ya no la elige: es la de su token (`X-Organization-Id`, que pone el gateway). Al editar, publicar o suspender, se compara con la del evento, sin preguntarle al auth-service. El token solo la lleva si el organizador y su organización están activos.
 

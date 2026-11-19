@@ -490,7 +490,7 @@ Servicio: ticket-service · Involucra: api-gateway, auth-service · Consigna: NF
 - Sin token válido: 401 `unauthorized`. Con un rol que no corresponde: 403 `forbidden`.
 - Un cliente no puede operar en nombre de otro.
 
-**Notas técnicas:** el usuario sale del JWT y reemplaza al header `X-User-Id` de la Entrega 1.
+**Notas técnicas:** el usuario sale del JWT y reemplaza al header `X-User-Id` de la Entrega 1. **Decisión:** la disponibilidad (US-TKT-02) sigue pública, como buscar eventos: el front la muestra antes de iniciar sesión. La US-TKT-19 y la US-TKT-20 toman `TICKET_VALIDATE` y `REPORT_VIEW` cuando tengan endpoint.
 
 ### US-TKT-27: Registrar requests y operaciones críticas
 

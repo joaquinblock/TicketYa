@@ -438,7 +438,7 @@ class ReservationMySqlIntegrationTest {
 
     private HttpResult post(String path, long customer, String body) {
         return client.post().uri(path)
-                .header("X-User-Id", Long.toString(customer))
+                .header("X-User-Id", Long.toString(customer)).header("X-User-Permissions", permissionsOf(customer))
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .exchange((request, response) ->
@@ -517,5 +517,9 @@ class ReservationMySqlIntegrationTest {
 
     private static String newKey() {
         return UUID.randomUUID().toString();
+    }
+
+    private static String permissionsOf(long user) {
+        return "TICKET_PURCHASE,REFUND_REQUEST";
     }
 }

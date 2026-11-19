@@ -180,7 +180,7 @@ El enunciado pide que en la Entrega 1 sea simulada, así que `MockPaymentGateway
 Cobrar, reintegrar y anular van en `/internal/**`, que el gateway no reenvía. La protección es por etapas:
 
 - **Entrega 1:** `/internal/payments` y `/internal/refunds` a través del gateway responden 404, y lo verifica `InternalRoutesTest` en `api-gateway`. El puerto 8084 del servicio sigue accesible de forma directa, así que esas rutas no tienen protección si se llega sin pasar por el gateway.
-- **Entrega 2:** el `docker-compose` general no publica el puerto de payment-service, y las llamadas entre servicios se autentican con una credencial de servicio (sin ella, 401). `GET /api/payments` exige rol administrador.
+- **Entrega 2:** el `docker-compose` general no publica el puerto de payment-service, y las llamadas entre servicios se autentican con una credencial de servicio (sin ella, 401). `GET /api/payments` exige rol administrador: pide `REFUND_RESOLVE`, porque no hay un permiso de pagos y quien resuelve devoluciones es quien necesita ver los pagos de una orden. No publicar el puerto queda para el `docker-compose` general (épica #11).
 
 ### El secreto entre servicios (US-PAY-14)
 
@@ -207,7 +207,7 @@ REST síncrono en la Entrega 1. **payment-service nunca llama a ticket-service**
 | `POST /internal/payments/cancel` (Entrega 2) | `idempotencyKey` | 200 con el estado final del pago; 404 `payment_not_found` |
 | `POST /internal/refunds` | `ticketId`, `orderId`, `amount`, `reason`, `returnRequestId` | 201 creado; 200 si ya existe y no falló; 404 `payment_not_found`; 409 `payment_not_refundable` (pago no aprobado o supera lo cobrado); 409 `data_conflict` si ya existe con otros datos y no falló; 502 `refund_failed` |
 | `GET /internal/payments?orderId=` | | 200 con los pagos de la orden; 404 `payment_not_found` |
-| `GET /api/payments?orderId=` | Solo administrador, por el gateway | 200 con los pagos de la orden; 404 `payment_not_found` |
+| `GET /api/payments?orderId=` | Solo administrador (`REFUND_RESOLVE`), por el gateway. Sin token, 401; con otro rol, 403 | 200 con los pagos de la orden; 404 `payment_not_found` |
 
 - **Reintento de un cobro:** con la misma clave y los mismos datos responde con el mismo status y cuerpo que la primera vez. Si fue rechazado, vuelve a dar 422 `payment_rejected`, sin llamar a la pasarela. Si todavía no tiene resultado, vuelve a llamar a la pasarela con la misma clave y responde como un cobro normal, o con 503 `payment_gateway_unavailable` si la pasarela falla otra vez. La pasarela no cobra dos veces la misma clave, aunque reciba dos reintentos simultáneos.
 - **Reintento de un reintegro:** si está `CREDITED`, se devuelve el existente con 200. Si sigue `REQUESTED`, se vuelve a llamar a la pasarela y responde 200, o 502 `refund_failed` si falla. Si falló, se reintenta sobre la misma fila y responde 201 o 502.

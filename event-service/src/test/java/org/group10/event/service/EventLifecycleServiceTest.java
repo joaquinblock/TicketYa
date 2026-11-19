@@ -2,11 +2,8 @@ package org.group10.event.service;
 
 import org.group10.common.exception.CommonErrorCode;
 import org.group10.common.exception.TicketYaException;
-import org.group10.event.client.AuthClient;
 import org.group10.event.client.TicketClient;
 import org.group10.event.client.dto.EventSaleRequest;
-import org.group10.event.client.dto.OrganizationResponse;
-import org.group10.event.client.dto.OrganizerResponse;
 import org.group10.event.dto.EventCreateRequest;
 import org.group10.event.dto.EventDetailResponse;
 import org.group10.event.dto.EventResumeRequest;
@@ -28,8 +25,8 @@ import org.group10.event.repository.SeatRepository;
 import org.group10.event.repository.SectorRepository;
 import org.group10.event.repository.SectorSeatCount;
 import org.group10.event.repository.VenueRepository;
-import org.group10.event.security.Caller;
 import org.group10.event.statemachine.EventStatusMachine;
+import org.group10.common.security.Caller;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -73,9 +70,13 @@ class EventLifecycleServiceTest {
     private static final Clock CLOCK = Clock.fixed(Instant.now(), ZoneId.of("America/Argentina/Buenos_Aires"));
     private static final LocalDateTime NOW = LocalDateTime.now(CLOCK);
     private static final LocalDateTime DATE = NOW.plusMonths(2);
-    private static final Caller ADMIN = new Caller(3L, Set.of("EVENT_ADMIN"));
-    private static final Caller CREATOR = new Caller(ORGANIZER_ID, Set.of("EVENT_MANAGE"));
-    private static final Caller OTHER_ORGANIZER = new Caller(7L, Set.of("EVENT_MANAGE"));
+    private static final Caller ADMIN = new Caller(3L, "ADMIN", Set.of("EVENT_ADMIN"), null);
+    private static final Caller CREATOR = new Caller(ORGANIZER_ID, "ORGANIZER", Set.of("EVENT_MANAGE"), ORGANIZATION_ID);
+    private static final Caller OTHER_ORGANIZER = new Caller(7L, "ORGANIZER", Set.of("EVENT_MANAGE"), ORGANIZATION_ID);
+    /** The same organizer, but the token says it organizes for another organization. */
+    private static final Caller ORGANIZER_OF_ANOTHER_ORGANIZATION =
+            new Caller(ORGANIZER_ID, "ORGANIZER", Set.of("EVENT_MANAGE"), 9L);
+    private static final Caller CLIENT = new Caller(1L, "CLIENT", Set.of("EVENT_SEARCH"), null);
 
     @Mock
     private EventRepository eventRepository;
@@ -92,8 +93,6 @@ class EventLifecycleServiceTest {
     @Mock
     private TransactionOperations transactions;
     @Mock
-    private AuthClient authClient;
-    @Mock
     private TicketClient ticketClient;
 
     private EventService eventService;
@@ -105,13 +104,10 @@ class EventLifecycleServiceTest {
     @BeforeEach
     void setUp() {
         eventService = new EventService(eventRepository, venueRepository, participantRepository, eventSectorRepository,
-                sectorRepository, seatRepository, new EventStatusMachine(), transactions, authClient, ticketClient, CLOCK);
+                sectorRepository, seatRepository, new EventStatusMachine(), transactions, ticketClient, CLOCK);
         when(transactions.execute(any())).thenAnswer(invocation ->
                 invocation.<TransactionCallback<?>>getArgument(0).doInTransaction(null));
         when(seatRepository.countBySectorOfVenue(theater.getId())).thenReturn(List.of(new SectorSeatCount(3L, 50)));
-        when(authClient.getOrganization(ORGANIZATION_ID))
-                .thenReturn(new OrganizationResponse(ORGANIZATION_ID, "Producciones del Sur S.A.", "Del Sur Producciones"));
-        when(authClient.getOrganizer(ORGANIZER_ID)).thenReturn(new OrganizerResponse(ORGANIZER_ID, ORGANIZATION_ID));
     }
 
     // ---- findById ----
@@ -122,7 +118,7 @@ class EventLifecycleServiceTest {
         event.getParticipants().addAll(Set.of(participant(1L, "Los Serranos"), participant(5L, "DJ Marea")));
         givenSectors(event, stalls, field);
 
-        EventDetailResponse detail = eventService.findById(EVENT_ID, null);
+        EventDetailResponse detail = eventService.findById(EVENT_ID, Optional.empty());
 
         assertThat(detail.capacity()).isEqualTo(350);
         assertThat(detail.sectors()).extracting(s -> s.name() + "=" + s.capacity()).containsExactly("Campo=300", "Platea=50");
@@ -133,48 +129,42 @@ class EventLifecycleServiceTest {
     void findById_missing_throwsNotFound() {
         when(eventRepository.findById(EVENT_ID)).thenReturn(Optional.empty());
 
-        assertError(() -> eventService.findById(EVENT_ID, null), EventErrorCode.EVENT_NOT_FOUND);
+        assertError(() -> eventService.findById(EVENT_ID, Optional.empty()), EventErrorCode.EVENT_NOT_FOUND);
     }
 
     @Test
-    void findById_publishedEvent_isPublicWithoutCallingAuth() {
+    void findById_publishedEvent_isPublic() {
         givenEvent(EventStatus.CANCELLED);
 
-        assertThat(eventService.findById(EVENT_ID, null).status()).isEqualTo(EventStatus.CANCELLED);
-        verifyNoInteractions(authClient);
+        assertThat(eventService.findById(EVENT_ID, Optional.empty()).status()).isEqualTo(EventStatus.CANCELLED);
     }
 
     @Test
     void findById_draftWithoutUser_isNotFound() {
         givenEvent(EventStatus.DRAFT);
 
-        assertError(() -> eventService.findById(EVENT_ID, null), EventErrorCode.EVENT_NOT_FOUND);
-        verifyNoInteractions(authClient);
+        assertError(() -> eventService.findById(EVENT_ID, Optional.empty()), EventErrorCode.EVENT_NOT_FOUND);
     }
 
     @Test
     void findById_draftForAnOrganizerOfItsOrganization_isVisible() {
         givenEvent(EventStatus.DRAFT);
 
-        assertThat(eventService.findById(EVENT_ID, ORGANIZER_ID).status()).isEqualTo(EventStatus.DRAFT);
+        assertThat(eventService.findById(EVENT_ID, Optional.of(CREATOR)).status()).isEqualTo(EventStatus.DRAFT);
     }
 
     @Test
     void findById_draftForAnOrganizerOfAnotherOrganization_isNotFound() {
         givenEvent(EventStatus.DRAFT);
-        when(authClient.getOrganizer(ORGANIZER_ID)).thenReturn(new OrganizerResponse(ORGANIZER_ID, 9L));
 
-        assertError(() -> eventService.findById(EVENT_ID, ORGANIZER_ID), EventErrorCode.EVENT_NOT_FOUND);
+        assertError(() -> eventService.findById(EVENT_ID, Optional.of(ORGANIZER_OF_ANOTHER_ORGANIZATION)), EventErrorCode.EVENT_NOT_FOUND);
     }
 
     @Test
     void findById_draftForAUserWhoIsNotAnOrganizer_isNotFound() {
         givenEvent(EventStatus.DRAFT);
-        when(authClient.getOrganizer(1L)).thenThrow(
-                org.springframework.web.client.HttpClientErrorException.create(org.springframework.http.HttpStatus.NOT_FOUND,
-                        "Not Found", null, null, null));
 
-        assertError(() -> eventService.findById(EVENT_ID, 1L), EventErrorCode.EVENT_NOT_FOUND);
+        assertError(() -> eventService.findById(EVENT_ID, Optional.of(CLIENT)), EventErrorCode.EVENT_NOT_FOUND);
     }
 
     // ---- update ----
@@ -184,7 +174,7 @@ class EventLifecycleServiceTest {
         Event event = givenEvent(EventStatus.DRAFT);
         givenVenueExists(theater);
 
-        eventService.update(EVENT_ID, ORGANIZER_ID, request(theater.getId(), false, null));
+        eventService.update(EVENT_ID, CREATOR, request(theater.getId(), false, null));
 
         assertThat(event.getName()).isEqualTo("Nombre nuevo");
         assertThat(event.getStatus()).isEqualTo(EventStatus.DRAFT);
@@ -197,25 +187,25 @@ class EventLifecycleServiceTest {
         Venue stadium = venue(1L, "Estadio del Sur");
         givenVenueExists(stadium);
 
-        eventService.update(EVENT_ID, ORGANIZER_ID, request(stadium.getId(), false, null));
+        eventService.update(EVENT_ID, CREATOR, request(stadium.getId(), false, null));
 
         verify(eventSectorRepository).deleteAllByEventId(EVENT_ID);
     }
 
     @Test
-    void update_publishedEvent_throwsNotEditableWithoutCallingAuth() {
+    void update_publishedEvent_throwsNotEditable() {
         givenEvent(EventStatus.PUBLISHED);
 
-        assertError(() -> eventService.update(EVENT_ID, ORGANIZER_ID, request(theater.getId(), false, null)),
+        assertError(() -> eventService.update(EVENT_ID, CREATOR, request(theater.getId(), false, null)),
                 EventErrorCode.EVENT_NOT_EDITABLE);
-        verifyNoInteractions(authClient, transactions);
+        verifyNoInteractions(transactions);
     }
 
     @Test
     void update_highDemandWithoutSaleStart_throwsInvalidConfiguration() {
         givenEvent(EventStatus.DRAFT);
 
-        assertError(() -> eventService.update(EVENT_ID, ORGANIZER_ID, request(theater.getId(), true, null)),
+        assertError(() -> eventService.update(EVENT_ID, CREATOR, request(theater.getId(), true, null)),
                 EventErrorCode.INVALID_EVENT_CONFIGURATION);
     }
 
@@ -224,7 +214,7 @@ class EventLifecycleServiceTest {
         givenEvent(EventStatus.DRAFT);
         when(venueRepository.existsById(99L)).thenReturn(false);
 
-        assertError(() -> eventService.update(EVENT_ID, ORGANIZER_ID, request(99L, false, null)),
+        assertError(() -> eventService.update(EVENT_ID, CREATOR, request(99L, false, null)),
                 EventErrorCode.VENUE_NOT_FOUND);
     }
 
@@ -232,9 +222,8 @@ class EventLifecycleServiceTest {
     void update_organizerOfAnotherOrganization_throwsForbidden() {
         givenEvent(EventStatus.DRAFT);
         givenVenueExists(theater);
-        when(authClient.getOrganizer(ORGANIZER_ID)).thenReturn(new OrganizerResponse(ORGANIZER_ID, 9L));
 
-        assertError(() -> eventService.update(EVENT_ID, ORGANIZER_ID, request(theater.getId(), false, null)),
+        assertError(() -> eventService.update(EVENT_ID, ORGANIZER_OF_ANOTHER_ORGANIZATION, request(theater.getId(), false, null)),
                 EventErrorCode.ORGANIZER_NOT_IN_ORGANIZATION);
         verifyNoInteractions(transactions);
     }
@@ -245,7 +234,7 @@ class EventLifecycleServiceTest {
     void delete_draft_removesItsSectorsAndTheEvent() {
         givenEvent(EventStatus.DRAFT);
 
-        eventService.delete(EVENT_ID, ORGANIZER_ID);
+        eventService.delete(EVENT_ID, CREATOR);
 
         verify(eventSectorRepository).deleteAllByEventId(EVENT_ID);
         verify(eventRepository).deleteById(EVENT_ID);
@@ -255,16 +244,15 @@ class EventLifecycleServiceTest {
     void delete_publishedEvent_throwsNotEditable() {
         givenEvent(EventStatus.PUBLISHED);
 
-        assertError(() -> eventService.delete(EVENT_ID, ORGANIZER_ID), EventErrorCode.EVENT_NOT_EDITABLE);
+        assertError(() -> eventService.delete(EVENT_ID, CREATOR), EventErrorCode.EVENT_NOT_EDITABLE);
         verify(eventRepository, never()).deleteById(any());
     }
 
     @Test
     void delete_organizerOfAnotherOrganization_throwsForbidden() {
         givenEvent(EventStatus.DRAFT);
-        when(authClient.getOrganizer(ORGANIZER_ID)).thenReturn(new OrganizerResponse(ORGANIZER_ID, 9L));
 
-        assertError(() -> eventService.delete(EVENT_ID, ORGANIZER_ID), EventErrorCode.ORGANIZER_NOT_IN_ORGANIZATION);
+        assertError(() -> eventService.delete(EVENT_ID, ORGANIZER_OF_ANOTHER_ORGANIZATION), EventErrorCode.ORGANIZER_NOT_IN_ORGANIZATION);
         verify(eventRepository, never()).deleteById(any());
     }
 
@@ -275,7 +263,7 @@ class EventLifecycleServiceTest {
         Event event = givenEvent(EventStatus.DRAFT);
         givenSectors(event, stalls);
 
-        EventDetailResponse detail = eventService.publish(EVENT_ID, ORGANIZER_ID);
+        EventDetailResponse detail = eventService.publish(EVENT_ID, CREATOR);
 
         assertThat(event.getStatus()).isEqualTo(EventStatus.PUBLISHED);
         assertThat(detail.status()).isEqualTo(EventStatus.PUBLISHED);
@@ -288,7 +276,7 @@ class EventLifecycleServiceTest {
         when(seatRepository.findBySectorIdIn(List.of(stalls.getId())))
                 .thenReturn(List.of(seat(301L, stalls, "A", 1), seat(302L, stalls, "A", 2)));
 
-        eventService.publish(EVENT_ID, ORGANIZER_ID);
+        eventService.publish(EVENT_ID, CREATOR);
 
         ArgumentCaptor<EventSaleRequest> sale = ArgumentCaptor.forClass(EventSaleRequest.class);
         verify(ticketClient).synchronizeEventSale(eq(EVENT_ID), sale.capture());
@@ -310,7 +298,7 @@ class EventLifecycleServiceTest {
         doThrow(new TicketYaException(CommonErrorCode.SERVICE_UNAVAILABLE, "ticket-service caído"))
                 .when(ticketClient).synchronizeEventSale(eq(EVENT_ID), any());
 
-        assertThatThrownBy(() -> eventService.publish(EVENT_ID, ORGANIZER_ID)).isInstanceOf(TicketYaException.class);
+        assertThatThrownBy(() -> eventService.publish(EVENT_ID, CREATOR)).isInstanceOf(TicketYaException.class);
 
         assertThat(event.getStatus()).isEqualTo(EventStatus.DRAFT);
     }
@@ -353,26 +341,24 @@ class EventLifecycleServiceTest {
     }
 
     @Test
-    void publish_notADraft_throwsInvalidTransitionWithoutCallingAuth() {
+    void publish_notADraft_throwsInvalidTransition() {
         givenEvent(EventStatus.SUSPENDED);
 
-        assertError(() -> eventService.publish(EVENT_ID, ORGANIZER_ID), EventErrorCode.INVALID_STATUS_TRANSITION);
-        verifyNoInteractions(authClient);
+        assertError(() -> eventService.publish(EVENT_ID, CREATOR), EventErrorCode.INVALID_STATUS_TRANSITION);
     }
 
     @Test
     void publish_organizerOfAnotherOrganization_throwsForbiddenAndKeepsTheDraft() {
         Event event = givenEvent(EventStatus.DRAFT);
-        when(authClient.getOrganizer(ORGANIZER_ID)).thenReturn(new OrganizerResponse(ORGANIZER_ID, 9L));
 
-        assertError(() -> eventService.publish(EVENT_ID, ORGANIZER_ID), EventErrorCode.ORGANIZER_NOT_IN_ORGANIZATION);
+        assertError(() -> eventService.publish(EVENT_ID, ORGANIZER_OF_ANOTHER_ORGANIZATION), EventErrorCode.ORGANIZER_NOT_IN_ORGANIZATION);
         assertThat(event.getStatus()).isEqualTo(EventStatus.DRAFT);
     }
 
     // ---- cancel ----
 
     @Test
-    void cancel_byAnAdmin_publishedSoldOutOrSuspended_goesToCancelledWithoutCallingAuth() {
+    void cancel_byAnAdmin_publishedSoldOutOrSuspended_goesToCancelled() {
         for (EventStatus status : List.of(EventStatus.PUBLISHED, EventStatus.SOLD_OUT, EventStatus.SUSPENDED)) {
             Event event = givenEvent(status);
 
@@ -381,7 +367,6 @@ class EventLifecycleServiceTest {
             assertThat(event.getStatus()).as("desde %s", status).isEqualTo(EventStatus.CANCELLED);
             assertThat(event.getStatusBeforeSuspension()).isNull();
         }
-        verifyNoInteractions(authClient);
     }
 
     @Test
@@ -394,20 +379,19 @@ class EventLifecycleServiceTest {
     }
 
     @Test
-    void cancel_byAnotherOrganizerOfTheSameOrganization_throwsNotEventCreatorWithoutCallingAuth() {
+    void cancel_byAnotherOrganizerOfTheSameOrganization_throwsNotEventCreator() {
         Event event = givenEvent(EventStatus.PUBLISHED);
 
         assertError(() -> eventService.cancel(EVENT_ID, OTHER_ORGANIZER), EventErrorCode.NOT_EVENT_CREATOR);
         assertThat(event.getStatus()).isEqualTo(EventStatus.PUBLISHED);
-        verifyNoInteractions(authClient, transactions);
+        verifyNoInteractions(transactions);
     }
 
     @Test
     void cancel_byTheCreatorWhoNoLongerOrganizesForTheOrganization_throwsForbidden() {
         givenEvent(EventStatus.PUBLISHED);
-        when(authClient.getOrganizer(ORGANIZER_ID)).thenReturn(new OrganizerResponse(ORGANIZER_ID, 9L));
 
-        assertError(() -> eventService.cancel(EVENT_ID, CREATOR), EventErrorCode.ORGANIZER_NOT_IN_ORGANIZATION);
+        assertError(() -> eventService.cancel(EVENT_ID, ORGANIZER_OF_ANOTHER_ORGANIZATION), EventErrorCode.ORGANIZER_NOT_IN_ORGANIZATION);
     }
 
     @Test
@@ -698,7 +682,7 @@ class EventLifecycleServiceTest {
         Event event = givenEvent(EventStatus.DRAFT);
         when(sectorRepository.findAllById(List.of(3L, 4L))).thenReturn(List.of(stalls, field));
 
-        eventService.replaceSectors(EVENT_ID, ORGANIZER_ID, sectorsRequest(3L, "20000", 4L, "9500.5"));
+        eventService.replaceSectors(EVENT_ID, CREATOR, sectorsRequest(3L, "20000", 4L, "9500.5"));
 
         org.mockito.ArgumentCaptor<List<EventSector>> saved = org.mockito.ArgumentCaptor.forClass(List.class);
         verify(eventSectorRepository).saveAll(saved.capture());
@@ -718,7 +702,7 @@ class EventLifecycleServiceTest {
         when(eventSectorRepository.findByEventId(EVENT_ID)).thenReturn(List.of(currentStalls, currentField));
         when(sectorRepository.findAllById(List.of(3L))).thenReturn(List.of(stalls));
 
-        eventService.replaceSectors(EVENT_ID, ORGANIZER_ID, new EventSectorsRequest(List.of(price(3L, "12000"))));
+        eventService.replaceSectors(EVENT_ID, CREATOR, new EventSectorsRequest(List.of(price(3L, "12000"))));
 
         assertThat(currentStalls.getId()).isEqualTo(30L);
         assertThat(currentStalls.getPrice()).isEqualByComparingTo("12000.00");
@@ -734,17 +718,17 @@ class EventLifecycleServiceTest {
         when(eventSectorRepository.findByEventId(EVENT_ID)).thenReturn(List.of(currentStalls));
         when(sectorRepository.findAllById(List.of())).thenReturn(List.of());
 
-        eventService.replaceSectors(EVENT_ID, ORGANIZER_ID, new EventSectorsRequest(List.of()));
+        eventService.replaceSectors(EVENT_ID, CREATOR, new EventSectorsRequest(List.of()));
 
         verify(eventSectorRepository).deleteAll(List.of(currentStalls));
         verify(eventSectorRepository).saveAll(List.of());
     }
 
     @Test
-    void replaceSectors_repeatedSector_throwsInvalidConfigurationWithItsIdAndWithoutCallingAuth() {
+    void replaceSectors_repeatedSector_throwsInvalidConfigurationWithItsIdAnd() {
         givenEvent(EventStatus.DRAFT);
 
-        assertThatThrownBy(() -> eventService.replaceSectors(EVENT_ID, ORGANIZER_ID,
+        assertThatThrownBy(() -> eventService.replaceSectors(EVENT_ID, CREATOR,
                 sectorsRequest(3L, "20000", 3L, "15000")))
                 .isInstanceOf(TicketYaException.class)
                 .satisfies(e -> {
@@ -752,7 +736,7 @@ class EventLifecycleServiceTest {
                     assertThat(error.getErrorCode()).isEqualTo(EventErrorCode.INVALID_EVENT_CONFIGURATION);
                     assertThat(error.getDetail()).isEqualTo(Map.of("repeatedSectorIds", List.of(3L)));
                 });
-        verifyNoInteractions(authClient, transactions);
+        verifyNoInteractions(transactions);
     }
 
     @Test
@@ -762,7 +746,7 @@ class EventLifecycleServiceTest {
                 .numbered(false).capacity(5000).build();
         when(sectorRepository.findAllById(List.of(3L, 1L, 99L))).thenReturn(List.of(stalls, stadiumField));
 
-        assertThatThrownBy(() -> eventService.replaceSectors(EVENT_ID, ORGANIZER_ID,
+        assertThatThrownBy(() -> eventService.replaceSectors(EVENT_ID, CREATOR,
                 new EventSectorsRequest(List.of(price(3L, "1"), price(1L, "1"), price(99L, "1")))))
                 .isInstanceOf(TicketYaException.class)
                 .satisfies(e -> {
@@ -777,17 +761,16 @@ class EventLifecycleServiceTest {
     void replaceSectors_publishedEvent_throwsNotEditable() {
         givenEvent(EventStatus.PUBLISHED);
 
-        assertError(() -> eventService.replaceSectors(EVENT_ID, ORGANIZER_ID, sectorsRequest(3L, "1", 4L, "1")),
+        assertError(() -> eventService.replaceSectors(EVENT_ID, CREATOR, sectorsRequest(3L, "1", 4L, "1")),
                 EventErrorCode.EVENT_NOT_EDITABLE);
-        verifyNoInteractions(authClient, transactions);
+        verifyNoInteractions(transactions);
     }
 
     @Test
     void replaceSectors_organizerOfAnotherOrganization_throwsForbidden() {
         givenEvent(EventStatus.DRAFT);
-        when(authClient.getOrganizer(ORGANIZER_ID)).thenReturn(new OrganizerResponse(ORGANIZER_ID, 9L));
 
-        assertError(() -> eventService.replaceSectors(EVENT_ID, ORGANIZER_ID, sectorsRequest(3L, "1", 4L, "1")),
+        assertError(() -> eventService.replaceSectors(EVENT_ID, ORGANIZER_OF_ANOTHER_ORGANIZATION, sectorsRequest(3L, "1", 4L, "1")),
                 EventErrorCode.ORGANIZER_NOT_IN_ORGANIZATION);
         verifyNoInteractions(transactions);
     }
@@ -867,7 +850,7 @@ class EventLifecycleServiceTest {
     }
 
     private void assertNotPublishable(Event event, String... problems) {
-        assertThatThrownBy(() -> eventService.publish(EVENT_ID, ORGANIZER_ID))
+        assertThatThrownBy(() -> eventService.publish(EVENT_ID, CREATOR))
                 .isInstanceOf(TicketYaException.class)
                 .satisfies(e -> {
                     TicketYaException error = (TicketYaException) e;

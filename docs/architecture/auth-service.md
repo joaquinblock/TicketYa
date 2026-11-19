@@ -128,7 +128,7 @@ El auth-service emite el JWT de TicketYa con `JwtTokenProvider`, firmado con RS2
 | `iat` / `exp` | Emisión y vencimiento, 30 min después |
 | `jti` | UUID distinto en cada token |
 | `role`, `permissions` | Rol y permisos del usuario |
-| `organizationId` | Solo si el usuario pertenece a una organización |
+| `organizationId` | Solo si el usuario es organizador, y tanto él como su organización están activos. Los servicios confían en este dato en vez de preguntarle al auth-service |
 
 **La clave privada nunca va en el repo** (`*.pem` está en `.gitignore`). Se pasa la ruta por `JWT_PRIVATE_KEY_LOCATION`:
 

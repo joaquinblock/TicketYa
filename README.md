@@ -57,7 +57,7 @@ Hay que usar `spring-boot:run`: con `java -jar` el servicio no arranca, porque `
 
 - **Todo entra por el gateway (`http://localhost:8080`).** Las rutas `/internal/**` (llamadas entre servicios) no pasan por el gateway: se usan directo contra el puerto de cada servicio.
 - **Swagger de todo el sistema:** http://localhost:8080/swagger-ui.html. Arriba a la derecha se elige el servicio.
-- **La identidad va en el header `X-User-Id`**, y al crear un evento el organizador manda además `X-Organization-Id`. La Entrega 1 no tiene autenticación (ver *Modalidad de entrega*). Los permisos se verifican contra el auth-service (ver [`permissions.md`](docs/architecture/permissions.md)).
+- **La identidad va en un JWT** (`Authorization: Bearer`). El api-gateway lo valida y les pasa a los servicios el usuario, sus permisos y su organización en headers (ver [`permissions.md`](docs/architecture/permissions.md)). Para probar, el token se pide con `dev-login`; las colecciones de Postman lo hacen solas con el usuario del header `X-User-Id` de cada request.
 - **El primer request a un servicio recién levantado puede tardar unos segundos**, mientras se calienta.
 - **La primera vez que se crea el contenedor de una base, MySQL tarda en inicializarse**, y el servicio puede fallar al arrancar con `Communications link failure`. El contenedor queda levantado igual: alcanza con volver a arrancar el servicio.
 
@@ -67,7 +67,7 @@ Cada servicio recrea su base al arrancar (`ddl-auto: create`) y su seeder la vue
 
 | Seeder | Qué carga |
 |---|---|
-| `AuthSeeder` | 9 permisos, 4 roles y 6 usuarios: `1` cliente, `2` organizador de la org 1, `3` admin, `4` personal de acceso, `5` organizador de la org 2 y `6` organizador de la org 1 sin eventos propios. Organizaciones `1` *Del Sur Producciones* y `2` *Cultura Serrana* |
+| `AuthSeeder` | 11 permisos, 4 roles y 6 usuarios: `1` cliente, `2` organizador de la org 1, `3` admin, `4` personal de acceso, `5` organizador de la org 2 y `6` organizador de la org 1 sin eventos propios. Organizaciones `1` *Del Sur Producciones* y `2` *Cultura Serrana* |
 | `EventSeeder` | 5 lugares en 5 ciudades, 239 asientos, 11 participantes y 12 eventos en todos los estados, con fechas relativas al día de arranque (ver *Datos de prueba* en [`event-service.md`](docs/architecture/event-service.md)) |
 | `TicketSeeder` | El inventario de todos los eventos del seeder, dos compras pagadas (una con una devolución pendiente) y una reserva en curso (ver [`ticket-service.md`](docs/architecture/ticket-service.md)) |
 | `PaymentSeeder` | Los pagos de esas órdenes: aprobados, uno rechazado y uno pendiente |

@@ -84,6 +84,13 @@ spring:
               filters:
                 - RewritePath=/docs/recommendation-service/(?<segment>.*), /${segment}
 
+ticketya:
+  jwt:
+    # El gateway es el único que valida el JWT (ADR-003). La clave pública sale del JWKS del auth-service
+    issuer: ticketya-auth
+    audience: ticketya-api
+    jwk-set-uri: ${AUTH_SERVICE_URL:http://localhost:8081}/.well-known/jwks.json
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html

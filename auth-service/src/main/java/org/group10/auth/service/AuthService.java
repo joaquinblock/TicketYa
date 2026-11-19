@@ -3,6 +3,7 @@ package org.group10.auth.service;
 import lombok.RequiredArgsConstructor;
 import org.group10.auth.dto.TokenResponse;
 import org.group10.auth.dto.UserPermissionsResponse;
+import org.group10.auth.entity.Organization;
 import org.group10.auth.entity.Organizer;
 import org.group10.auth.repository.OrganizerRepository;
 import org.group10.auth.security.JwtProperties;
@@ -28,7 +29,8 @@ public class AuthService {
 
     /**
      * Issues the TicketYa JWT of an active user, with its role, permissions and, for an organizer, its
-     * organization. Access staff gets no organization until {@code AccessStaff} exists.
+     * organization, only while both the organizer and the organization are active: the services trust this claim
+     * instead of asking the auth-service. Access staff gets no organization until {@code AccessStaff} exists.
      *
      * @throws TicketYaException {@code USER_NOT_FOUND}
      */
@@ -45,7 +47,9 @@ public class AuthService {
         }
         return organizerRepository.findWithUserAndOrganizationByUserId(user.userId())
                 .filter(Organizer::isActive)
-                .map(organizer -> organizer.getOrganization().getId())
+                .map(Organizer::getOrganization)
+                .filter(Organization::isActive)
+                .map(Organization::getId)
                 .orElse(null);
     }
 }

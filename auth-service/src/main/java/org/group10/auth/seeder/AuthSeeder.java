@@ -67,7 +67,9 @@ AuthSeeder implements ApplicationRunner {
                 permission("EVENT_ADMIN", "Suspender o cancelar cualquier evento"),
                 permission("REFUND_RESOLVE", "Aprobar o rechazar devoluciones"),
                 permission("USER_MANAGE", "Gestionar usuarios y roles"),
-                permission("TICKET_VALIDATE", "Validar entradas en el ingreso")
+                permission("TICKET_VALIDATE", "Validar entradas en el ingreso"),
+                permission("VENUE_MANAGE", "Crear, editar y borrar lugares"),
+                permission("PARTICIPANT_MANAGE", "Crear, editar y borrar artistas, equipos y disertantes")
         );
         return permissionRepository.saveAll(permissions).stream()
                 .collect(Collectors.toMap(Permission::getName, Function.identity()));
@@ -79,9 +81,10 @@ AuthSeeder implements ApplicationRunner {
         List<Role> roles = List.of(
                 role("CLIENT", "Busca eventos y compra entradas", buyer),
                 role("ORGANIZER", "Diseña y publica eventos",
-                        union(buyer, p.get("EVENT_MANAGE"), p.get("REPORT_VIEW"))),
+                        union(buyer, p.get("EVENT_MANAGE"), p.get("REPORT_VIEW"), p.get("PARTICIPANT_MANAGE"))),
                 role("ADMIN", "Gestión completa y tareas operativas",
-                        union(buyer, p.get("EVENT_ADMIN"), p.get("REFUND_RESOLVE"), p.get("USER_MANAGE"))),
+                        union(buyer, p.get("EVENT_ADMIN"), p.get("REFUND_RESOLVE"), p.get("USER_MANAGE"),
+                                p.get("VENUE_MANAGE"), p.get("PARTICIPANT_MANAGE"))),
                 role("ACCESS_STAFF", "Escanea el QR de las entradas en el ingreso",
                         union(buyer, p.get("TICKET_VALIDATE")))
         );

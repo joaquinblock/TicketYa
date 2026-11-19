@@ -59,7 +59,7 @@ class ReservationControllersTest {
             "{\"eventId\": 1, \"idempotencyKey\": \"   \", \"seatIds\": [1]}"
     })
     void reserve_invalidBody_returnsValidationErrorWithoutReserving(String body) throws Exception {
-        mockMvc.perform(post("/api/orders").header(USER_HEADER, 7)
+        mockMvc.perform(post("/api/orders").header(USER_HEADER, 7).header("X-User-Permissions", "TICKET_PURCHASE")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isBadRequest())
@@ -69,7 +69,7 @@ class ReservationControllersTest {
 
     @Test
     void reserve_idempotencyKeyLongerThanTheColumn_returnsValidationError() throws Exception {
-        mockMvc.perform(post("/api/orders").header(USER_HEADER, 7)
+        mockMvc.perform(post("/api/orders").header(USER_HEADER, 7).header("X-User-Permissions", "TICKET_PURCHASE")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"eventId": 1, "idempotencyKey": "%s", "seatIds": [1]}""".formatted("k".repeat(256))))

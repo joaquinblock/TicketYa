@@ -336,7 +336,9 @@ Las historias y sus criterios de aceptación están en [`user-stories.md`](../us
 | Pago sin resultado | Solo se reintenta el mismo intento, y nunca se lo asume cancelado | El primer cobro pudo haberse aprobado; otra tarjeta podría generar un doble cobro |
 | Vencimiento con un pago sin resultado | La orden vence igual, y si el pago resulta aprobado se reintegra | La reserva manda: los lugares no quedan trabados si la pasarela está caída |
 | Devolución con evento `SUSPENDED` | Se acepta, con la regla de 72 horas. Solo se bloquea la venta | El cliente no queda atrapado si la nueva fecha no le sirve |
-| Identidad en la Entrega 1 | Header `X-User-Id`, sin validar roles | El enunciado no pide autenticación en esta entrega |
+| ~~Identidad en la Entrega 1~~ | ~~Header `X-User-Id`, sin validar roles~~ | ~~El enunciado no pide autenticación en esta entrega~~ |
+| Identidad en la Entrega 2 (US-TKT-26) | El usuario sale del token: `Caller` con los headers que pone el gateway, y `@RequiresPermission` en cada endpoint | El ticket-service ya no le pregunta los permisos al auth-service |
+| Disponibilidad sin token | `GET /api/availability` sigue pública, aunque la US-TKT-26 la lista entre las del cliente | Es como buscar eventos: el front la muestra antes de iniciar sesión, y no tiene datos de nadie |
 | Órdenes y solicitudes pendientes al cancelar | Pasan a `CANCELLED` | Es una causa distinta de `EXPIRED` y de `REJECTED`, y el cliente no debe ver "rechazada" cuando le devuelven el dinero |
 | Abandono voluntario de una reserva | La orden también pasa a `CANCELLED`, salvo con un pago en curso | Para el cliente es lo mismo que una cancelación, y la causa queda en el log de operaciones |
 | Entradas `USED` al cancelar | También se reintegran | La consigna 7 dice "todas sus entradas vendidas" |
@@ -354,14 +356,14 @@ Las historias y sus criterios de aceptación están en [`user-stories.md`](../us
 |---|---|---|
 | `PUT /internal/event-sales/{eventId}` | Sincroniza la venta, el inventario y los datos que se imprimen en la entrada (nombre del evento, lugar, sectores, filas y números). Con estado `CANCELLED` cierra las compras abiertas y deja los reintegros al job. Solo entre servicios; el gateway no la expone | 400 `validation_error` |
 | `GET /api/availability?eventId=` | Disponibilidad por sector | 404 `resource_not_found` |
-| `POST /api/orders` | Reserva asientos (`seatIds`) o lugares (`eventSectorId` y `quantity`). Header `X-User-Id` | 400 `validation_error`, 404 `resource_not_found`, 409 `seat_unavailable`, `sector_sold_out`, `ticket_limit_exceeded`, `event_not_on_sale`, `sale_not_started`, `data_conflict` |
-| `POST /api/orders/{id}/cancel` | Abandona una reserva. Repetirlo responde 200. Header `X-User-Id` | 404 `order_not_found`, 409 `payment_in_progress`, `reservation_expired`, `order_not_cancellable` |
-| `POST /api/tickets/{ticketId}/return-requests` | Solicita la devolución de una entrada. Header `X-User-Id` | 404 `ticket_not_found`, 409 `refund_not_allowed`, `return_request_already_pending` |
-| `GET /api/return-requests?status=&page=&size=` | Lista paginada, primero las más antiguas. Por defecto, `PENDING` | 400 si un parámetro es inválido |
-| `POST /api/return-requests/{id}/approve` | Pide el reintegro, marca la entrada `REFUNDED` y libera el lugar. Solo con el permiso `REFUND_RESOLVE` (administrador). Header `X-User-Id` | 403 `forbidden`, 404 `return_request_not_found`, `user_not_found`, 409 `refund_not_allowed`, `ticket_already_used`, 503 `service_unavailable` |
-| `POST /api/return-requests/{id}/reject` | Rechaza la solicitud y la entrada sigue vigente. Solo con `REFUND_RESOLVE`. Header `X-User-Id` | 403 `forbidden`, 404 `return_request_not_found`, `user_not_found`, 409 `refund_not_allowed`, 503 `service_unavailable` |
+| `POST /api/orders` | Reserva asientos (`seatIds`) o lugares (`eventSectorId` y `quantity`). `TICKET_PURCHASE` | 400 `validation_error`, 404 `resource_not_found`, 409 `seat_unavailable`, `sector_sold_out`, `ticket_limit_exceeded`, `event_not_on_sale`, `sale_not_started`, `data_conflict` |
+| `POST /api/orders/{id}/cancel` | Abandona una reserva. Repetirlo responde 200. `TICKET_PURCHASE` | 404 `order_not_found`, 409 `payment_in_progress`, `reservation_expired`, `order_not_cancellable` |
+| `POST /api/tickets/{ticketId}/return-requests` | Solicita la devolución de una entrada. `REFUND_REQUEST` | 404 `ticket_not_found`, 409 `refund_not_allowed`, `return_request_already_pending` |
+| `GET /api/return-requests?status=&page=&size=` | Lista paginada, primero las más antiguas. Por defecto, `PENDING`. `REFUND_RESOLVE` (administrador) | 400 si un parámetro es inválido, 403 `forbidden` |
+| `POST /api/return-requests/{id}/approve` | Pide el reintegro, marca la entrada `REFUNDED` y libera el lugar. `REFUND_RESOLVE` (administrador) | 403 `forbidden`, 404 `return_request_not_found`, 409 `refund_not_allowed`, `ticket_already_used`, 503 `service_unavailable` |
+| `POST /api/return-requests/{id}/reject` | Rechaza la solicitud y la entrada sigue vigente. `REFUND_RESOLVE` (administrador) | 403 `forbidden`, 404 `return_request_not_found`, 409 `refund_not_allowed` |
 
-**Quién resuelve una devolución.** Antes de tocar la solicitud, el ticket-service le pide los permisos del usuario al auth-service (`GET /api/users/{id}/permissions`). Sin `REFUND_RESOLVE` responde 403 y la solicitud sigue `PENDING`; si el auth-service no responde, 503 sin reintegrar nada. En el seeder del auth-service, el usuario 3 es el administrador.
+**Quién puede hacer qué (US-TKT-26).** Cada endpoint de `/api` pide su permiso con `@RequiresPermission`, y el usuario sale del token (`Caller`): sin token, 401; sin el permiso, 403, antes de leer el body. Como el `userId` es el del token, un cliente no puede operar en nombre de otro: una orden o una entrada ajena da 404. Resolver una devolución ya no le pregunta nada al auth-service. En el seeder del auth-service, el usuario 3 es el administrador. Validar el QR (US-TKT-19) y el reporte (US-TKT-20) todavía no tienen endpoint: cuando existan, piden `TICKET_VALIDATE` y `REPORT_VIEW`.
 
 **Eventos que ya empezaron.** Además del estado de la copia, reservar exige que la fecha del evento no haya pasado (`event_not_on_sale`). Así no se vende entre que el evento ocurre y el job del event-service lo pasa a `FINISHED` (ver `event-state-machine.md`).
 

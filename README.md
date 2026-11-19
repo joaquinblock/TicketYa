@@ -67,7 +67,7 @@ Cada servicio recrea su base al arrancar (`ddl-auto: create`) y su seeder la vue
 
 | Seeder | Qué carga |
 |---|---|
-| `AuthSeeder` | 11 permisos, 4 roles y 6 usuarios: `1` cliente, `2` organizador de la org 1, `3` admin, `4` personal de acceso, `5` organizador de la org 2 y `6` organizador de la org 1 sin eventos propios. Organizaciones `1` *Del Sur Producciones* y `2` *Cultura Serrana* |
+| `AuthSeeder` | 11 permisos, 4 roles y 6 usuarios: `1` cliente, `2` organizador de la org 1, `3` admin (con el Gmail de `BOOTSTRAP_ADMIN_EMAIL`, si está configurado), `4` personal de acceso, `5` organizador de la org 2 y `6` organizador de la org 1 sin eventos propios. Organizaciones `1` *Del Sur Producciones* y `2` *Cultura Serrana* |
 | `EventSeeder` | 5 lugares en 5 ciudades, 239 asientos, 11 participantes y 12 eventos en todos los estados, con fechas relativas al día de arranque (ver *Datos de prueba* en [`event-service.md`](docs/architecture/event-service.md)) |
 | `TicketSeeder` | El inventario de todos los eventos del seeder, dos compras pagadas (una con una devolución pendiente) y una reserva en curso (ver [`ticket-service.md`](docs/architecture/ticket-service.md)) |
 | `PaymentSeeder` | Los pagos de esas órdenes: aprobados, uno rechazado y uno pendiente |

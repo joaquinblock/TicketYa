@@ -93,6 +93,31 @@ Usuarios de prueba: `1` cliente, `2` organizador (org `1`), `3` admin, `4` perso
 
 La disponibilidad del ticket-service (`GET /api/availability`) es pública. Todo lo demás de event-service es público: buscar y ver eventos, lugares, sectores, asientos y participantes. El detalle de un evento recibe un `Optional<Caller>`: un borrador solo lo ve un organizador de su organización.
 
+### Qué test prueba cada endpoint
+
+Es lo que pide la épica #9: *"pruebas que verifican que cada endpoint solo es accesible por los roles correspondientes"*. Cada test manda los headers que pone el gateway, sin token (401), con un rol que no corresponde (403) y con el que sí.
+
+| Servicio | Endpoints | Test |
+|---|---|---|
+| event-service | Eventos: crear, editar, borrar, publicar, sectores, participantes de un evento | `EventControllerTest` |
+| event-service | Suspender, reanudar y cancelar (admin, o el organizador que creó el evento) | `EventControllerTest`, `EventLifecycleServiceTest` |
+| event-service | Lugares, sectores y asientos (`VENUE_MANAGE`); participantes (`PARTICIPANT_MANAGE`) | `CatalogPermissionsTest` |
+| auth-service | Promover y quitar organizadores, permisos de un usuario (`USER_MANAGE`) | `UserManagementControllerTest` |
+| auth-service | `dev-login` solo con el perfil `dev` | `DevAuthControllerWithoutDevProfileTest` |
+| ticket-service | Compras (`TICKET_PURCHASE`), solicitar devoluciones (`REFUND_REQUEST`), resolverlas (`REFUND_RESOLVE`) y la disponibilidad pública | `TicketPermissionsTest` |
+| `common` | El interceptor: 401, 403 antes que el 400 del body, varios permisos, `Optional<Caller>` | `PermissionInterceptorTest` |
+| api-gateway | Token inválido o vencido → 401, sin JWKS → 503, borra los `X-User-*` del cliente, no expone `/internal/**` | `IdentityHeadersTest`, `JwksUnavailableTest`, `InternalRoutesTest` |
+
+### Swagger
+
+En `http://localhost:8080/swagger-ui.html` cada endpoint con `@RequiresPermission` muestra un candado y la línea *"Requiere el permiso `X`"*, con sus respuestas 401 y 403. Los públicos no tienen candado.
+
+1. Pedir un token: `POST /api/auth/dev-login {"userId": 3}` (perfil `dev`) o entrar por `http://localhost:8081/login` con Google.
+2. *Authorize*, pegar el `accessToken` (sin `Bearer`) y *Try it out*.
+
+- **Lo arma `common`** (`PermissionOpenApiCustomizer`), leyendo la misma anotación que chequea el interceptor: la documentación no puede decir un permiso distinto del que se exige. Un endpoint nuevo queda documentado solo.
+- **El servidor del OpenAPI es `/`, relativo a la página.** Desde el Swagger del gateway, *Try it out* va al 8080, y el gateway valida el token. Desde el Swagger propio de un servicio (por ejemplo `:8082/swagger-ui.html`) el token no sirve: el servicio no lo valida y espera los headers del gateway (ADR-003).
+
 **La organización sale del token.** Al crear un evento, el organizador ya no la elige: es la de su token (`X-Organization-Id`, que pone el gateway). Al editar, publicar o suspender, se compara con la del evento, sin preguntarle al auth-service. El token solo la lleva si el organizador y su organización están activos.
 
 ## Errores
@@ -117,16 +142,16 @@ La disponibilidad del ticket-service (`GET /api/availability`) es pública. Todo
 
 ## Cómo proteger un endpoint nuevo
 
-1. Si el permiso no está, agregarlo al enum `org.group10.event.security.Permission`. El nombre tiene que ser igual al de `AuthSeeder`, porque se compara por nombre.
-2. Anotar el método del controller:
+1. Si el permiso no existe, agregarlo al enum `org.group10.common.security.Permission` **y** al `AuthSeeder`, con el mismo nombre. `AuthSeederTest` falla si no coinciden.
+2. Anotar el método del controller y recibir el `Caller`:
    ```java
    @PostMapping("/{id}/publish")
    @RequiresPermission(Permission.EVENT_MANAGE)
-   public EventResponse publish(@PathVariable Long id, @RequestHeader(USER_HEADER) Long userId) { ... }
+   public EventResponse publish(@PathVariable Long id, Caller caller) { ... }
    ```
-3. Documentar el `403 forbidden` en su `@ApiResponse` y sumar el endpoint a la tabla de *Endpoints protegidos*.
+3. Sumar el endpoint a la tabla de *Endpoints protegidos* y un caso a su test de permisos. Swagger lo marca solo.
 
-**Si se agrega un test de controller:** `@WebMvcTest` carga los interceptores, así que todo test de controller del event-service necesita `@MockitoBean AuthClient`. Si el endpoint está protegido, también tiene que mockear `getPermissions` con el permiso que corresponde.
+**Tests de controller:** `@WebMvcTest` carga el interceptor de `common`. El usuario se simula con los headers del gateway: `X-User-Id`, `X-User-Permissions` (separados por coma) y, para un organizador, `X-Organization-Id`. No hace falta mockear al auth-service.
 
 ## Código
 
@@ -134,16 +159,13 @@ La disponibilidad del ticket-service (`GET /api/availability`) es pública. Todo
 |---|---|---|
 | auth-service | `UserController`, `UserService` | `GET /api/users/{id}/permissions` |
 | auth-service | `UserPermissionsResponse` | `userId`, `role` y `permissions` |
-| event-service | `security/Permission` | Enum con los permisos que usa este servicio |
-| event-service | `security/RequiresPermission` | La anotación |
-| event-service | `security/PermissionInterceptor` | Lee `X-User-Id`, llama a auth y corta con `403` |
-| event-service | `config/WebConfig` | Registra el interceptor para `/api/**` |
-| event-service | `client/AuthClient.getPermissions` | La llamada HTTP |
+| ~~event-service~~ | ~~`security/*`, `config/WebConfig`, `client/AuthClient`~~ | Borrados en el #132: event usa los de `common` |
 | `common` (Entrega 2) | `security/GatewayHeaders` | Los nombres de los headers que pone el gateway |
 | `common` (Entrega 2) | `security/Permission`, `security/RequiresPermission` | El enum con los 11 permisos del `AuthSeeder` y la anotación. `AuthSeederTest` falla si el seeder y el enum no coinciden |
 | `common` (Entrega 2) | `security/Caller` | Quién llama, armado con los headers del gateway |
 | `common` (Entrega 2) | `security/PermissionInterceptor`, `security/CallerArgumentResolver` | El chequeo en `preHandle` y el `Caller` (o `Optional<Caller>`) como parámetro. Swagger no los muestra: los arma el servidor |
 | `common` (Entrega 2) | `config/PermissionAutoConfiguration` | Registra los dos en `/api/**` de cada servicio |
+| `common` (Entrega 2) | `config/PermissionOpenApiCustomizer` | El token (`bearerAuth`) y el candado con el permiso en Swagger, en cada servicio |
 
 ## Con JWT (Épica 9, Entrega 2)
 
@@ -190,7 +212,7 @@ Cliente ── Bearer JWT ──▶ api-gateway ── X-User-Id, X-User-Role, X
 
 **Por qué no `@PreAuthorize`:** Spring lo evalúa al invocar el método, después de leer el body y de `@Valid`. Un usuario sin permiso con un body inválido recibiría `400` en vez de `403`, en contra de la US-AUTH-02. `preHandle` corre antes: el `403` sale primero incluso con JSON roto. Además, como los servicios no validan el token, no necesitan Spring Security (ver *Decisiones de diseño tomadas* en el [RFC-001](../rfc/RFC-001-auth-modality.md)).
 
-**Migración:** event-service ya usa la anotación de `common`: se borraron su paquete `security`, su `WebConfig` y su `AuthClient`. Los demás servicios pasan a la anotación en su PR de roles.
+**Migración:** event-service (#132), auth-service (#133) y ticket-service (#137) usan la anotación de `common`; ninguno le pide los permisos al auth-service. Falta payment-service, en la US-PAY-14 (#88).
 
 ## Costo
 
@@ -206,22 +228,20 @@ Cada request a un endpoint protegido hace **una llamada más al auth-service**. 
 
 ## Limitaciones y riesgos
 
-- **No es seguridad real todavía.** Cualquiera puede mandar `X-User-Id: 2` y actuar como la organizadora. El chequeo es de autorización (qué puede hacer el usuario que dice ser), no de autenticación (si lo es). La consigna lo acepta para la Entrega 1, y el JWT lo resuelve.
-- **El permiso se compara por nombre entre servicios.** Si alguien renombra un permiso en `AuthSeeder`, todos los requests a ese endpoint dan `403`. Ningún test lo detecta, porque los tests del event-service mockean al auth-service. Antes de renombrar un permiso, buscar sus usos en el enum `Permission` de cada servicio.
+- ~~**No es seguridad real todavía.** Cualquiera puede mandar `X-User-Id: 2` y actuar como la organizadora.~~ Resuelto con el JWT: el gateway borra los `X-User-*` del cliente y los pone a partir del token. Queda el riesgo aceptado del [ADR-003](../adr/ADR-003-jwt-validated-only-in-gateway.md): quien llegue directo al puerto de un servicio puede mandarlos.
+- **El permiso se compara por nombre.** Viaja en el token como texto: `AuthSeederTest` falla si el seeder y el enum de `common` no coinciden.
 
 | Riesgo | Gravedad | Detalle |
 |---|---|---|
-| Sin timeouts en `AuthClient` | Media | Si el auth-service se cuelga, el request queda esperando. Si se cae del todo, en cambio, da `503`. Ya pasaba antes del chequeo de permisos, pero ahora crear un evento hace tres llamadas seguidas a auth |
 | Contrato con el front | Baja | Cambiaron los errores de `POST /api/events` (`403 forbidden`, `404 user_not_found`). La colección de Postman ya está actualizada |
 
 **Tests:**
-- El auth-service no tiene tests: la consulta de permisos se prueba a mano con Postman.
-- Los controllers no tienen tests. Si se les agrega un `@WebMvcTest`, necesita `@MockitoBean AuthClient`.
+- Ver *Qué test prueba cada endpoint*.
 
 ## Pendiente
 
 | Tema | Detalle |
 |---|---|
 | Delegar la suspensión | Que el creador autorice a otro organizador de su organización a suspender o cancelar su evento. Necesita guardar quién autorizó a quién y cómo se revoca: se dejó afuera |
-| Otros servicios | `RequiresPermission` y `PermissionInterceptor` ya están en `common` (Entrega 2). Falta que cada servicio anote sus endpoints, en su PR de roles |
+| payment-service | `GET /api/payments` solo para el admin y el secreto en `/internal/**`: US-PAY-14 (#88) |
 | Participantes sin dueño | Con `PARTICIPANT_MANAGE`, un organizador puede editar un artista que cargó otra organización. Borrarlo está frenado si se usa en un evento (`participant_in_use`), editarlo no |

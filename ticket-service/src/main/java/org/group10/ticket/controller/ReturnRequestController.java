@@ -11,6 +11,9 @@ import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import lombok.RequiredArgsConstructor;
 import org.group10.common.dto.ErrorDto;
+import org.group10.common.security.Caller;
+import org.group10.common.security.Permission;
+import org.group10.common.security.RequiresPermission;
 import org.group10.ticket.dto.ReturnRequestPageResponse;
 import org.group10.ticket.dto.ReturnRequestResponse;
 import org.group10.ticket.entity.ReturnRequestStatus;
@@ -19,7 +22,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -29,29 +31,34 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api")
 @RequiredArgsConstructor
 @Tag(name = "Devoluciones", description = "Solicitudes de devolución de entradas y su resolución")
+@ApiResponse(responseCode = "401", description = "unauthorized: sin token",
+        content = @Content(schema = @Schema(implementation = ErrorDto.class)))
 public class ReturnRequestController {
-
-    private static final String USER_HEADER = "X-User-Id";
 
     private final ReturnRequestService returnRequestService;
 
     @PostMapping("/tickets/{ticketId}/return-requests")
     @ResponseStatus(HttpStatus.CREATED)
+    @RequiresPermission(Permission.REFUND_REQUEST)
     @Operation(summary = "Solicitar la devolución de una entrada", description = "Hasta 72 horas antes del evento. La entrada sigue ISSUED hasta que se resuelva.")
     @ApiResponse(responseCode = "201", description = "Solicitud creada en PENDING")
+    @ApiResponse(responseCode = "403", description = "forbidden: sin REFUND_REQUEST",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "404", description = "ticket_not_found: no existe o es de otro cliente",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "409", description = "refund_not_allowed o return_request_already_pending",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    public ReturnRequestResponse requestReturn(@RequestHeader(USER_HEADER) @Positive Long userId,
-                                               @PathVariable @Positive Long ticketId) {
-        return returnRequestService.requestReturn(userId, ticketId);
+    public ReturnRequestResponse requestReturn(Caller caller, @PathVariable @Positive Long ticketId) {
+        return returnRequestService.requestReturn(caller.userId(), ticketId);
     }
 
     @GetMapping("/return-requests")
-    @Operation(summary = "Listar las solicitudes de devolución", description = "Paginado, primero las más antiguas. Por defecto, las PENDING.")
+    @RequiresPermission(Permission.REFUND_RESOLVE)
+    @Operation(summary = "Listar las solicitudes de devolución", description = "Solo un administrador. Paginado, primero las más antiguas. Por defecto, las PENDING.")
     @ApiResponse(responseCode = "200", description = "Página de solicitudes")
     @ApiResponse(responseCode = "400", description = "Parámetros inválidos",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "403", description = "forbidden: sin REFUND_RESOLVE",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     public ReturnRequestPageResponse findByStatus(@RequestParam(defaultValue = "PENDING") ReturnRequestStatus status,
                                                   @RequestParam(defaultValue = "0") @PositiveOrZero int page,
@@ -60,32 +67,32 @@ public class ReturnRequestController {
     }
 
     @PostMapping("/return-requests/{id}/approve")
-    @Operation(summary = "Aprobar una devolución", description = "Pide el reintegro, marca la entrada REFUNDED y libera el lugar. Si payment-service no responde, se puede reintentar sin un segundo reintegro.")
+    @RequiresPermission(Permission.REFUND_RESOLVE)
+    @Operation(summary = "Aprobar una devolución", description = "Solo un administrador. Pide el reintegro, marca la entrada REFUNDED y libera el lugar. Si payment-service no responde, se puede reintentar sin un segundo reintegro.")
     @ApiResponse(responseCode = "200", description = "Solicitud aprobada")
-    @ApiResponse(responseCode = "403", description = "forbidden: el usuario no tiene el permiso REFUND_RESOLVE",
+    @ApiResponse(responseCode = "403", description = "forbidden: sin REFUND_RESOLVE",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    @ApiResponse(responseCode = "404", description = "return_request_not_found o user_not_found",
+    @ApiResponse(responseCode = "404", description = "return_request_not_found",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "409", description = "refund_not_allowed o ticket_already_used",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "503", description = "service_unavailable: la solicitud sigue PENDING",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    public ReturnRequestResponse approve(@RequestHeader(USER_HEADER) @Positive Long userId,
-                                         @PathVariable @Positive Long id) {
-        return returnRequestService.approve(userId, id);
+    public ReturnRequestResponse approve(Caller caller, @PathVariable @Positive Long id) {
+        return returnRequestService.approve(caller.userId(), id);
     }
 
     @PostMapping("/return-requests/{id}/reject")
-    @Operation(summary = "Rechazar una devolución", description = "La entrada sigue vigente y no se pide ningún reintegro.")
+    @RequiresPermission(Permission.REFUND_RESOLVE)
+    @Operation(summary = "Rechazar una devolución", description = "Solo un administrador. La entrada sigue vigente y no se pide ningún reintegro.")
     @ApiResponse(responseCode = "200", description = "Solicitud rechazada")
-    @ApiResponse(responseCode = "403", description = "forbidden: el usuario no tiene el permiso REFUND_RESOLVE",
+    @ApiResponse(responseCode = "403", description = "forbidden: sin REFUND_RESOLVE",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    @ApiResponse(responseCode = "404", description = "return_request_not_found o user_not_found",
+    @ApiResponse(responseCode = "404", description = "return_request_not_found",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "409", description = "refund_not_allowed",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    public ReturnRequestResponse reject(@RequestHeader(USER_HEADER) @Positive Long userId,
-                                        @PathVariable @Positive Long id) {
-        return returnRequestService.reject(userId, id);
+    public ReturnRequestResponse reject(Caller caller, @PathVariable @Positive Long id) {
+        return returnRequestService.reject(caller.userId(), id);
     }
 }

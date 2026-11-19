@@ -402,7 +402,7 @@ class RefundMySqlIntegrationTest {
 
     private HttpAnswer postRefund(String body) {
         return RestClient.create("http://localhost:" + port).post()
-                .uri("/internal/refunds")
+                .uri("/internal/refunds").header("X-Internal-Secret", "dev-internal-secret")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .exchange((request, response) ->

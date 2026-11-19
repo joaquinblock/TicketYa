@@ -60,5 +60,10 @@ public class PermissionAutoConfiguration {
         ParameterCustomizer ticketyaHideOptionalCaller() {
             return (parameter, methodParameter) -> CallerArgumentResolver.isCaller(methodParameter) ? null : parameter;
         }
+
+        @Bean
+        PermissionOpenApiCustomizer ticketyaPermissionsInSwagger() {
+            return new PermissionOpenApiCustomizer();
+        }
     }
 }

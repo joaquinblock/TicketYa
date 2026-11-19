@@ -1,10 +1,8 @@
 package org.group10.ticket;
 
-import org.group10.ticket.client.AuthClient;
 import org.group10.ticket.client.EventClient;
 import org.group10.ticket.client.PaymentClient;
 import org.group10.ticket.client.dto.RefundRequest;
-import org.group10.ticket.client.dto.UserPermissionsResponse;
 import org.group10.ticket.entity.EventSaleStatus;
 import org.group10.ticket.entity.EventSeatId;
 import org.group10.ticket.entity.EventSeatStatus;
@@ -83,9 +81,6 @@ class ReturnRequestMySqlIntegrationTest {
     @MockitoBean
     private EventClient eventClient;
 
-    @MockitoBean
-    private AuthClient authClient;
-
     @MockitoSpyBean
     private Clock clock;
 
@@ -134,18 +129,12 @@ class ReturnRequestMySqlIntegrationTest {
 
     @BeforeEach
     void publishEvent() {
-        when(authClient.getPermissions(any())).thenAnswer(invocation -> {
-            Long userId = invocation.getArgument(0);
-            return userId == ADMINISTRATOR
-                    ? new UserPermissionsResponse(userId, "ADMIN", Set.of("REFUND_RESOLVE"))
-                    : new UserPermissionsResponse(userId, "CLIENT", Set.of("TICKET_PURCHASE", "REFUND_REQUEST"));
-        });
         client = RestClient.builder().baseUrl("http://localhost:" + port).build();
         customer = IDS.incrementAndGet();
         eventId = IDS.incrementAndGet();
         long numberedSector = IDS.incrementAndGet();
         generalSector = IDS.incrementAndGet();
-        int status = client.put().uri("/internal/event-sales/{eventId}", eventId)
+        int status = client.put().uri("/internal/event-sales/{eventId}", eventId).header("X-Internal-Secret", "dev-internal-secret")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("""
                         {"status": "PUBLISHED", "eventName": "Recital", "venueName": "Estadio",
@@ -458,17 +447,6 @@ class ReturnRequestMySqlIntegrationTest {
     }
 
     @Test
-    void approve_authServiceDown_answers503WithoutRefundingAndKeepsTheRequestPending() {
-        long ticketId = buySeats(1).getFirst();
-        long requestId = requestReturn(customer, ticketId).id();
-        when(authClient.getPermissions(ADMINISTRATOR)).thenThrow(new ResourceAccessException("auth-service caído"));
-
-        assertThat(approve(requestId).status()).isEqualTo(503);
-        assertThat(requestStatus(requestId)).isEqualTo(ReturnRequestStatus.PENDING);
-        verify(paymentClient, never()).refund(any());
-    }
-
-    @Test
     void reject_byTheCustomerInsteadOfAnAdministrator_returnsForbidden() {
         long requestId = requestReturn(customer, buySeats(1).getFirst()).id();
 
@@ -527,13 +505,14 @@ class ReturnRequestMySqlIntegrationTest {
     }
 
     private HttpResult list(String path) {
-        return client.get().uri(path).exchange((request, response) ->
+        return client.get().uri(path).header("X-User-Id", Long.toString(ADMINISTRATOR)).header("X-User-Permissions", permissionsOf(ADMINISTRATOR))
+                .header("X-User-Permissions", permissionsOf(ADMINISTRATOR)).exchange((request, response) ->
                 new HttpResult(response.getStatusCode().value(), response.bodyTo(JSON_OBJECT)));
     }
 
     private HttpResult post(String path, long user, String body) {
         return client.post().uri(path)
-                .header("X-User-Id", Long.toString(user))
+                .header("X-User-Id", Long.toString(user)).header("X-User-Permissions", permissionsOf(user))
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .exchange((request, response) ->
@@ -598,5 +577,9 @@ class ReturnRequestMySqlIntegrationTest {
 
     private static String newKey() {
         return UUID.randomUUID().toString();
+    }
+
+    private static String permissionsOf(long user) {
+        return user == ADMINISTRATOR ? "REFUND_RESOLVE" : "TICKET_PURCHASE,REFUND_REQUEST";
     }
 }

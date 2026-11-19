@@ -13,4 +13,14 @@ public interface UserRepository extends JpaRepository<User, Long> {
      */
     @EntityGraph(attributePaths = {"role", "role.permissions"})
     Optional<User> findWithRoleAndPermissionsById(Long id);
+
+    /**
+     * The user that already logged in with this Google account ({@code sub} of the Google ID token).
+     */
+    Optional<User> findByIdpSubject(String idpSubject);
+
+    /**
+     * Google lower-cases the address it verifies, but a preloaded user may have been written with capitals.
+     */
+    Optional<User> findByEmailIgnoreCase(String email);
 }

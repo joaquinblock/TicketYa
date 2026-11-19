@@ -12,9 +12,84 @@
     {
       "key": "token",
       "value": ""
+    },
+    {
+      "key": "adminId",
+      "value": "3"
+    },
+    {
+      "key": "organizerId",
+      "value": "2"
     }
   ],
   "item": [
+    {
+      "name": "Login con Google",
+      "description": "POST /api/auth/google canjea el ID token de Google por el JWT de TicketYa. Para entrar con una cuenta real, abrí http://localhost:8081/login (perfil dev): muestra el JWT de TicketYa para copiarlo. Acá van los casos que no necesitan Google. Sin GOOGLE_CLIENT_ID configurado, cualquier token responde 503.",
+      "item": [
+        {
+          "name": "Sin idToken",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('validation_error', () => pm.expect(pm.response.json().error).to.eql('validation_error'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{baseUrl}}/api/auth/google"
+          }
+        },
+        {
+          "name": "idToken que no es de Google",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('401, o 503 si falta GOOGLE_CLIENT_ID', () => pm.expect(pm.response.code).to.be.oneOf([401, 503]));",
+                  "const body = pm.response.json();",
+                  "if (pm.response.code === 401) {",
+                  "    pm.test('invalid_credentials', () => pm.expect(body.error).to.eql('invalid_credentials'));",
+                  "} else {",
+                  "    pm.test('service_unavailable', () => pm.expect(body.error).to.eql('service_unavailable'));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"idToken\": \"no-es-un-token-de-google\"}"
+            },
+            "url": "{{baseUrl}}/api/auth/google"
+          }
+        }
+      ]
+    },
     {
       "name": "Login de desarrollo",
       "description": "Solo con el perfil dev (la run config de IntelliJ ya lo activa). Emite el JWT de TicketYa de un usuario del seeder sin pasar por Google. El primer request guarda el token en {{token}}. Ver docs/adr/ADR-002-dev-login.md.",
@@ -237,7 +312,13 @@
           ],
           "request": {
             "method": "GET",
-            "url": "{{baseUrl}}/api/users/1/permissions"
+            "url": "{{baseUrl}}/api/users/1/permissions",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ]
           }
         },
         {
@@ -260,7 +341,13 @@
           ],
           "request": {
             "method": "GET",
-            "url": "{{baseUrl}}/api/users/2/permissions"
+            "url": "{{baseUrl}}/api/users/2/permissions",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ]
           }
         },
         {
@@ -283,7 +370,13 @@
           ],
           "request": {
             "method": "GET",
-            "url": "{{baseUrl}}/api/users/3/permissions"
+            "url": "{{baseUrl}}/api/users/3/permissions",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ]
           }
         },
         {
@@ -304,7 +397,13 @@
           ],
           "request": {
             "method": "GET",
-            "url": "{{baseUrl}}/api/users/4/permissions"
+            "url": "{{baseUrl}}/api/users/4/permissions",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ]
           }
         },
         {
@@ -322,7 +421,31 @@
           ],
           "request": {
             "method": "GET",
-            "url": "{{baseUrl}}/api/users/999999/permissions"
+            "url": "{{baseUrl}}/api/users/999999/permissions",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Permisos sin token → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('401: solo el admin ve los permisos de un usuario', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/users/1/permissions",
+            "header": []
           }
         }
       ]
@@ -446,6 +569,159 @@
           }
         }
       ]
+    },
+    {
+      "name": "Promover y quitar organizadores",
+      "description": "Solo el admin (USER_MANAGE). Promueve al cliente 1 en la organización 1 y lo vuelve a quitar, así la colección se puede repetir.",
+      "item": [
+        {
+          "name": "Un organizador no puede promover → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('403 forbidden', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{organizerId}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/organizations/1/organizers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"userId\": 1}"
+            }
+          }
+        },
+        {
+          "name": "El admin promueve al cliente 1 → 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "pm.test('Organiza para la 1', () => pm.expect(pm.response.json().organizationId).to.eql(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/organizations/1/organizers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"userId\": 1}"
+            }
+          }
+        },
+        {
+          "name": "Promoverlo otra vez → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409 data_conflict', () => pm.expect(pm.response.json().error).to.eql('data_conflict'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/organizations/1/organizers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"userId\": 1}"
+            }
+          }
+        },
+        {
+          "name": "El admin lo quita → 204",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/organizations/1/organizers/1"
+          }
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// El api-gateway valida el JWT y borra los X-User-* que mande el cliente (ADR-003). Este script pide el token",
+          "// con dev-login (perfil dev, ADR-002) para el usuario del header X-User-Id y lo manda como Authorization.",
+          "// No lo guarda: lo pide en cada request, así sigue andando si el auth-service se reinicia con otra clave.",
+          "const userHeader = pm.request.headers.get('X-User-Id');",
+          "if (userHeader) {",
+          "    const userId = pm.variables.replaceIn(userHeader);",
+          "    pm.request.headers.remove('X-User-Id');",
+          "    pm.sendRequest({",
+          "        url: pm.variables.replaceIn('{{baseUrl}}') + '/api/auth/dev-login',",
+          "        method: 'POST',",
+          "        header: { 'Content-Type': 'application/json' },",
+          "        body: { mode: 'raw', raw: JSON.stringify({ userId: Number(userId) }) }",
+          "    }, (error, response) => {",
+          "        if (error || response.code !== 200) {",
+          "            console.warn(`dev-login no dio un token para el usuario ${userId}: el request sale sin identidad`);",
+          "            return;",
+          "        }",
+          "        pm.request.headers.upsert({ key: 'Authorization', value: 'Bearer ' + response.json().accessToken });",
+          "    });",
+          "}"
+        ]
+      }
     }
   ]
 }

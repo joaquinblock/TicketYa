@@ -415,7 +415,7 @@ class OrderPaymentMySqlIntegrationTest {
         pay(customer, paidOrderId, newKey());
 
         List<Map<String, Object>> orders = client.get().uri("/api/orders")
-                .header("X-User-Id", Long.toString(customer))
+                .header("X-User-Id", Long.toString(customer)).header("X-User-Permissions", permissionsOf(customer))
                 .exchange((request, response) -> response.bodyTo(JSON_LIST));
 
         assertThat(orders).extracting(order -> ((Number) order.get("id")).longValue())
@@ -460,7 +460,7 @@ class OrderPaymentMySqlIntegrationTest {
         long orderId = reserveSeats(CUSTOMER, 1);
 
         HttpResult result = client.get().uri("/api/orders/{id}", orderId)
-                .header("X-User-Id", Long.toString(ANOTHER_CUSTOMER))
+                .header("X-User-Id", Long.toString(ANOTHER_CUSTOMER)).header("X-User-Permissions", permissionsOf(ANOTHER_CUSTOMER))
                 .exchange((request, response) ->
                         new HttpResult(response.getStatusCode().value(), response.bodyTo(JSON_OBJECT)));
 
@@ -511,7 +511,7 @@ class OrderPaymentMySqlIntegrationTest {
 
     private HttpResult post(String path, long customer, String body) {
         return client.post().uri(path)
-                .header("X-User-Id", Long.toString(customer))
+                .header("X-User-Id", Long.toString(customer)).header("X-User-Permissions", permissionsOf(customer))
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .exchange((request, response) ->
@@ -560,5 +560,9 @@ class OrderPaymentMySqlIntegrationTest {
 
     private static String newKey() {
         return UUID.randomUUID().toString();
+    }
+
+    private static String permissionsOf(long user) {
+        return "TICKET_PURCHASE,REFUND_REQUEST";
     }
 }

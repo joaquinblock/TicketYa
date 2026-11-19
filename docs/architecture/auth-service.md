@@ -144,6 +144,13 @@ Todos usan el `ErrorDto` común (ver [`error-handling.md`](error-handling.md)). 
 - **`newUser: true`** le avisa al front que puede mostrar el cuestionario de preferencias.
 - **Configuración:** `GOOGLE_CLIENT_ID`, el client id de OAuth del proyecto de Google Cloud (no es secreto). Sin la variable, el servicio arranca, loguea un `WARN` y el endpoint responde `503`. `dev-login` sigue andando.
 
+### El primer admin
+
+Quien entra con Google por primera vez es cliente, y solo un admin puede hacerlo organizador. El primer admin sale del seeder: **`BOOTSTRAP_ADMIN_EMAIL`** le pone al admin del seeder (id `3`) un Gmail real. Al entrar con esa cuenta, el login lo vincula por email (segundo caso de la tabla) y queda como admin.
+
+- **Sin la variable,** el admin queda con `admin@ticketya.com` y solo se usa con `dev-login`.
+- **Si la variable se configura después,** alcanza con reiniciar el auth-service: con `ddl-auto: create`, el seeder vuelve a cargar todo.
+
 ## Firma del JWT
 
 El auth-service emite el JWT de TicketYa con `JwtTokenProvider`, firmado con RS256. Lo usan el login con Google y `dev-login`. `AuthService.issueTokenFor` arma el token: el organizador lleva su `organizationId` y el personal de acceso todavía no, hasta que exista `AccessStaff` (#19).

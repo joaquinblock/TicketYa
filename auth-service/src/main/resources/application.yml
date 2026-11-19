@@ -45,6 +45,8 @@ ticketya:
   google:
     # Client id de OAuth del proyecto de Google Cloud. No es secreto. Vacío: el login con Google responde 503
     client-id: ${GOOGLE_CLIENT_ID:}
+  # Gmail del primer admin: al entrar con Google queda vinculado al admin del seeder. Vacío: admin@ticketya.com
+  bootstrap-admin-email: ${BOOTSTRAP_ADMIN_EMAIL:}
 
 management:
   endpoints:

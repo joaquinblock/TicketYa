@@ -1,5 +1,7 @@
 # Autorización por permisos
 
+> **Hoy (Entrega 2):** el usuario y sus permisos llegan en los headers que pone el api-gateway a partir del JWT, y cada servicio los chequea con `@RequiresPermission` de `common`, sin llamar al auth-service (ver *Con JWT*). Las secciones *Flujo*, *Errores* y *Costo* describen cómo funcionaba en la Entrega 1.
+>
 > Cómo decide un servicio si el usuario que llama puede usar un endpoint. En la Entrega 1 no hay JWT: el usuario se identifica con el header `X-User-Id` (README, *Modalidad de entrega*: "el usuario se identifica por parámetro o encabezado") y el servicio le pregunta al auth-service qué puede hacer.
 
 ## Idea general
@@ -81,8 +83,12 @@ Usuarios de prueba: `1` cliente, `2` organizador (org `1`), `3` admin, `4` perso
 | event-service | `PUT /api/events/{id}`, `DELETE /api/events/{id}` | `EVENT_MANAGE` |
 | event-service | `POST /api/events/{id}/publish` | `EVENT_MANAGE` |
 | event-service | `POST /api/events/{id}/cancel`, `/suspend`, `/resume` | `EVENT_ADMIN` **o** `EVENT_MANAGE` (y el service exige que sea el organizador que creó el evento) |
+| event-service | `POST`/`PUT`/`DELETE` de `/api/venues`, sus sectores (`/api/venues/{id}/sectors`) y sus asientos | `VENUE_MANAGE`: solo el admin. Un organizador es externo a TicketYa y podría cargar lugares que no existen |
+| event-service | `POST`/`PUT`/`DELETE` de `/api/participants` | `PARTICIPANT_MANAGE`: organizadores y admin |
 
-El resto todavía no tiene `@RequiresPermission`. Los `POST`/`PUT`/`DELETE` de `/api/venues` y de `/api/participants` quedan sin proteger hasta definir qué permiso los cubre: hoy no existe uno para administrar lugares (ver *Pendiente*).
+Todo lo demás de event-service es público: buscar y ver eventos, lugares, sectores, asientos y participantes. El detalle de un evento recibe un `Optional<Caller>`: un borrador solo lo ve un organizador de su organización.
+
+**La organización sale del token.** Al crear un evento, el organizador ya no la elige: es la de su token (`X-Organization-Id`, que pone el gateway). Al editar, publicar o suspender, se compara con la del evento, sin preguntarle al auth-service. El token solo la lleva si el organizador y su organización están activos.
 
 ## Errores
 
@@ -164,7 +170,7 @@ Cliente ── Bearer JWT ──▶ api-gateway ── X-User-Id, X-User-Role, X
 
 **Por qué no `@PreAuthorize`:** Spring lo evalúa al invocar el método, después de leer el body y de `@Valid`. Un usuario sin permiso con un body inválido recibiría `400` en vez de `403`, en contra de la US-AUTH-02. `preHandle` corre antes: el `403` sale primero incluso con JSON roto. Además, como los servicios no validan el token, no necesitan Spring Security (ver *Decisiones de diseño tomadas* en el [RFC-001](../rfc/RFC-001-auth-modality.md)).
 
-**Migración:** cada servicio pasa a la anotación de `common` en su PR de roles. Hasta entonces, event-service sigue con su interceptor propio. Los dos conviven: el de `common` no es un bean, así no choca con el `permissionInterceptor` de event-service, y cada uno solo mira su propia anotación.
+**Migración:** event-service ya usa la anotación de `common`: se borraron su paquete `security`, su `WebConfig` y su `AuthClient`. Los demás servicios pasan a la anotación en su PR de roles.
 
 ## Costo
 
@@ -197,8 +203,6 @@ Cada request a un endpoint protegido hace **una llamada más al auth-service**. 
 
 | Tema | Detalle |
 |---|---|
-| Lugares y participantes | Ya existen `VENUE_MANAGE` (solo el admin: un organizador es externo a TicketYa y podría cargar lugares que no existen) y `PARTICIPANT_MANAGE` (organizadores y admin). Falta que event-service los pida en sus endpoints (PR7b) |
 | Delegar la suspensión | Que el creador autorice a otro organizador de su organización a suspender o cancelar su evento. Necesita guardar quién autorizó a quién y cómo se revoca: se dejó afuera |
 | Otros servicios | `RequiresPermission` y `PermissionInterceptor` ya están en `common` (Entrega 2). Falta que cada servicio anote sus endpoints, en su PR de roles |
-| Timeouts | Configurar timeouts (y quizá un reintento) en el grupo `auth-service` de los clients HTTP |
-| `organizationId` en la respuesta | Ahorraría dos llamadas al crear eventos y permitiría sacar `X-Organization-Id` (ver `event-creation-pending.md`) |
+| Participantes sin dueño | Con `PARTICIPANT_MANAGE`, un organizador puede editar un artista que cargó otra organización. Borrarlo está frenado si se usa en un evento (`participant_in_use`), editarlo no |

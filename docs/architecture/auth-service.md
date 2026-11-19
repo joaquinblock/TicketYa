@@ -62,7 +62,6 @@ Los consume el event-service con `AuthClient`. Swagger: `/swagger-ui.html` en el
 | `GET` | `/api/organizations/{id}` | Una organización **activa** | 200 |
 | `GET` | `/api/organizers/{userId}` | Un organizador **activo** con el id de su organización | 200 |
 | `GET` | `/api/users/{id}/permissions` | Rol y permisos de un usuario **activo**. Lo usa `PermissionInterceptor` (ver [`permissions.md`](permissions.md)) | 200 |
-| `POST` | `/api/auth/dev-login` | JWT de un usuario **activo**, sin Google. **Solo con el perfil `dev`**: fuera de él da 404 (ver [ADR-002](../adr/ADR-002-dev-login.md)) | 200 |
 
 ```http
 GET /api/organizations/1
@@ -135,6 +134,13 @@ JWT_PRIVATE_KEY_LOCATION=/ruta/a/private.pem
 ```
 
 Sin la variable, el servicio genera una clave efímera y loguea un `WARN`. Sirve para desarrollo, pero los tokens dejan de valer al reiniciar. Si la ruta no existe o el archivo no es una clave PKCS#8, el servicio no arranca.
+
+**La clave pública se publica en `GET /.well-known/jwks.json`** (formato JWKS, RFC 7517), sin ninguna parte privada. Ahí la busca el api-gateway para verificar la firma de cada token. Cada token lleva en su header un `kid`, el thumbprint de la clave (RFC 7638). Si el auth-service se reinicia con otra clave, el `kid` cambia y el gateway sabe que tiene que volver a pedir el JWKS.
+
+```http
+GET /.well-known/jwks.json
+→ { "keys": [ { "kty": "RSA", "kid": "pV3q...", "n": "0vx7...", "e": "AQAB" } ] }
+```
 
 ## Pendiente
 

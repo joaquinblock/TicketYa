@@ -182,6 +182,21 @@ Cobrar, reintegrar y anular van en `/internal/**`, que el gateway no reenvía. L
 - **Entrega 1:** `/internal/payments` y `/internal/refunds` a través del gateway responden 404, y lo verifica `InternalRoutesTest` en `api-gateway`. El puerto 8084 del servicio sigue accesible de forma directa, así que esas rutas no tienen protección si se llega sin pasar por el gateway.
 - **Entrega 2:** el `docker-compose` general no publica el puerto de payment-service, y las llamadas entre servicios se autentican con una credencial de servicio (sin ella, 401). `GET /api/payments` exige rol administrador.
 
+### El secreto entre servicios (US-PAY-14)
+
+Toda ruta `/internal/**` pide el header **`X-Internal-Secret`**, con un secreto que comparten los servicios. Sin él, o con otro valor: `401 unauthorized`, antes de leer el body. Llegar al puerto 8084 ya no alcanza para cobrar o reintegrar.
+
+| Pieza | Dónde | Qué hace |
+|---|---|---|
+| `InternalSecretInterceptor` | `common`, en cada servicio | Exige el secreto en `/internal/**`. Compara en tiempo constante |
+| `InternalSecretRequestInterceptor` | `common`, en cada cliente `@HttpExchange` | Agrega el secreto a las llamadas a `/internal/**` de otro servicio. A una ruta pública no lo manda |
+| `InternalSecretAutoConfiguration` | `common` | Registra los dos. No aplica al api-gateway, que no tiene `/internal` y para el que esas rutas siguen dando 404 |
+
+- **Aplica a las tres que hay hoy:** event → ticket (`/internal/event-sales`), ticket → event (`/internal/events/{id}/sold-out` y `/back-on-sale`) y ticket → payment (`/internal/payments`, `/internal/refunds`). Ningún servicio tuvo que tocar sus clientes.
+- **Sale de `INTERNAL_SECRET`,** y tiene que ser el mismo en todos los servicios. Sin la variable se usa `dev-internal-secret`, que está en el repo: sirve para levantar todo en local y en los tests, y el servicio loguea un `WARN`. El `docker-compose` general (épica #11) tiene que pasar uno real.
+- **Postman:** las colecciones de payment y ticket mandan el header en sus requests a `/internal`, con la variable `internalSecret`.
+- **Falta de la US-PAY-14:** `GET /api/payments` solo para el administrador y no publicar el puerto 8084 en el compose general.
+
 ## Contrato con ticket-service
 
 REST síncrono en la Entrega 1. **payment-service nunca llama a ticket-service**: la dependencia va en un solo sentido.

@@ -24,6 +24,10 @@
     {
       "key": "adminId",
       "value": "3"
+    },
+    {
+      "key": "internalSecret",
+      "value": "dev-internal-secret"
     }
   ],
   "item": [
@@ -62,6 +66,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "X-Internal-Secret",
+                "value": "{{internalSecret}}"
               }
             ],
             "body": {
@@ -94,6 +102,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "X-Internal-Secret",
+                "value": "{{internalSecret}}"
               }
             ],
             "body": {
@@ -613,6 +625,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "X-Internal-Secret",
+                "value": "{{internalSecret}}"
               }
             ],
             "body": {
@@ -682,6 +698,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "X-Internal-Secret",
+                "value": "{{internalSecret}}"
               }
             ],
             "body": {
@@ -751,6 +771,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "X-Internal-Secret",
+                "value": "{{internalSecret}}"
               }
             ],
             "body": {
@@ -899,6 +923,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "X-Internal-Secret",
+                "value": "{{internalSecret}}"
               }
             ],
             "body": {

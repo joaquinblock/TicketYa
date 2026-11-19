@@ -24,6 +24,73 @@
   ],
   "item": [
     {
+      "name": "Login con Google",
+      "description": "POST /api/auth/google canjea el ID token de Google por el JWT de TicketYa. Un ID token real se obtiene con Google Sign-In (la página mínima, PR5c); acá van los casos que no lo necesitan. Sin GOOGLE_CLIENT_ID configurado, cualquier token responde 503.",
+      "item": [
+        {
+          "name": "Sin idToken",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('validation_error', () => pm.expect(pm.response.json().error).to.eql('validation_error'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{baseUrl}}/api/auth/google"
+          }
+        },
+        {
+          "name": "idToken que no es de Google",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('401, o 503 si falta GOOGLE_CLIENT_ID', () => pm.expect(pm.response.code).to.be.oneOf([401, 503]));",
+                  "const body = pm.response.json();",
+                  "if (pm.response.code === 401) {",
+                  "    pm.test('invalid_credentials', () => pm.expect(body.error).to.eql('invalid_credentials'));",
+                  "} else {",
+                  "    pm.test('service_unavailable', () => pm.expect(body.error).to.eql('service_unavailable'));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"idToken\": \"no-es-un-token-de-google\"}"
+            },
+            "url": "{{baseUrl}}/api/auth/google"
+          }
+        }
+      ]
+    },
+    {
       "name": "Login de desarrollo",
       "description": "Solo con el perfil dev (la run config de IntelliJ ya lo activa). Emite el JWT de TicketYa de un usuario del seeder sin pasar por Google. El primer request guarda el token en {{token}}. Ver docs/adr/ADR-002-dev-login.md.",
       "item": [

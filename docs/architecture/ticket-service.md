@@ -354,6 +354,7 @@ Las historias y sus criterios de aceptación están en [`user-stories.md`](../us
 |---|---|---|
 | `PUT /internal/event-sales/{eventId}` | Sincroniza la venta, el inventario y los datos que se imprimen en la entrada (nombre del evento, lugar, sectores, filas y números). Con estado `CANCELLED` cierra las compras abiertas y deja los reintegros al job. Solo entre servicios; el gateway no la expone | 400 `validation_error` |
 | `GET /api/availability?eventId=` | Disponibilidad por sector | 404 `resource_not_found` |
+| `GET /api/events/{eventId}/report` | Reporte por sector y total del evento. Requiere `REPORT_VIEW`; el organizador solo puede consultar eventos de su organización | 400 `validation_error`, 401 `unauthorized`, 403 `forbidden`, 404 `event_not_found`, 503 `service_unavailable` |
 | `POST /api/orders` | Reserva asientos (`seatIds`) o lugares (`eventSectorId` y `quantity`). Header `X-User-Id` | 400 `validation_error`, 404 `resource_not_found`, 409 `seat_unavailable`, `sector_sold_out`, `ticket_limit_exceeded`, `event_not_on_sale`, `sale_not_started`, `data_conflict` |
 | `POST /api/orders/{id}/cancel` | Abandona una reserva. Repetirlo responde 200. Header `X-User-Id` | 404 `order_not_found`, 409 `payment_in_progress`, `reservation_expired`, `order_not_cancellable` |
 | `POST /api/tickets/{ticketId}/return-requests` | Solicita la devolución de una entrada. Header `X-User-Id` | 404 `ticket_not_found`, 409 `refund_not_allowed`, `return_request_already_pending` |
@@ -362,6 +363,10 @@ Las historias y sus criterios de aceptación están en [`user-stories.md`](../us
 | `POST /api/return-requests/{id}/reject` | Rechaza la solicitud y la entrada sigue vigente. Solo con `REFUND_RESOLVE`. Header `X-User-Id` | 403 `forbidden`, 404 `return_request_not_found`, `user_not_found`, 409 `refund_not_allowed`, 503 `service_unavailable` |
 
 **Quién resuelve una devolución.** Antes de tocar la solicitud, el ticket-service le pide los permisos del usuario al auth-service (`GET /api/users/{id}/permissions`). Sin `REFUND_RESOLVE` responde 403 y la solicitud sigue `PENDING`; si el auth-service no responde, 503 sin reintegrar nada. En el seeder del auth-service, el usuario 3 es el administrador.
+
+**Reporte de un evento.** El ticket-service agrupa las entradas por `event_sector_id`. Cuenta `ISSUED` y `USED` como vendidas, `REFUNDED` como devueltas, y excluye `RESERVED` y `VOIDED`. La recaudación suma el precio de las entradas vendidas. La capacidad y la organización se obtienen del detalle del evento en event-service; el sector se relaciona con la copia local por su nombre, único dentro del lugar. Para consultar el reporte se requiere `REPORT_VIEW` y que la organización del caller coincida con la del evento. La ocupación total se calcula sobre la capacidad total (no como promedio de porcentajes sectoriales).
+
+La respuesta incluye `eventId`, una lista `sectors` con capacidad, ventas, devoluciones, ocupación y recaudación por sector, y `total` con esas mismas métricas sumadas para el evento.
 
 **Eventos que ya empezaron.** Además del estado de la copia, reservar exige que la fecha del evento no haya pasado (`event_not_on_sale`). Así no se vende entre que el evento ocurre y el job del event-service lo pasa a `FINISHED` (ver `event-state-machine.md`).
 

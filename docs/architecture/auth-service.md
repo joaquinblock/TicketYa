@@ -62,6 +62,8 @@ Los consume el event-service con `AuthClient`. Swagger: `/swagger-ui.html` en el
 | `GET` | `/api/organizations/{id}` | Una organización **activa** | 200 |
 | `GET` | `/api/organizers/{userId}` | Un organizador **activo** con el id de su organización | 200 |
 | `GET` | `/api/users/{id}/permissions` | Rol y permisos de un usuario **activo**. Lo usa `PermissionInterceptor` (ver [`permissions.md`](permissions.md)) | 200 |
+| `POST` | `/api/auth/google` | Canjea el ID token de Google por el JWT de TicketYa. Login y registro son lo mismo (ver *Login con Google*) | 200 |
+| `POST` | `/api/auth/dev-login` | JWT de un usuario **activo**, sin Google. **Solo con el perfil `dev`**: fuera de él da 404 (ver [ADR-002](../adr/ADR-002-dev-login.md)) | 200 |
 
 ```http
 GET /api/organizations/1
@@ -74,6 +76,9 @@ GET /api/organizers/2
 GET /api/users/2/permissions
 → { "userId": 2, "role": "ORGANIZER",
     "permissions": ["EVENT_MANAGE", "EVENT_SEARCH", "REFUND_REQUEST", "REPORT_VIEW", "TICKET_PURCHASE"] }
+
+POST /api/auth/google   { "idToken": "eyJhbGciOiJSUzI1NiIsImtpZCI6..." }
+→ { "accessToken": "eyJhbGciOiJSUzI1NiJ9...", "tokenType": "Bearer", "expiresIn": 1800, "newUser": true }
 
 POST /api/auth/dev-login   { "userId": 2 }
 → { "accessToken": "eyJhbGciOiJSUzI1NiJ9...", "tokenType": "Bearer", "expiresIn": 1800 }
@@ -95,6 +100,10 @@ Todos usan el `ErrorDto` común (ver [`error-handling.md`](error-handling.md)). 
 | `organization_not_found` | 404 | No existe la organización, o está dada de baja |
 | `organizer_not_found` | 404 | El usuario no es organizador, o está dado de baja él, su usuario o su organización |
 | `user_not_found` | 404 | No existe el usuario, o está dado de baja (`GET /api/users/{id}/permissions`) |
+| `invalid_credentials` | 401 | Login con Google: el ID token es inválido, está vencido, es de otra app o su email no está verificado |
+| `user_disabled` | 403 | Login con Google: la cuenta está dada de baja |
+| `data_conflict` | 409 | Login con Google: el email ya está vinculado a otra cuenta de Google |
+| `service_unavailable` | 503 | Login con Google: falta `GOOGLE_CLIENT_ID`, o no se pudieron obtener las claves públicas de Google |
 
 ## Código
 
@@ -113,9 +122,28 @@ Todos usan el `ErrorDto` común (ver [`error-handling.md`](error-handling.md)). 
   El user `2` no organiza para la `2`, así que crear un evento de la org `2` con `X-User-Id: 2` sigue dando `organizer_not_in_organization`.
 - **El organizador se busca en una sola query.** `OrganizerRepository.findWithUserAndOrganizationByUserId` usa `@EntityGraph` para traer también el `user` y la `organization`, que son lazy. Sin eso, armar la respuesta haría una query más por cada relación, y fuera de la transacción tiraría `LazyInitializationException`.
 
+## Login con Google
+
+`POST /api/auth/google` recibe el ID token que Google le da al front y devuelve el JWT de TicketYa (diseño en el [RFC-001](../rfc/RFC-001-auth-modality.md)). Login y registro son la misma operación.
+
+1. `GoogleIdTokenVerifier` verifica el ID token contra las claves públicas de Google: la firma, `iss` (`accounts.google.com`), `aud` (nuestro client id), el vencimiento y que el email esté verificado.
+2. `AuthService.loginWithGoogle` busca la cuenta:
+
+| Caso | Qué pasa | `newUser` |
+|---|---|---|
+| Ya entró antes con esa cuenta de Google (`idp_subject` = `sub`) | Recibe su token | `false` |
+| Un admin había cargado su email y todavía no estaba vinculado | Se vincula (`idp_subject` = `sub`) y **conserva su rol** | `false` |
+| No hay cuenta | Se crea como **cliente**, con el nombre y apellido de Google | `true` |
+| La cuenta está dada de baja | `403 user_disabled` | — |
+| El email está vinculado a **otra** cuenta de Google | `409 data_conflict`: no se re-vincula, lo resuelve un admin | — |
+
+- **El email se compara sin mayúsculas:** Google lo devuelve en minúsculas, y un usuario cargado a mano puede tenerlas.
+- **`newUser: true`** le avisa al front que puede mostrar el cuestionario de preferencias.
+- **Configuración:** `GOOGLE_CLIENT_ID`, el client id de OAuth del proyecto de Google Cloud (no es secreto). Sin la variable, el servicio arranca, loguea un `WARN` y el endpoint responde `503`. `dev-login` sigue andando.
+
 ## Firma del JWT
 
-El auth-service emite el JWT de TicketYa con `JwtTokenProvider`, firmado con RS256 (diseño en el [RFC-001](../rfc/RFC-001-auth-modality.md)). Hoy lo usa `dev-login`; el login con Google llega después. `AuthService.issueTokenFor` arma el token: el organizador lleva su `organizationId` y el personal de acceso todavía no, hasta que exista `AccessStaff` (#19).
+El auth-service emite el JWT de TicketYa con `JwtTokenProvider`, firmado con RS256. Lo usan el login con Google y `dev-login`. `AuthService.issueTokenFor` arma el token: el organizador lleva su `organizationId` y el personal de acceso todavía no, hasta que exista `AccessStaff` (#19).
 
 | Claim | Valor |
 |---|---|

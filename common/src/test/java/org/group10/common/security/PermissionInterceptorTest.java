@@ -130,6 +130,28 @@ class PermissionInterceptorTest {
     }
 
     @Test
+    void optionalCaller_withoutIdentity_isEmptyAndTheEndpointStaysPublic() throws Exception {
+        mockMvc.perform(get("/api/things/1"))
+                .andExpect(status().isOk())
+                .andExpect(content().string("anonymous"));
+    }
+
+    @Test
+    void optionalCaller_withIdentity_isTheCallerFromTheHeaders() throws Exception {
+        mockMvc.perform(get("/api/things/1").header(GatewayHeaders.USER_ID, "2")
+                        .header(GatewayHeaders.PERMISSIONS, "EVENT_MANAGE"))
+                .andExpect(status().isOk())
+                .andExpect(content().string("user 2"));
+    }
+
+    @Test
+    void optionalCaller_userHeaderIsNotAnId_returns401() throws Exception {
+        mockMvc.perform(get("/api/things/1").header(GatewayHeaders.USER_ID, "abc"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("unauthorized"));
+    }
+
+    @Test
     void internalRoute_isNotCheckedByTheInterceptor() throws Exception {
         mockMvc.perform(post("/internal/things"))
                 .andExpect(status().isOk())

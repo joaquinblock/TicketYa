@@ -96,6 +96,19 @@ class AuthServiceTest {
     }
 
     @Test
+    void issueTokenFor_organizerOfADeletedOrganization_tokenHasNoOrganization() {
+        when(userRepository.findWithRoleAndPermissionsById(2L))
+                .thenReturn(Optional.of(user(2L, "ORGANIZER", null, "EVENT_MANAGE")));
+        Organizer organizer = organizer(2L, 1L, null);
+        organizer.getOrganization().setDeletedAt(LocalDateTime.of(2026, 1, 1, 0, 0));
+        when(organizerRepository.findWithUserAndOrganizationByUserId(2L)).thenReturn(Optional.of(organizer));
+
+        authService.issueTokenFor(2L);
+
+        assertThat(issuedSubject().organizationId()).isNull();
+    }
+
+    @Test
     void issueTokenFor_missingUser_throwsUserNotFoundWithoutIssuing() {
         when(userRepository.findWithRoleAndPermissionsById(99L)).thenReturn(Optional.empty());
 

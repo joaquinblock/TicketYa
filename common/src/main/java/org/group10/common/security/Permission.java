@@ -22,5 +22,9 @@ public enum Permission {
     /** Administrar usuarios y roles (rol ADMIN). */
     USER_MANAGE,
     /** Validar el QR en el ingreso (rol ACCESS_STAFF). */
-    TICKET_VALIDATE
+    TICKET_VALIDATE,
+    /** Crear, editar y borrar lugares (rol ADMIN): un organizador es externo a TicketYa y no los da de alta. */
+    VENUE_MANAGE,
+    /** Crear, editar y borrar artistas, equipos y disertantes (roles ORGANIZER y ADMIN). */
+    PARTICIPANT_MANAGE
 }

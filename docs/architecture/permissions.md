@@ -66,6 +66,8 @@ GET /api/users/99/permissions
 | `REPORT_VIEW` | | ✅ | | |
 | `EVENT_ADMIN`, `REFUND_RESOLVE`, `USER_MANAGE` | | | ✅ | |
 | `TICKET_VALIDATE` | | | | ✅ |
+| `VENUE_MANAGE` | | | ✅ | |
+| `PARTICIPANT_MANAGE` | | ✅ | ✅ | |
 
 Usuarios de prueba: `1` cliente, `2` organizador (org `1`), `3` admin, `4` personal de acceso, `5` organizador (org `2`), `6` organizador (org `1`, sin eventos propios).
 
@@ -127,9 +129,9 @@ El resto todavía no tiene `@RequiresPermission`. Los `POST`/`PUT`/`DELETE` de `
 | event-service | `config/WebConfig` | Registra el interceptor para `/api/**` |
 | event-service | `client/AuthClient.getPermissions` | La llamada HTTP |
 | `common` (Entrega 2) | `security/GatewayHeaders` | Los nombres de los headers que pone el gateway |
-| `common` (Entrega 2) | `security/Permission`, `security/RequiresPermission` | El enum con los 9 permisos del `AuthSeeder` y la anotación |
+| `common` (Entrega 2) | `security/Permission`, `security/RequiresPermission` | El enum con los 11 permisos del `AuthSeeder` y la anotación. `AuthSeederTest` falla si el seeder y el enum no coinciden |
 | `common` (Entrega 2) | `security/Caller` | Quién llama, armado con los headers del gateway |
-| `common` (Entrega 2) | `security/PermissionInterceptor`, `security/CallerArgumentResolver` | El chequeo en `preHandle` y el `Caller` como parámetro |
+| `common` (Entrega 2) | `security/PermissionInterceptor`, `security/CallerArgumentResolver` | El chequeo en `preHandle` y el `Caller` (o `Optional<Caller>`) como parámetro. Swagger no los muestra: los arma el servidor |
 | `common` (Entrega 2) | `config/PermissionAutoConfiguration` | Registra los dos en `/api/**` de cada servicio |
 
 ## Con JWT (Épica 9, Entrega 2)
@@ -158,6 +160,7 @@ Cliente ── Bearer JWT ──▶ api-gateway ── X-User-Id, X-User-Role, X
 | `WebConfig` registra el interceptor | `PermissionAutoConfiguration` lo registra en cada servicio que depende de `common` |
 | Falta `X-User-Id` → `400 invalid_parameter` | Falta `X-User-Id` → `401 unauthorized` |
 | `@RequestAttribute` para recibir el `Caller` | `Caller caller` como parámetro (`CallerArgumentResolver`) |
+| Un endpoint público que quiere saber quién llama lee `X-User-Id` opcional | `Optional<Caller> caller`: vacío si no hay usuario (por ejemplo, el detalle de un evento, donde un borrador solo lo ve su organizador) |
 
 **Por qué no `@PreAuthorize`:** Spring lo evalúa al invocar el método, después de leer el body y de `@Valid`. Un usuario sin permiso con un body inválido recibiría `400` en vez de `403`, en contra de la US-AUTH-02. `preHandle` corre antes: el `403` sale primero incluso con JSON roto. Además, como los servicios no validan el token, no necesitan Spring Security (ver *Decisiones de diseño tomadas* en el [RFC-001](../rfc/RFC-001-auth-modality.md)).
 
@@ -194,7 +197,7 @@ Cada request a un endpoint protegido hace **una llamada más al auth-service**. 
 
 | Tema | Detalle |
 |---|---|
-| Lugares | `POST`/`PUT`/`DELETE` de `/api/venues` no están protegidos. Hace falta decidir qué permiso los cubre (p. ej. un `VENUE_MANAGE` para el admin) |
+| Lugares y participantes | Ya existen `VENUE_MANAGE` (solo el admin: un organizador es externo a TicketYa y podría cargar lugares que no existen) y `PARTICIPANT_MANAGE` (organizadores y admin). Falta que event-service los pida en sus endpoints (PR7b) |
 | Delegar la suspensión | Que el creador autorice a otro organizador de su organización a suspender o cancelar su evento. Necesita guardar quién autorizó a quién y cómo se revoca: se dejó afuera |
 | Otros servicios | `RequiresPermission` y `PermissionInterceptor` ya están en `common` (Entrega 2). Falta que cada servicio anote sus endpoints, en su PR de roles |
 | Timeouts | Configurar timeouts (y quizá un reintento) en el grupo `auth-service` de los clients HTTP |

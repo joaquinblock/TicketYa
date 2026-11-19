@@ -136,7 +136,7 @@ class OrderPaymentMySqlIntegrationTest {
         eventId = IDS.incrementAndGet();
         long numberedSector = IDS.incrementAndGet();
         generalSector = IDS.incrementAndGet();
-        int status = client.put().uri("/internal/event-sales/{eventId}", eventId)
+        int status = client.put().uri("/internal/event-sales/{eventId}", eventId).header("X-Internal-Secret", "dev-internal-secret")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("""
                         {"status": "PUBLISHED", "eventName": "Recital", "venueName": "Estadio",

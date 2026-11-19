@@ -53,7 +53,7 @@ Cliente ──Bearer JWT──▶ api-gateway ──X-User-Id, X-User-Role,─�
 **Mitigaciones:**
 - solo se publica el puerto del gateway; los servicios son accesibles únicamente desde la red de Docker;
 - el gateway borra siempre los `X-User-*` que manda el cliente, y un test lo verifica;
-- las llamadas a `/internal/**` llevan además el secreto compartido de la US-PAY-14. Lo que esa historia protege, cobrar y reintegrar, no depende solo de la red.
+- las llamadas a `/internal/**` llevan además el secreto compartido de la US-PAY-14 (`X-Internal-Secret`, en `common`; ver *El secreto entre servicios* en [`payment-service.md`](../architecture/payment-service.md)). Lo que esa historia protege, cobrar y reintegrar, no depende solo de la red.
 
 **Otras consecuencias:**
 - **El gateway pasa a ser crítico:** un error al copiar o al borrar headers afecta a todos los servicios. Por eso sus tests cubren el borrado de headers falsos y cada caso de token inválido.

@@ -51,9 +51,9 @@ sequenceDiagram
     A->>A: valida el token y busca el user por sub
     A-->>F: JWT de TicketYa (rol y permisos)
     F->>G: Authorization: Bearer <JWT>
-    G->>G: valida firma y vencimiento
-    G->>S: Authorization: Bearer <JWT> (sin X-User-* del cliente)
-    S->>S: valida el JWT y aplica @PreAuthorize
+    G->>G: valida firma, iss, aud y vencimiento
+    G->>S: X-User-Id, X-User-Role, X-User-Permissions, X-Organization-Id (sin los X-User-* del cliente)
+    S->>S: PermissionInterceptor arma el Caller con los headers y chequea @RequiresPermission
 ```
 
 ### Qué hay en cada servicio
@@ -65,11 +65,12 @@ sequenceDiagram
 | auth-service | `AuthController`, `AuthService` | `POST /api/auth/google`. `401 invalid_credentials` si el token de Google es inválido o está vencido |
 | api-gateway | `SecurityConfig` | `oauth2ResourceServer().jwt()` con la clave pública. El filtro que valida ya lo trae Spring Security (`BearerTokenAuthenticationFilter`), así que no se escribe uno propio |
 | api-gateway | Handlers de 401 y 403 | Responden `unauthorized` y `forbidden` con `ErrorDto` |
-| api-gateway | `IdentityHeadersFilter` | Borra los `X-User-*` que mande el cliente y reenvía el `Authorization` al servicio, que valida el token por su cuenta |
-| `common` | `SecurityConfig` de resource server | Cada servicio también valida el JWT con la clave pública, así un header falso que llegue por la red interna no alcanza |
-| event-service y demás | `@PreAuthorize` | Reemplaza al `PermissionInterceptor`: los permisos salen del token ya validado |
+| api-gateway | `IdentityHeadersFilter` | Borra los `X-User-*` que mande el cliente y pone `X-User-Id`, `X-User-Role`, `X-User-Permissions` y `X-Organization-Id` sacados del token |
+| `common` | `RequiresPermission`, `PermissionInterceptor`, `Caller` | Se mueven desde event-service. El interceptor arma el `Caller` con los `X-User-*` y chequea la anotación **antes de leer el body**. No valida el token: eso lo hace solo el gateway ([ADR-003](../adr/ADR-003-jwt-validated-only-in-gateway.md)) |
+| event-service y demás | `@RequiresPermission` | Como en la Entrega 1, pero los permisos llegan en `X-User-Permissions`, sin llamar al auth-service |
 
-- **Rutas públicas en el gateway:** `POST /api/auth/google`, `POST /api/auth/dev-login` (solo en `dev`), los `GET` del catálogo (eventos, lugares y participantes), `/docs/**`, swagger y health.
+- **Token opcional en el gateway:** si viene, tiene que ser válido; si no viene, el request pasa sin identidad y cada servicio responde `401` en sus endpoints protegidos.
+- **Rutas públicas:** `POST /api/auth/google`, `POST /api/auth/dev-login` (solo en `dev`), los `GET` del catálogo (eventos, lugares y participantes), `/docs/**`, swagger y health. Son públicas porque sus endpoints no tienen `@RequiresPermission`, no porque figuren en una lista del gateway.
 - **Configuración:** `GOOGLE_CLIENT_ID` y la clave privada van por variable de entorno, nunca en el repo.
 
 ### Riesgos
@@ -96,11 +97,11 @@ Acordadas el 17/11/2026, antes de implementar. La sección *Decisión* queda pen
 
 | Tema | Decisión | Por qué |
 |---|---|---|
-| Dónde se valida el JWT | En el gateway **y** en cada servicio, con la clave pública | La red interna sola no alcanza (US-PAY-14): un servicio no debe confiar en un `X-User-Role` que podría ser falso |
-| Permisos en los servicios | `@PreAuthorize`, en vez del `PermissionInterceptor` | Es lo que pide la US-AUTH-03 y aprovecha el token ya validado |
+| Dónde se valida el JWT | **Solo en el gateway**; los servicios confían en sus headers. ~~En el gateway y en cada servicio~~ (revertida el mismo día) | Un solo lugar con la clave y los validadores, sin distribuir la clave pública a cada servicio. El riesgo de headers falsos por la red interna se acepta y se mitiga: ver el [ADR-003](../adr/ADR-003-jwt-validated-only-in-gateway.md) |
+| Permisos en los servicios | `@RequiresPermission` con el `PermissionInterceptor`, movidos a `common`. ~~`@PreAuthorize`~~ (descartado) | `@PreAuthorize` corre después de leer el body y de `@Valid`, así que un usuario sin permiso con un body inválido recibiría `400` en vez de `403`, en contra de la US-AUTH-02. El interceptor corre en `preHandle`, antes de leer el body: el `403` sale siempre primero, incluso con JSON roto. Además, como el token lo valida solo el gateway, los servicios no necesitan Spring Security |
 | Llamadas entre servicios | Secreto compartido en un header, por variable de entorno | Lo propone la US-PAY-14 y sirve para los jobs, que corren sin usuario. Un JWT de servicio queda como alternativa futura. **Falta definir** si va solo en payment o en todos los `/internal` |
 | Cambios de rol o bajas | Se acepta que el token viejo valga hasta que vence, con un `exp` corto | Consultar a auth en cada request obliga a cambiar el código de todos los servicios y vuelve a acoplarlos |
-| Rutas públicas | Las de la lista de arriba | El catálogo es lo primero que ve alguien que todavía no se registró |
+| Rutas públicas | Las de la lista de arriba, definidas por cada servicio (sin `@RequiresPermission`); el token es opcional en el gateway | El catálogo es lo primero que ve alguien que todavía no se registró. Así la lista no se repite en el gateway |
 | Criterio de la US-AUTH-03 | `invalid_credentials` pasa a significar un ID token de Google inválido, vencido, de otra audiencia o sin email verificado | No hay contraseña |
 | `userId` en rutas y bodies | Se mantienen y se comparan con el del token: si no coinciden, `403 forbidden` | No cambia los contratos ni las colecciones de Postman |
 | Perfil de Docker | El compose corre con `dev`, con `dev-login` activo | Ver el ADR-001 |

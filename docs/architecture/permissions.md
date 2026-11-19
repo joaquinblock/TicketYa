@@ -1,5 +1,7 @@
 # Autorización por permisos
 
+> **Hoy (Entrega 2):** el usuario y sus permisos llegan en los headers que pone el api-gateway a partir del JWT, y cada servicio los chequea con `@RequiresPermission` de `common`, sin llamar al auth-service (ver *Con JWT*). Las secciones *Flujo*, *Errores* y *Costo* describen cómo funcionaba en la Entrega 1.
+>
 > Cómo decide un servicio si el usuario que llama puede usar un endpoint. En la Entrega 1 no hay JWT: el usuario se identifica con el header `X-User-Id` (README, *Modalidad de entrega*: "el usuario se identifica por parámetro o encabezado") y el servicio le pregunta al auth-service qué puede hacer.
 
 ## Idea general
@@ -66,6 +68,8 @@ GET /api/users/99/permissions
 | `REPORT_VIEW` | | ✅ | | |
 | `EVENT_ADMIN`, `REFUND_RESOLVE`, `USER_MANAGE` | | | ✅ | |
 | `TICKET_VALIDATE` | | | | ✅ |
+| `VENUE_MANAGE` | | | ✅ | |
+| `PARTICIPANT_MANAGE` | | ✅ | ✅ | |
 
 Usuarios de prueba: `1` cliente, `2` organizador (org `1`), `3` admin, `4` personal de acceso, `5` organizador (org `2`), `6` organizador (org `1`, sin eventos propios).
 
@@ -79,8 +83,12 @@ Usuarios de prueba: `1` cliente, `2` organizador (org `1`), `3` admin, `4` perso
 | event-service | `PUT /api/events/{id}`, `DELETE /api/events/{id}` | `EVENT_MANAGE` |
 | event-service | `POST /api/events/{id}/publish` | `EVENT_MANAGE` |
 | event-service | `POST /api/events/{id}/cancel`, `/suspend`, `/resume` | `EVENT_ADMIN` **o** `EVENT_MANAGE` (y el service exige que sea el organizador que creó el evento) |
+| event-service | `POST`/`PUT`/`DELETE` de `/api/venues`, sus sectores (`/api/venues/{id}/sectors`) y sus asientos | `VENUE_MANAGE`: solo el admin. Un organizador es externo a TicketYa y podría cargar lugares que no existen |
+| event-service | `POST`/`PUT`/`DELETE` de `/api/participants` | `PARTICIPANT_MANAGE`: organizadores y admin |
 
-El resto todavía no tiene `@RequiresPermission`. Los `POST`/`PUT`/`DELETE` de `/api/venues` y de `/api/participants` quedan sin proteger hasta definir qué permiso los cubre: hoy no existe uno para administrar lugares (ver *Pendiente*).
+Todo lo demás de event-service es público: buscar y ver eventos, lugares, sectores, asientos y participantes. El detalle de un evento recibe un `Optional<Caller>`: un borrador solo lo ve un organizador de su organización.
+
+**La organización sale del token.** Al crear un evento, el organizador ya no la elige: es la de su token (`X-Organization-Id`, que pone el gateway). Al editar, publicar o suspender, se compara con la del evento, sin preguntarle al auth-service. El token solo la lleva si el organizador y su organización están activos.
 
 ## Errores
 
@@ -126,17 +134,58 @@ El resto todavía no tiene `@RequiresPermission`. Los `POST`/`PUT`/`DELETE` de `
 | event-service | `security/PermissionInterceptor` | Lee `X-User-Id`, llama a auth y corta con `403` |
 | event-service | `config/WebConfig` | Registra el interceptor para `/api/**` |
 | event-service | `client/AuthClient.getPermissions` | La llamada HTTP |
+| `common` (Entrega 2) | `security/GatewayHeaders` | Los nombres de los headers que pone el gateway |
+| `common` (Entrega 2) | `security/Permission`, `security/RequiresPermission` | El enum con los 11 permisos del `AuthSeeder` y la anotación. `AuthSeederTest` falla si el seeder y el enum no coinciden |
+| `common` (Entrega 2) | `security/Caller` | Quién llama, armado con los headers del gateway |
+| `common` (Entrega 2) | `security/PermissionInterceptor`, `security/CallerArgumentResolver` | El chequeo en `preHandle` y el `Caller` (o `Optional<Caller>`) como parámetro. Swagger no los muestra: los arma el servidor |
+| `common` (Entrega 2) | `config/PermissionAutoConfiguration` | Registra los dos en `/api/**` de cada servicio |
 
-## Qué cambia con JWT (Épica 9, Entrega 2)
+## Con JWT (Épica 9, Entrega 2)
 
-| Hoy | Con JWT |
+La anotación y el interceptor se quedan, pero se mueven a `common` y **dejan de llamar al auth-service**: los permisos llegan del api-gateway, que es el único que valida el JWT ([ADR-003](../adr/ADR-003-jwt-validated-only-in-gateway.md)).
+
+```
+Cliente ── Bearer JWT ──▶ api-gateway ── X-User-Id, X-User-Role, X-User-Permissions, X-Organization-Id ──▶ servicio
+                          · valida el token                                                   · PermissionInterceptor
+                          · borra los X-User-* del cliente                                    · @RequiresPermission
+```
+
+1. Spring elige el método del controller.
+2. `PermissionInterceptor.preHandle`, **antes de leer el body**:
+    - sin `@RequiresPermission`, deja pasar: el endpoint es público;
+    - arma el `Caller` con los headers del gateway. Sin `X-User-Id`, o con un id que no es número: `401 unauthorized`;
+    - si el `Caller` no tiene ninguno de los permisos: `403 forbidden`.
+3. Recién ahí Spring lee el body y corre `@Valid`: el `400` solo le llega a quien tiene el permiso.
+4. El controller recibe el `Caller` como parámetro y se lo pasa al service, que aplica las reglas de negocio.
+
+| Entrega 1 | Entrega 2 |
 |---|---|
-| `X-User-Id` en cada request | El gateway valida el token y el usuario sale del `sub` |
-| El interceptor pregunta los permisos al auth-service en cada request | Los permisos viajan en el token: no hay llamada |
-| `@RequiresPermission(Permission.EVENT_MANAGE)` | `@PreAuthorize("hasAuthority('EVENT_MANAGE')")` de Spring Security |
-| `PermissionInterceptor` y `WebConfig` | Se borran |
+| `X-User-Id` lo manda el cliente y se confía en él | Lo pone el gateway a partir del `sub` del token, y borra el que mande el cliente |
+| El interceptor pide los permisos al auth-service en cada request | Llegan en `X-User-Permissions`: no hay llamada |
+| `RequiresPermission`, `Permission`, `Caller` y `PermissionInterceptor` en event-service | Los mismos en `org.group10.common.security`, para todos los servicios |
+| `WebConfig` registra el interceptor | `PermissionAutoConfiguration` lo registra en cada servicio que depende de `common` |
+| Falta `X-User-Id` → `400 invalid_parameter` | Falta `X-User-Id` → `401 unauthorized` |
+| `@RequestAttribute` para recibir el `Caller` | `Caller caller` como parámetro (`CallerArgumentResolver`) |
+| Un endpoint público que quiere saber quién llama lee `X-User-Id` opcional | `Optional<Caller> caller`: vacío si no hay usuario (por ejemplo, el detalle de un evento, donde un borrador solo lo ve su organizador) |
 
-La respuesta de `/api/users/{id}/permissions` tiene la forma de los *claims* del token (usuario, rol y permisos), como pide `microservices.md`. Los services no cambian, porque nunca supieron de dónde salía el permiso.
+### Qué hace el api-gateway
+
+`IdentityHeadersFilter` corre antes de rutear cada request:
+
+| El request trae | El gateway |
+|---|---|
+| Sin `Authorization: Bearer` | Lo deja pasar sin identidad. Cada servicio decide: un endpoint con `@RequiresPermission` responde `401` |
+| Un token válido | Pone `X-User-Id` (del `sub`), `X-User-Role`, `X-User-Permissions` (separados por coma) y `X-Organization-Id` (solo si el token lo trae) |
+| Un token con firma inválida, vencido, de otro `iss` u otro `aud`, o `Bearer` sin token | `401 unauthorized`, sin llegar al servicio |
+| Un token, pero el auth-service no responde y no se puede obtener la clave pública | `503 service_unavailable`: el token puede ser válido |
+
+- **Siempre borra los `X-User-*` y `X-Organization-Id` que mande el cliente,** con o sin token y en cualquier combinación de mayúsculas. Un cliente que manda `X-User-Permissions: EVENT_ADMIN` no consigue nada.
+- **La clave pública sale del JWKS del auth-service** (`ticketya.jwt.jwk-set-uri`, por defecto `${AUTH_SERVICE_URL}/.well-known/jwks.json`). Se descarga con el primer token y se vuelve a pedir si llega un `kid` desconocido, por ejemplo si el auth-service se reinició con otra clave efímera.
+- **`X-Organization-Id` ahora sale del token.** En la Entrega 1 lo mandaba el cliente al crear un evento: con el gateway, ese valor se descarta.
+
+**Por qué no `@PreAuthorize`:** Spring lo evalúa al invocar el método, después de leer el body y de `@Valid`. Un usuario sin permiso con un body inválido recibiría `400` en vez de `403`, en contra de la US-AUTH-02. `preHandle` corre antes: el `403` sale primero incluso con JSON roto. Además, como los servicios no validan el token, no necesitan Spring Security (ver *Decisiones de diseño tomadas* en el [RFC-001](../rfc/RFC-001-auth-modality.md)).
+
+**Migración:** event-service ya usa la anotación de `common`: se borraron su paquete `security`, su `WebConfig` y su `AuthClient`. Los demás servicios pasan a la anotación en su PR de roles.
 
 ## Costo
 
@@ -169,8 +218,6 @@ Cada request a un endpoint protegido hace **una llamada más al auth-service**. 
 
 | Tema | Detalle |
 |---|---|
-| Lugares | `POST`/`PUT`/`DELETE` de `/api/venues` no están protegidos. Hace falta decidir qué permiso los cubre (p. ej. un `VENUE_MANAGE` para el admin) |
 | Delegar la suspensión | Que el creador autorice a otro organizador de su organización a suspender o cancelar su evento. Necesita guardar quién autorizó a quién y cómo se revoca: se dejó afuera |
-| Otros servicios | ticket-service y los demás no tienen interceptor. Si lo necesitan, se puede mover `RequiresPermission` y `PermissionInterceptor` a `common` |
-| Timeouts | Configurar timeouts (y quizá un reintento) en el grupo `auth-service` de los clients HTTP |
-| `organizationId` en la respuesta | Ahorraría dos llamadas al crear eventos y permitiría sacar `X-Organization-Id` (ver `event-creation-pending.md`) |
+| Otros servicios | `RequiresPermission` y `PermissionInterceptor` ya están en `common` (Entrega 2). Falta que cada servicio anote sus endpoints, en su PR de roles |
+| Participantes sin dueño | Con `PARTICIPANT_MANAGE`, un organizador puede editar un artista que cargó otra organización. Borrarlo está frenado si se usa en un evento (`participant_in_use`), editarlo no |

@@ -1,5 +1,7 @@
 package org.group10.event.controller;
 
+import org.group10.common.security.Permission;
+import org.group10.common.security.RequiresPermission;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -52,6 +54,11 @@ public class SectorController {
     }
 
     @PostMapping
+    @RequiresPermission(Permission.VENUE_MANAGE)
+    @ApiResponse(responseCode = "401", description = "unauthorized: sin token",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "403", description = "forbidden: sin VENUE_MANAGE",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Crear un sector", description = """
             Numerado: sin `capacity`; puede traer `rows` para crear los asientos en el mismo paso. \
@@ -68,6 +75,11 @@ public class SectorController {
     }
 
     @PutMapping("/{sectorId}")
+    @RequiresPermission(Permission.VENUE_MANAGE)
+    @ApiResponse(responseCode = "401", description = "unauthorized: sin token",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "403", description = "forbidden: sin VENUE_MANAGE",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @Operation(summary = "Modificar un sector", description = """
             Cambia el nombre y, en los no numerados, la capacidad. El tipo no se puede cambiar. \
             La capacidad queda fija cuando el sector se usa en un evento que ya salió de borrador.""")
@@ -84,6 +96,11 @@ public class SectorController {
     }
 
     @DeleteMapping("/{sectorId}")
+    @RequiresPermission(Permission.VENUE_MANAGE)
+    @ApiResponse(responseCode = "401", description = "unauthorized: sin token",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "403", description = "forbidden: sin VENUE_MANAGE",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Eliminar un sector", description = "Borra también sus asientos. "
             + "No se puede si algún evento, en cualquier estado, vende el sector.")

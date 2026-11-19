@@ -20,6 +20,16 @@
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-gateway-server-webmvc</artifactId>
         </dependency>
+        <!-- GatewayHeaders y ErrorDto: los mismos nombres y formato de error que los servicios -->
+        <dependency>
+            <groupId>org.group10</groupId>
+            <artifactId>common</artifactId>
+        </dependency>
+        <!-- Valida el JWT de TicketYa (firma, iss, aud, exp) sin activar la cadena de filtros de Spring Security -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-oauth2-jose</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

@@ -1,5 +1,7 @@
 package org.group10.event.controller;
 
+import org.group10.common.security.Permission;
+import org.group10.common.security.RequiresPermission;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -54,6 +56,11 @@ public class VenueController {
     }
 
     @PostMapping
+    @RequiresPermission(Permission.VENUE_MANAGE)
+    @ApiResponse(responseCode = "401", description = "unauthorized: sin token",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "403", description = "forbidden: sin VENUE_MANAGE",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Crear un lugar", description = "Se crea sin sectores; se agregan con /venues/{id}/sectors.")
     @ApiResponse(responseCode = "201", description = "Lugar creado")
@@ -62,6 +69,11 @@ public class VenueController {
     }
 
     @PutMapping("/{id}")
+    @RequiresPermission(Permission.VENUE_MANAGE)
+    @ApiResponse(responseCode = "401", description = "unauthorized: sin token",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "403", description = "forbidden: sin VENUE_MANAGE",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @Operation(summary = "Modificar un lugar", description = "Reemplaza nombre, dirección, ciudad y coordenadas.")
     @ApiResponse(responseCode = "200", description = "Lugar modificado")
     @ApiResponse(responseCode = "404", description = "venue_not_found",
@@ -71,6 +83,11 @@ public class VenueController {
     }
 
     @DeleteMapping("/{id}")
+    @RequiresPermission(Permission.VENUE_MANAGE)
+    @ApiResponse(responseCode = "401", description = "unauthorized: sin token",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "403", description = "forbidden: sin VENUE_MANAGE",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Eliminar un lugar", description = "Borra también sus sectores y asientos. "
             + "No se puede si el lugar tiene eventos, en cualquier estado.")

@@ -1,5 +1,7 @@
 package org.group10.auth.security;
 
+import com.nimbusds.jose.jwk.JWKSet;
+import com.nimbusds.jose.jwk.RSAKey;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -79,6 +81,29 @@ class JwtKeyConfigTest {
 
                     assertThat(jwt.getSubject()).isEqualTo("7");
                     assertThat(jwt.getClaimAsString("iss")).isEqualTo("ticketya-auth");
+                });
+    }
+
+    @Test
+    void context_publicJwkSet_verifiesTheTokensAndMatchesTheirKid() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(JwtKeyConfig.class)
+                .withPropertyValues(
+                        "ticketya.jwt.issuer=ticketya-auth",
+                        "ticketya.jwt.audience=ticketya-api",
+                        "ticketya.jwt.ttl=30m")
+                .run(context -> {
+                    String token = context.getBean(JwtTokenProvider.class)
+                            .issue(new TokenSubject(7L, "CLIENT", List.of(), null));
+                    JWKSet published = JWKSet.parse(context.getBean(JWKSet.class).toString());
+                    RSAKey key = published.getKeys().getFirst().toRSAKey();
+
+                    Jwt jwt = NimbusJwtDecoder.withPublicKey(key.toRSAPublicKey()).build().decode(token);
+
+                    assertThat(published.getKeys()).hasSize(1);
+                    assertThat(key.isPrivate()).isFalse();
+                    assertThat(key.getKeyID()).isNotBlank();
+                    assertThat(jwt.getHeaders()).containsEntry("kid", key.getKeyID());
                 });
     }
 

@@ -19,10 +19,9 @@ import org.group10.event.dto.EventResumeRequest;
 import org.group10.event.dto.EventSearchRequest;
 import org.group10.event.dto.EventSectorsRequest;
 import org.group10.event.dto.ParticipantResponse;
-import org.group10.event.security.Caller;
-import org.group10.event.security.Permission;
-import org.group10.event.security.PermissionInterceptor;
-import org.group10.event.security.RequiresPermission;
+import org.group10.common.security.Caller;
+import org.group10.common.security.Permission;
+import org.group10.common.security.RequiresPermission;
 import org.group10.event.service.EventSearchService;
 import org.group10.event.service.EventService;
 import org.springframework.http.HttpStatus;
@@ -31,28 +30,24 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
- * En la Entrega 1 no hay JWT: quien llama se identifica con los headers {@value #USER_HEADER} y
- * {@value #ORGANIZATION_HEADER}. {@code PermissionInterceptor} revisa los permisos de {@value #USER_HEADER} y el
- * service valida la organización y el organizador contra el auth-service.
+ * Quién llama llega como {@link Caller}, armado con los headers que pone el api-gateway a partir del JWT (ADR-003):
+ * usuario, permisos y organización. {@code @RequiresPermission} se chequea antes de leer el body. Ningún endpoint
+ * le pregunta nada al auth-service.
  */
 @RestController
 @RequestMapping("/api/events")
 @RequiredArgsConstructor
 @Tag(name = "Eventos", description = "Alta y gestión de eventos")
 public class EventController {
-
-    static final String USER_HEADER = PermissionInterceptor.USER_HEADER;
-    static final String ORGANIZATION_HEADER = "X-Organization-Id";
 
     private final EventService eventService;
     private final EventSearchService eventSearchService;
@@ -61,26 +56,18 @@ public class EventController {
     @ResponseStatus(HttpStatus.CREATED)
     @RequiresPermission(Permission.EVENT_MANAGE)
     @Operation(summary = "Crear un evento", description = """
-            Se crea en `DRAFT`, sin sectores ni participantes. El usuario de `X-User-Id` necesita el permiso \
-            `EVENT_MANAGE` y tiene que ser un organizador activo de la organización de `X-Organization-Id`. \
-            El permiso se revisa antes que el body: sin permiso la respuesta es 403 aunque el body sea inválido.""")
+            Se crea en `DRAFT`, sin sectores ni participantes, para la organización del organizador: la de su \
+            token, no se elige. Necesita el permiso `EVENT_MANAGE`, que se revisa antes que el body: sin permiso \
+            la respuesta es 403 aunque el body sea inválido.""")
     @ApiResponse(responseCode = "201", description = "Evento creado en borrador")
     @ApiResponse(responseCode = "400", description = "validation_error / invalid_parameter / invalid_event_configuration",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "403", description = "forbidden (sin EVENT_MANAGE) / organizer_not_in_organization",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    @ApiResponse(responseCode = "404",
-            description = "user_not_found / venue_not_found / organization_not_found / organizer_not_found",
+    @ApiResponse(responseCode = "404", description = "venue_not_found",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    @ApiResponse(responseCode = "503", description = "service_unavailable: el auth-service no responde",
-            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    public EventResponse create(
-            @Parameter(description = "Organización dueña del evento", example = "1")
-            @RequestHeader(ORGANIZATION_HEADER) Long organizationId,
-            @Parameter(description = "Organizador que lo crea (id de usuario)", example = "2")
-            @RequestHeader(USER_HEADER) Long organizerId,
-            @Valid @RequestBody EventCreateRequest request) {
-        return eventService.create(organizationId, organizerId, request);
+    public EventResponse create(Caller caller, @Valid @RequestBody EventCreateRequest request) {
+        return eventService.create(caller, request);
     }
 
     @PutMapping("/{id}/participants")
@@ -94,18 +81,13 @@ public class EventController {
     @ApiResponse(responseCode = "403", description = "forbidden (sin EVENT_MANAGE) / organizer_not_in_organization",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "404", description = "event_not_found / participant_not_found (con missingIds en "
-            + "detail) / user_not_found / organizer_not_found",
+            + "detail)",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "409", description = "event_not_editable: el evento no está en DRAFT",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    @ApiResponse(responseCode = "503", description = "service_unavailable: el auth-service no responde",
-            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    public List<ParticipantResponse> replaceParticipants(
-            @PathVariable Long id,
-            @Parameter(description = "Organizador que hace el cambio (id de usuario)", example = "2")
-            @RequestHeader(USER_HEADER) Long organizerId,
-            @Valid @RequestBody EventParticipantsRequest request) {
-        return eventService.replaceParticipants(id, organizerId, request);
+    public List<ParticipantResponse> replaceParticipants(@PathVariable Long id, Caller caller,
+                                                         @Valid @RequestBody EventParticipantsRequest request) {
+        return eventService.replaceParticipants(id, caller, request);
     }
 
     @GetMapping
@@ -121,17 +103,12 @@ public class EventController {
 
     @GetMapping("/{id}")
     @Operation(summary = "Ver un evento", description = """
-            Público, en cualquier estado salvo `DRAFT`: trae el lugar, los sectores que vende con su precio y             capacidad, los participantes y la capacidad total. Un borrador solo lo ve un organizador de su             organización, con `X-User-Id`; para cualquier otro da 404, igual que un id que no existe.""")
+            Público, en cualquier estado salvo `DRAFT`: trae el lugar, los sectores que vende con su precio y             capacidad, los participantes y la capacidad total. Un borrador solo lo ve un organizador de su             organización, con su token; para cualquier otro da 404, igual que un id que no existe.""")
     @ApiResponse(responseCode = "200", description = "Evento encontrado")
     @ApiResponse(responseCode = "404", description = "event_not_found (no existe, o es un borrador de otra organización)",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    @ApiResponse(responseCode = "503", description = "service_unavailable: el auth-service no responde (solo al pedir un borrador)",
-            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    public EventDetailResponse findById(
-            @PathVariable Long id,
-            @Parameter(description = "Opcional: solo hace falta para ver un borrador", example = "2")
-            @RequestHeader(value = USER_HEADER, required = false) Long userId) {
-        return eventService.findById(id, userId);
+    public EventDetailResponse findById(@PathVariable Long id, Optional<Caller> caller) {
+        return eventService.findById(id, caller);
     }
 
     @PutMapping("/{id}")
@@ -143,16 +120,15 @@ public class EventController {
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "403", description = "forbidden (sin EVENT_MANAGE) / organizer_not_in_organization",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    @ApiResponse(responseCode = "404", description = "event_not_found / venue_not_found / user_not_found / organizer_not_found",
+    @ApiResponse(responseCode = "404", description = "event_not_found / venue_not_found",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "409", description = "event_not_editable: el evento no está en DRAFT",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     public EventDetailResponse update(
             @PathVariable Long id,
-            @Parameter(description = "Organizador que hace el cambio (id de usuario)", example = "2")
-            @RequestHeader(USER_HEADER) Long organizerId,
+            Caller caller,
             @Valid @RequestBody EventCreateRequest request) {
-        return eventService.update(id, organizerId, request);
+        return eventService.update(id, caller, request);
     }
 
     @PutMapping("/{id}/sectors")
@@ -166,16 +142,15 @@ public class EventController {
     @ApiResponse(responseCode = "403", description = "forbidden (sin EVENT_MANAGE) / organizer_not_in_organization",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "404", description = "event_not_found / sector_not_found (sectores que no son del lugar, "
-            + "en detail.missingIds) / user_not_found / organizer_not_found",
+            + "en detail.missingIds)",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "409", description = "event_not_editable: el evento no está en DRAFT",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     public EventDetailResponse replaceSectors(
             @PathVariable Long id,
-            @Parameter(description = "Organizador que hace el cambio (id de usuario)", example = "2")
-            @RequestHeader(USER_HEADER) Long organizerId,
+            Caller caller,
             @Valid @RequestBody EventSectorsRequest request) {
-        return eventService.replaceSectors(id, organizerId, request);
+        return eventService.replaceSectors(id, caller, request);
     }
 
     @DeleteMapping("/{id}")
@@ -186,15 +161,14 @@ public class EventController {
     @ApiResponse(responseCode = "204", description = "Evento borrado")
     @ApiResponse(responseCode = "403", description = "forbidden (sin EVENT_MANAGE) / organizer_not_in_organization",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    @ApiResponse(responseCode = "404", description = "event_not_found / user_not_found / organizer_not_found",
+    @ApiResponse(responseCode = "404", description = "event_not_found",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "409", description = "event_not_editable: el evento no está en DRAFT",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     public void delete(
             @PathVariable Long id,
-            @Parameter(description = "Organizador que lo borra (id de usuario)", example = "2")
-            @RequestHeader(USER_HEADER) Long organizerId) {
-        eventService.delete(id, organizerId);
+            Caller caller) {
+        eventService.delete(id, caller);
     }
 
     @PostMapping("/{id}/publish")
@@ -204,16 +178,15 @@ public class EventController {
     @ApiResponse(responseCode = "200", description = "Evento publicado")
     @ApiResponse(responseCode = "403", description = "forbidden (sin EVENT_MANAGE) / organizer_not_in_organization",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    @ApiResponse(responseCode = "404", description = "event_not_found / user_not_found / organizer_not_found",
+    @ApiResponse(responseCode = "404", description = "event_not_found",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "409", description = "invalid_status_transition (no es un borrador) / "
             + "event_not_publishable (con detail.problems)",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     public EventDetailResponse publish(
             @PathVariable Long id,
-            @Parameter(description = "Organizador que lo publica (id de usuario)", example = "2")
-            @RequestHeader(USER_HEADER) Long organizerId) {
-        return eventService.publish(id, organizerId);
+            Caller caller) {
+        return eventService.publish(id, caller);
     }
 
     @PostMapping("/{id}/cancel")
@@ -224,15 +197,13 @@ public class EventController {
     @ApiResponse(responseCode = "403", description = "forbidden (sin EVENT_ADMIN ni EVENT_MANAGE) / not_event_creator / "
             + "organizer_not_in_organization",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    @ApiResponse(responseCode = "404", description = "event_not_found / user_not_found / organizer_not_found",
+    @ApiResponse(responseCode = "404", description = "event_not_found",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "409", description = "invalid_status_transition: es un borrador (se borra) o ya terminó",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     public EventDetailResponse cancel(
             @PathVariable Long id,
-            @Parameter(description = "Administrador u organizador que creó el evento (id de usuario)", example = "3")
-            @RequestHeader(USER_HEADER) Long userId,
-            @Parameter(hidden = true) @RequestAttribute(PermissionInterceptor.CALLER_ATTRIBUTE) Caller caller) {
+            Caller caller) {
         return eventService.cancel(id, caller);
     }
 
@@ -244,15 +215,13 @@ public class EventController {
     @ApiResponse(responseCode = "403", description = "forbidden (sin EVENT_ADMIN ni EVENT_MANAGE) / not_event_creator / "
             + "organizer_not_in_organization",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    @ApiResponse(responseCode = "404", description = "event_not_found / user_not_found / organizer_not_found",
+    @ApiResponse(responseCode = "404", description = "event_not_found",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "409", description = "invalid_status_transition: es un borrador, o está cancelado o finalizado",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     public EventDetailResponse suspend(
             @PathVariable Long id,
-            @Parameter(description = "Administrador u organizador que creó el evento (id de usuario)", example = "3")
-            @RequestHeader(USER_HEADER) Long userId,
-            @Parameter(hidden = true) @RequestAttribute(PermissionInterceptor.CALLER_ATTRIBUTE) Caller caller) {
+            Caller caller) {
         return eventService.suspend(id, caller);
     }
 
@@ -267,15 +236,13 @@ public class EventController {
     @ApiResponse(responseCode = "403", description = "forbidden (sin EVENT_ADMIN ni EVENT_MANAGE) / not_event_creator / "
             + "organizer_not_in_organization",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    @ApiResponse(responseCode = "404", description = "event_not_found / user_not_found / organizer_not_found",
+    @ApiResponse(responseCode = "404", description = "event_not_found",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "409", description = "invalid_status_transition: no está suspendido",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     public EventDetailResponse resume(
             @PathVariable Long id,
-            @Parameter(description = "Administrador u organizador que creó el evento (id de usuario)", example = "3")
-            @RequestHeader(USER_HEADER) Long userId,
-            @Parameter(hidden = true) @RequestAttribute(PermissionInterceptor.CALLER_ATTRIBUTE) Caller caller,
+            Caller caller,
             @Valid @RequestBody(required = false) EventResumeRequest request) {
         return eventService.resume(id, caller, request);
     }

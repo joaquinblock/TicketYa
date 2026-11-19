@@ -1,5 +1,7 @@
 package org.group10.event.controller;
 
+import org.group10.common.security.Permission;
+import org.group10.common.security.RequiresPermission;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -28,8 +30,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * Like {@code VenueController}, it has no {@code @RequiresPermission} yet: there is no permission for managing
- * the catalog (see {@code permissions.md}, "Pendiente").
+ * Reading the participants is public. Creating, editing and deleting them needs {@code PARTICIPANT_MANAGE}, which
+ * organizers and admins have: an organizer loads the artists, teams and speakers of their events.
  */
 @RestController
 @RequestMapping("/api/participants")
@@ -63,6 +65,11 @@ public class ParticipantController {
     }
 
     @PostMapping
+    @RequiresPermission(Permission.PARTICIPANT_MANAGE)
+    @ApiResponse(responseCode = "401", description = "unauthorized: sin token",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "403", description = "forbidden: sin PARTICIPANT_MANAGE",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Crear un participante", description = "El nombre y el tipo no se pueden repetir, sin "
             + "distinguir mayúsculas.")
@@ -76,6 +83,11 @@ public class ParticipantController {
     }
 
     @PutMapping("/{id}")
+    @RequiresPermission(Permission.PARTICIPANT_MANAGE)
+    @ApiResponse(responseCode = "401", description = "unauthorized: sin token",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "403", description = "forbidden: sin PARTICIPANT_MANAGE",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @Operation(summary = "Modificar un participante", description = "Reemplaza nombre y tipo. Los eventos que lo "
             + "tienen lo siguen teniendo, con los datos nuevos.")
     @ApiResponse(responseCode = "200", description = "Participante modificado")
@@ -90,6 +102,11 @@ public class ParticipantController {
     }
 
     @DeleteMapping("/{id}")
+    @RequiresPermission(Permission.PARTICIPANT_MANAGE)
+    @ApiResponse(responseCode = "401", description = "unauthorized: sin token",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "403", description = "forbidden: sin PARTICIPANT_MANAGE",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Eliminar un participante", description = "Lo borra definitivamente. No se puede si está en "
             + "algún evento, en cualquier estado.")

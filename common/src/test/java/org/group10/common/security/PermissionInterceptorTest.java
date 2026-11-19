@@ -153,7 +153,7 @@ class PermissionInterceptorTest {
 
     @Test
     void internalRoute_isNotCheckedByTheInterceptor() throws Exception {
-        mockMvc.perform(post("/internal/things"))
+        mockMvc.perform(post("/internal/things").header("X-Internal-Secret", "dev-internal-secret"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("internal"));
     }

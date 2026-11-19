@@ -61,9 +61,12 @@ Los consume el event-service con `AuthClient`. Swagger: `/swagger-ui.html` en el
 |---|---|---|---|
 | `GET` | `/api/organizations/{id}` | Una organización **activa** | 200 |
 | `GET` | `/api/organizers/{userId}` | Un organizador **activo** con el id de su organización | 200 |
-| `GET` | `/api/users/{id}/permissions` | Rol y permisos de un usuario **activo**. Lo usa `PermissionInterceptor` (ver [`permissions.md`](permissions.md)) | 200 |
+| `GET` | `/api/users/{id}/permissions` | Rol y permisos de un usuario **activo**. **Solo el admin** (`USER_MANAGE`): los servicios ya no lo usan para autorizar | 200 |
+| `POST` | `/api/organizations/{id}/organizers` | **Solo el admin.** Hace organizador de la organización a un **cliente**: su rol pasa a `ORGANIZER` desde su próximo token. 409 si ya organiza o no es cliente | 201 |
+| `DELETE` | `/api/organizations/{id}/organizers/{userId}` | **Solo el admin.** Deja de organizar para esa organización y vuelve a ser cliente. Sus eventos siguen siendo de la organización | 204 |
 | `POST` | `/api/auth/google` | Canjea el ID token de Google por el JWT de TicketYa. Login y registro son lo mismo (ver *Login con Google*) | 200 |
 | `POST` | `/api/auth/dev-login` | JWT de un usuario **activo**, sin Google. **Solo con el perfil `dev`**: fuera de él da 404 (ver [ADR-002](../adr/ADR-002-dev-login.md)) | 200 |
+| `GET` | `/.well-known/jwks.json` | Clave pública para verificar los JWT. La usa el api-gateway, directo contra el servicio | 200 |
 
 ```http
 GET /api/organizations/1

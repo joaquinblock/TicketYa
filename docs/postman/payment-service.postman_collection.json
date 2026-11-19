@@ -512,6 +512,10 @@
           "request": {
             "method": "GET",
             "description": "Usa los pagos de la orden 2 que carga PaymentSeeder.",
+            "header": [
+              { "key": "X-User-Id", "value": "3", "description": "Directo al servicio, sin gateway: simula los headers que el gateway pone para el admin (usuario 3)" },
+              { "key": "X-User-Permissions", "value": "REFUND_RESOLVE" }
+            ],
             "url": "{{paymentUrl}}/api/payments?orderId={{orderWithPaymentsId}}"
           }
         },
@@ -538,6 +542,10 @@
           ] } }],
           "request": {
             "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "3", "description": "Directo al servicio, sin gateway: simula los headers que el gateway pone para el admin (usuario 3)" },
+              { "key": "X-User-Permissions", "value": "REFUND_RESOLVE" }
+            ],
             "url": "{{paymentUrl}}/api/payments?orderId=999999999"
           }
         },
@@ -551,6 +559,10 @@
           ] } }],
           "request": {
             "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "3", "description": "Directo al servicio, sin gateway: simula los headers que el gateway pone para el admin (usuario 3)" },
+              { "key": "X-User-Permissions", "value": "REFUND_RESOLVE" }
+            ],
             "url": "{{paymentUrl}}/api/payments"
           }
         },
@@ -564,6 +576,10 @@
           ] } }],
           "request": {
             "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "3", "description": "Directo al servicio, sin gateway: simula los headers que el gateway pone para el admin (usuario 3)" },
+              { "key": "X-User-Permissions", "value": "REFUND_RESOLVE" }
+            ],
             "url": "{{paymentUrl}}/api/payments?orderId=abc"
           }
         },
@@ -577,6 +593,10 @@
           ] } }],
           "request": {
             "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "3", "description": "Directo al servicio, sin gateway: simula los headers que el gateway pone para el admin (usuario 3)" },
+              { "key": "X-User-Permissions", "value": "REFUND_RESOLVE" }
+            ],
             "url": "{{paymentUrl}}/api/payments?orderId=0"
           }
         }

@@ -25,7 +25,7 @@
   "item": [
     {
       "name": "Login con Google",
-      "description": "POST /api/auth/google canjea el ID token de Google por el JWT de TicketYa. Un ID token real se obtiene con Google Sign-In (la página mínima, PR5c); acá van los casos que no lo necesitan. Sin GOOGLE_CLIENT_ID configurado, cualquier token responde 503.",
+      "description": "POST /api/auth/google canjea el ID token de Google por el JWT de TicketYa. Para entrar con una cuenta real, abrí http://localhost:8081/login (perfil dev): muestra el JWT de TicketYa para copiarlo. Acá van los casos que no necesitan Google. Sin GOOGLE_CLIENT_ID configurado, cualquier token responde 503.",
       "item": [
         {
           "name": "Sin idToken",

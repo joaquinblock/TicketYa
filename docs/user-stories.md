@@ -452,16 +452,7 @@ Servicio: ticket-service · Involucra: payment-service · Consigna: NF · Épica
 
 ### US-TKT-24: Publicar compras y cancelaciones
 
-Como cliente quiero enterarme cuando se confirma mi compra o se cancela un evento para saber qué pasó con mis entradas.
-
-Servicio: ticket-service · Involucra: notification-service, recommendation-service · Consigna: 10, 11 · Épica: #8 · Entrega 2
-
-**Criterios de aceptación**
-- Al confirmarse una compra y al reintegrarse las entradas de un evento cancelado, se avisa para que se notifique al cliente.
-- Si el aviso no se puede enviar, la compra o la cancelación no falla y queda registrado en el log centralizado.
-- Un aviso repetido se puede detectar para no notificar dos veces.
-
-**Notas técnicas:** mensaje en RabbitMQ después de confirmar la transacción, con identificadores para descartar duplicados. También lo consume el recommendation-service.
+Historia y criterios de aceptación: [`stories/67-publicar-compras.md`](stories/67-publicar-compras.md).
 
 ### US-TKT-25: Exponer el historial de compras
 
@@ -886,16 +877,7 @@ Servicio: queue-service · Involucra: event-service, ticket-service · Sirve a: 
 
 ### US-NOT-01: Recibir la confirmación de la compra
 
-Como cliente quiero recibir un aviso cuando se confirma mi compra, con mis entradas.
-
-Servicio: notification-service · Involucra: ticket-service, auth-service · Consigna: 11 · Épica: #8 · Entrega 2
-
-**Criterios de aceptación**
-- Al pagarse una orden, el cliente recibe un email (o push) con el evento y sus entradas.
-- Si el envío falla, la compra no se ve afectada y el envío se reintenta.
-- Un aviso de la misma compra no se envía dos veces.
-
-**Notas técnicas:** consume el evento de compra que publica el ticket-service (US-TKT-24).
+Historia y criterios de aceptación: [`stories/152-confirmacion-de-compra.md`](stories/152-confirmacion-de-compra.md).
 
 ### US-NOT-02: Enterarme si un evento se cancela o cambia
 

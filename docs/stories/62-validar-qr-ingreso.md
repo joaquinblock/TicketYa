@@ -1,7 +1,7 @@
 # 62: US-TKT-19: Validar el QR en el ingreso
 
 **Tipo:** Story
-**Estado:** borrador
+**Estado:** aprobado
 **Funcionalidad:** Épica 7: Fila virtual y control de acceso con QR (#7)
 
 Servicio: ticket-service · Involucra: auth-service · Consigna: 8 · Entrega 2
@@ -47,7 +47,9 @@ Las entradas pagadas quedan `ISSUED` con un QR único (US-TKT-09), pero nadie la
 - Asignar el personal al evento: es la US-AUTH-04 (#148).
 
 ## Notas técnicas
-`POST /api/events/{eventId}/tickets/validate` con body `{ "qrCode": "..." }`. `@Version` en `ticket`: un conflicto de bloqueo optimista se traduce a `ticket_already_used`.
+`POST /api/tickets/check-in` con body `{ "eventId": 1, "qrCode": "..." }`. Dos escaneos a la vez se resuelven con un `update` condicional (`where status = ISSUED`): el que recibe 0 filas responde `ticket_already_used`.
+
+CA1, CA2, CA3 y CA6 ya están en `main` (#150). Faltan CA4 y CA5, que llegan con la US-AUTH-04 (#148).
 
 ## Definition of Done
 - [ ] Cada criterio tiene un test que pasa

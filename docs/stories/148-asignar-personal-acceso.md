@@ -1,7 +1,7 @@
 # 148: US-AUTH-04: Asignar personal de acceso a un evento
 
 **Tipo:** Story
-**Estado:** borrador
+**Estado:** aprobado
 **Funcionalidad:** Épica 7: Fila virtual y control de acceso con QR (#7)
 
 Servicio: auth-service · Involucra: event-service, ticket-service · Sirve a: US-TKT-19 (#62) · Consigna: 8 · Entrega 2

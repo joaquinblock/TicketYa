@@ -1,7 +1,7 @@
 # 147: US-QUE-01: Hacer la fila virtual en un evento de alta demanda
 
 **Tipo:** Story
-**Estado:** borrador
+**Estado:** aprobado
 **Funcionalidad:** Épica 7: Fila virtual y control de acceso con QR (#7)
 
 Servicio: queue-service · Involucra: event-service, ticket-service · Sirve a: US-TKT-21 (#64) · Consigna: 6 · Entrega 2

@@ -1,7 +1,7 @@
 # 64: US-TKT-21: Exigir el turno en eventos de alta demanda
 
 **Tipo:** Story
-**Estado:** borrador
+**Estado:** aprobado
 **Funcionalidad:** Épica 7: Fila virtual y control de acceso con QR (#7)
 
 Servicio: ticket-service · Involucra: queue-service, api-gateway · Consigna: 6 · Entrega 2

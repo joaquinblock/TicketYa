@@ -18,6 +18,12 @@ spring:
     scheduling:
       pool:
         size: 3
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:ticketya}
+    password: ${RABBITMQ_PASSWORD:ticketya}
+    connection-timeout: 2s
   docker:
     compose:
       file: compose.yaml

@@ -1,7 +1,11 @@
 package org.group10.notification.service;
 
+import jakarta.mail.BodyPart;
+import jakarta.mail.Multipart;
+import jakarta.mail.Part;
 import jakarta.mail.Session;
 import jakarta.mail.internet.InternetAddress;
+import jakarta.mail.internet.MimeBodyPart;
 import jakarta.mail.internet.MimeMessage;
 import org.group10.notification.client.AuthClient;
 import org.group10.notification.client.TicketClient;
@@ -24,6 +28,7 @@ import org.springframework.web.client.ResourceAccessException;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 
@@ -51,12 +56,12 @@ class PurchaseMailServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new PurchaseMailService(ticketClient, authClient, new PurchaseMailComposer(), mailSender,
-                "no-reply@ticketya.com");
+        service = new PurchaseMailService(ticketClient, authClient, new PurchaseMailComposer(), new QrCodeGenerator(),
+                mailSender, "no-reply@ticketya.com");
     }
 
     @Test
-    void send_paidOrderAndActiveUser_sendsAnHtmlMailToTheBuyer() throws Exception {
+    void send_paidOrderAndActiveUser_sendsAnHtmlMailToTheBuyerWithTheQrImageOfEachTicket() throws Exception {
         when(ticketClient.findPaidOrder(10L)).thenReturn(paidOrder());
         when(authClient.findContact(1L)).thenReturn(new UserContact(1L, "client@ticketya.com", "Juan", "Pérez"));
 
@@ -66,8 +71,19 @@ class PurchaseMailServiceTest {
         assertThat(message.getAllRecipients()).containsExactly(new InternetAddress("client@ticketya.com"));
         assertThat(message.getFrom()).containsExactly(new InternetAddress("no-reply@ticketya.com"));
         assertThat(message.getSubject()).isEqualTo("Tus entradas para Los Serranos en vivo");
-        assertThat(message.getContentType()).startsWith("text/html");
-        assertThat((String) message.getContent()).contains("¡Gracias por tu compra, Juan!").contains("qr-uno");
+
+        List<String> htmls = new ArrayList<>();
+        List<String> imageIds = new ArrayList<>();
+        for (BodyPart part : leafParts(message)) {
+            if (part.isMimeType("text/html")) {
+                htmls.add((String) part.getContent());
+            } else if (part.isMimeType("image/png")) {
+                imageIds.add(((MimeBodyPart) part).getContentID());
+            }
+        }
+        assertThat(htmls).singleElement().asString()
+                .contains("¡Gracias por tu compra, Juan!").contains("cid:qr-1").contains("cid:qr-2");
+        assertThat(imageIds).containsExactly("<qr-1>", "<qr-2>");
     }
 
     @Test
@@ -135,6 +151,20 @@ class PurchaseMailServiceTest {
         return message;
     }
 
+    /**
+     * Las partes finales del mail (el HTML y cada imagen), sin los contenedores multipart.
+     */
+    private static List<BodyPart> leafParts(Part part) throws Exception {
+        if (!(part.getContent() instanceof Multipart multipart)) {
+            return part instanceof BodyPart bodyPart ? List.of(bodyPart) : List.of();
+        }
+        List<BodyPart> leaves = new ArrayList<>();
+        for (int i = 0; i < multipart.getCount(); i++) {
+            leaves.addAll(leafParts(multipart.getBodyPart(i)));
+        }
+        return leaves;
+    }
+
     private static HttpClientErrorException clientError(HttpStatus status) {
         return HttpClientErrorException.create(status, status.getReasonPhrase(), HttpHeaders.EMPTY, null, null);
     }
@@ -142,7 +172,8 @@ class PurchaseMailServiceTest {
     private static PaidOrder paidOrder() {
         PaidOrder.Event event = new PaidOrder.Event("Los Serranos en vivo", LocalDateTime.of(2026, 12, 13, 21, 0),
                 "Estadio del Sur", "Av. del Estadio 1000", "Buenos Aires");
-        return new PaidOrder(10L, event, new BigDecimal("70000.00"),
-                List.of(new PaidOrder.Ticket(1L, "Platea", "A", 15, new BigDecimal("70000.00"), "qr-uno")));
+        return new PaidOrder(10L, event, new BigDecimal("140000.00"), List.of(
+                new PaidOrder.Ticket(1L, "Platea", "A", 15, new BigDecimal("70000.00"), "qr-uno"),
+                new PaidOrder.Ticket(2L, "Platea", "A", 16, new BigDecimal("70000.00"), "qr-dos")));
     }
 }

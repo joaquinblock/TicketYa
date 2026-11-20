@@ -35,6 +35,20 @@ class PurchaseMailComposerTest {
     }
 
     @Test
+    void compose_eachTicketWithQr_referencesItsOwnEmbeddedImage() {
+        PaidOrder order = order("Los Serranos en vivo", List.of(
+                new PaidOrder.Ticket(1L, "Platea", "A", 15, new BigDecimal("70000.00"), "qr-uno"),
+                new PaidOrder.Ticket(2L, "Platea", "A", 16, new BigDecimal("70000.00"), "qr-dos")));
+
+        PurchaseMailComposer.Mail mail = composer.compose(order, user("Juan"));
+
+        assertThat(mail.html()).contains("<img src=\"cid:qr-1\"").contains("<img src=\"cid:qr-2\"");
+        assertThat(mail.qrs()).containsExactly(
+                new PurchaseMailComposer.InlineQr("qr-1", "qr-uno"),
+                new PurchaseMailComposer.InlineQr("qr-2", "qr-dos"));
+    }
+
+    @Test
     void compose_generalAdmission_saysTheTicketIsNotNumbered() {
         PaidOrder order = order("Festival de Verano", List.of(
                 new PaidOrder.Ticket(1L, "Campo", null, null, new BigDecimal("70000.00"), "qr-campo")));
@@ -49,7 +63,10 @@ class PurchaseMailComposerTest {
         PaidOrder order = order("Festival de Verano", List.of(
                 new PaidOrder.Ticket(1L, "Campo", null, null, new BigDecimal("70000.00"), null)));
 
-        assertThat(composer.compose(order, user("Juan")).html()).contains("No disponible").doesNotContain("<code>");
+        PurchaseMailComposer.Mail mail = composer.compose(order, user("Juan"));
+
+        assertThat(mail.html()).contains("No disponible").doesNotContain("<code>").doesNotContain("<img");
+        assertThat(mail.qrs()).isEmpty();
     }
 
     @Test

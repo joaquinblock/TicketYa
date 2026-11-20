@@ -161,6 +161,14 @@ Protege dos casos de la consigna 8 y la 7:
 - Dos lectores escanean el mismo QR en el mismo segundo: el segundo falla en vez de marcarla como usada dos veces (*"un QR no puede ingresar dos veces"*).
 - Se aprueba una devolución mientras alguien entra con esa entrada: solo una de las dos operaciones se aplica.
 
+### Ingreso con QR
+
+`POST /api/tickets/check-in` recibe el evento donde está el personal y el QR escaneado (US-TKT-19).
+
+- **El QR va en el body, no en la URL.** Es la credencial de entrada, y las URLs quedan en los logs del gateway y de cada servicio.
+- **Un QR de otro evento da `invalid_qr`, igual que uno que no existe o una entrada anulada, reintegrada o sin pagar.** Así no se puede averiguar a qué evento pertenece un QR ajeno. Solo una entrada ya usada tiene su propio error: `ticket_already_used`.
+- **Un QR entra una sola vez.** Se lee la entrada para validar el evento y el estado, y después se marca con un `update` condicional: `status = USED` solo `where status = ISSUED`, subiendo `version`. Si dos lectores la escanean a la vez, uno actualiza la fila y el otro recibe 0 filas y `ticket_already_used`. Es el mismo patrón que el reintegro y no depende de cuántas instancias haya. Lo prueba `CheckInMySqlIntegrationTest` con 16 escaneos simultáneos.
+
 ### `qr_code` aleatorio
 
 Se genera con un UUID, no a partir del ID de la entrada. Si fuera predecible, alguien podría generar QR válidos de entradas ajenas.
@@ -300,6 +308,8 @@ Si la orden se cancela mientras se confirma su pago, no se emiten entradas y el 
 
 **Límite de entradas por cliente.** Se controla contando las entradas del usuario para el evento (`orders.user_id` + `orders.event_id`) contra `event_sale.max_tickets_per_customer`. Si el mismo usuario lanza dos compras exactamente al mismo tiempo, las dos pueden pasar el control. Resolverlo requiere un lock por usuario y evento; para la Entrega 1 se valida en el service y queda anotado. No afecta la no doble venta: cada lugar sigue vendiéndose una sola vez.
 
+**Personal asignado al evento.** El ingreso exige el permiso `TICKET_VALIDATE`, pero todavía no controla que ese personal trabaje en el evento (403 `staff_not_assigned` de US-TKT-19): el auth-service aún no registra qué personal está asignado a qué evento (#19).
+
 **Ingreso durante la aprobación de una devolución.** Si alguien entra con una entrada justo entre el pedido de reintegro y la confirmación local, el reintegro ya se pidió y la entrada queda `USED`. Es muy improbable y se registra en el log para resolverlo a mano. Si la entrada ya estaba usada al aprobar, no se pide el reintegro.
 
 **Reintegro rechazado de un evento cancelado.** Si el payment-service rechaza el reintegro con un 4xx, por ejemplo porque la entrada ya tenía un reintegro acreditado con otros datos, la entrada sigue sin pasar a `REFUNDED`, el job la reintenta y cada intento queda en el log para resolverlo a mano.
@@ -360,11 +370,12 @@ Las historias y sus criterios de aceptación están en [`user-stories.md`](../us
 | `POST /api/orders` | Reserva asientos (`seatIds`) o lugares (`eventSectorId` y `quantity`). `TICKET_PURCHASE` | 400 `validation_error`, 404 `resource_not_found`, 409 `seat_unavailable`, `sector_sold_out`, `ticket_limit_exceeded`, `event_not_on_sale`, `sale_not_started`, `data_conflict` |
 | `POST /api/orders/{id}/cancel` | Abandona una reserva. Repetirlo responde 200. `TICKET_PURCHASE` | 404 `order_not_found`, 409 `payment_in_progress`, `reservation_expired`, `order_not_cancellable` |
 | `POST /api/tickets/{ticketId}/return-requests` | Solicita la devolución de una entrada. `REFUND_REQUEST` | 404 `ticket_not_found`, 409 `refund_not_allowed`, `return_request_already_pending` |
+| `POST /api/tickets/check-in` | Valida el QR en el ingreso: body `{eventId, qrCode}`. La entrada pasa a `USED` con quién la validó y cuándo. `TICKET_VALIDATE` (personal de acceso) | 400 `validation_error`, `invalid_qr`, 403 `forbidden`, 409 `ticket_already_used` |
 | `GET /api/return-requests?status=&page=&size=` | Lista paginada, primero las más antiguas. Por defecto, `PENDING`. `REFUND_RESOLVE` (administrador) | 400 si un parámetro es inválido, 403 `forbidden` |
 | `POST /api/return-requests/{id}/approve` | Pide el reintegro, marca la entrada `REFUNDED` y libera el lugar. `REFUND_RESOLVE` (administrador) | 403 `forbidden`, 404 `return_request_not_found`, 409 `refund_not_allowed`, `ticket_already_used`, 503 `service_unavailable` |
 | `POST /api/return-requests/{id}/reject` | Rechaza la solicitud y la entrada sigue vigente. `REFUND_RESOLVE` (administrador) | 403 `forbidden`, 404 `return_request_not_found`, 409 `refund_not_allowed` |
 
-**Quién puede hacer qué (US-TKT-26).** Cada endpoint de `/api` pide su permiso con `@RequiresPermission`, y el usuario sale del token (`Caller`): sin token, 401; sin el permiso, 403, antes de leer el body. Como el `userId` es el del token, un cliente no puede operar en nombre de otro: una orden o una entrada ajena da 404. Resolver una devolución ya no le pregunta nada al auth-service. En el seeder del auth-service, el usuario 3 es el administrador. Validar el QR (US-TKT-19) y el reporte (US-TKT-20) todavía no tienen endpoint: cuando existan, piden `TICKET_VALIDATE` y `REPORT_VIEW`.
+**Quién puede hacer qué (US-TKT-26).** Cada endpoint de `/api` pide su permiso con `@RequiresPermission`, y el usuario sale del token (`Caller`): sin token, 401; sin el permiso, 403, antes de leer el body. Como el `userId` es el del token, un cliente no puede operar en nombre de otro: una orden o una entrada ajena da 404. Resolver una devolución ya no le pregunta nada al auth-service. En el seeder del auth-service, el usuario 3 es el administrador y el 4 es el personal de acceso. Validar el QR (US-TKT-19) pide `TICKET_VALIDATE`. El reporte (US-TKT-20) todavía no tiene endpoint: cuando exista, pide `REPORT_VIEW`.
 
 **Eventos que ya empezaron.** Además del estado de la copia, reservar exige que la fecha del evento no haya pasado (`event_not_on_sale`). Así no se vende entre que el evento ocurre y el job del event-service lo pasa a `FINISHED` (ver `event-state-machine.md`).
 

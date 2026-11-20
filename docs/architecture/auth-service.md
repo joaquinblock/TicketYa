@@ -67,6 +67,7 @@ Los consume el event-service con `AuthClient`. Swagger: `/swagger-ui.html` en el
 | `POST` | `/api/auth/google` | Canjea el ID token de Google por el JWT de TicketYa. Login y registro son lo mismo (ver *Login con Google*) | 200 |
 | `POST` | `/api/auth/dev-login` | JWT de un usuario **activo**, sin Google. **Solo con el perfil `dev`**: fuera de él da 404 (ver [ADR-002](../adr/ADR-002-dev-login.md)) | 200 |
 | `GET` | `/.well-known/jwks.json` | Clave pública para verificar los JWT. La usa el api-gateway, directo contra el servicio | 200 |
+| `GET` | `/internal/users/{id}` | Email y nombre de un usuario **activo**. Lo usa el notification-service para el mail de una compra (US-NOT-01). Solo entre servicios: no pasa por el gateway y pide `X-Internal-Secret` | 200 |
 
 ```http
 GET /api/organizations/1
@@ -79,6 +80,9 @@ GET /api/organizers/2
 GET /api/users/2/permissions
 → { "userId": 2, "role": "ORGANIZER",
     "permissions": ["EVENT_MANAGE", "EVENT_SEARCH", "REFUND_REQUEST", "REPORT_VIEW", "TICKET_PURCHASE"] }
+
+GET /internal/users/1   X-Internal-Secret: …
+→ { "userId": 1, "email": "client@ticketya.com", "firstName": "Juan", "lastName": "Pérez" }
 
 POST /api/auth/google   { "idToken": "eyJhbGciOiJSUzI1NiIsImtpZCI6..." }
 → { "accessToken": "eyJhbGciOiJSUzI1NiJ9...", "tokenType": "Bearer", "expiresIn": 1800, "newUser": true }
@@ -102,7 +106,8 @@ Todos usan el `ErrorDto` común (ver [`error-handling.md`](error-handling.md)). 
 |---|---|---|
 | `organization_not_found` | 404 | No existe la organización, o está dada de baja |
 | `organizer_not_found` | 404 | El usuario no es organizador, o está dado de baja él, su usuario o su organización |
-| `user_not_found` | 404 | No existe el usuario, o está dado de baja (`GET /api/users/{id}/permissions`) |
+| `user_not_found` | 404 | No existe el usuario, o está dado de baja (`GET /api/users/{id}/permissions`, `GET /internal/users/{id}`) |
+| `unauthorized` | 401 | `/internal/**` sin `X-Internal-Secret` o con uno incorrecto |
 | `invalid_credentials` | 401 | Login con Google: el ID token es inválido, está vencido, es de otra app o su email no está verificado |
 | `user_disabled` | 403 | Login con Google: la cuenta está dada de baja |
 | `data_conflict` | 409 | Login con Google: el email ya está vinculado a otra cuenta de Google |

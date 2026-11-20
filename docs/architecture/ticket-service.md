@@ -355,6 +355,7 @@ Las historias y sus criterios de aceptación están en [`user-stories.md`](../us
 | Método y ruta | Qué hace | Errores |
 |---|---|---|
 | `PUT /internal/event-sales/{eventId}` | Sincroniza la venta, el inventario y los datos que se imprimen en la entrada (nombre del evento, lugar, sectores, filas y números). Con estado `CANCELLED` cierra las compras abiertas y deja los reintegros al job. Solo entre servicios; el gateway no la expone | 400 `validation_error` |
+| `GET /internal/orders/{id}` | Una orden `PAID` con los datos del evento y el QR de cada entrada `ISSUED`, la misma forma que `GET /api/orders/{id}`. La usa el notification-service para el mail de la compra (US-NOT-01). No filtra por cliente; solo entre servicios, con `X-Internal-Secret` | 401 `unauthorized`, 404 `order_not_found`, 409 `order_not_paid` |
 | `GET /api/availability?eventId=` | Disponibilidad por sector | 404 `resource_not_found` |
 | `POST /api/orders` | Reserva asientos (`seatIds`) o lugares (`eventSectorId` y `quantity`). `TICKET_PURCHASE` | 400 `validation_error`, 404 `resource_not_found`, 409 `seat_unavailable`, `sector_sold_out`, `ticket_limit_exceeded`, `event_not_on_sale`, `sale_not_started`, `data_conflict` |
 | `POST /api/orders/{id}/cancel` | Abandona una reserva. Repetirlo responde 200. `TICKET_PURCHASE` | 404 `order_not_found`, 409 `payment_in_progress`, `reservation_expired`, `order_not_cancellable` |

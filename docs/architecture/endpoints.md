@@ -31,6 +31,12 @@ Usuarios, permisos, organizaciones y organizadores. Detalle de reglas y decision
 | `GET` | `/api/organizers/{userId}` | Ver un organizador activo | `{userId}` | Público | **200** Organizador activo<br>**404** organizer_not_found |
 | `GET` | `/api/users/{id}/permissions` | Ver el rol y los permisos de un usuario | `{id}` | Público | **200** Usuario activo con su rol y sus permisos<br>**404** user_not_found |
 
+### Internos
+
+| Método | Ruta | Qué hace | Parámetros | Quién | Respuestas |
+|---|---|---|---|---|---|
+| `GET` | `/internal/users/{id}` | Ver el email y el nombre de un usuario | `{id}`<br>header `X-Internal-Secret` | Solo entre servicios | **200** Usuario activo con su email y su nombre<br>**400** validation_error<br>**401** unauthorized: sin el secreto interno<br>**404** user_not_found |
+
 ## event-service
 
 Lugares, sectores, asientos, participantes y eventos (alta, configuración, estados y búsqueda). Detalle de reglas y decisiones: [`event-service-api.md`](event-service-api.md).

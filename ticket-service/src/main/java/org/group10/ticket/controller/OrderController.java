@@ -9,6 +9,9 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import org.group10.common.dto.ErrorDto;
+import org.group10.common.security.Caller;
+import org.group10.common.security.Permission;
+import org.group10.common.security.RequiresPermission;
 import org.group10.ticket.dto.OrderResponse;
 import org.group10.ticket.dto.PayOrderRequest;
 import org.group10.ticket.dto.ReservationRequest;
@@ -21,7 +24,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -32,9 +34,11 @@ import java.util.List;
 @RequestMapping("/api/orders")
 @RequiredArgsConstructor
 @Tag(name = "Órdenes", description = "Reserva temporal de lugares")
+@ApiResponse(responseCode = "401", description = "unauthorized: sin token",
+        content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+@ApiResponse(responseCode = "403", description = "forbidden: sin TICKET_PURCHASE",
+        content = @Content(schema = @Schema(implementation = ErrorDto.class)))
 public class OrderController {
-
-    private static final String USER_HEADER = "X-User-Id";
 
     private final ReservationService reservationService;
     private final OrderClosingService orderClosingService;
@@ -43,6 +47,7 @@ public class OrderController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @RequiresPermission(Permission.TICKET_PURCHASE)
     @Operation(summary = "Reservar lugares", description = "Crea una orden PENDING que retiene los lugares durante 10 minutos.")
     @ApiResponse(responseCode = "201", description = "Reserva creada, o la orden ya creada por ese mismo intento")
     @ApiResponse(responseCode = "400", description = "validation_error",
@@ -51,12 +56,12 @@ public class OrderController {
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "409", description = "seat_unavailable, sector_sold_out, ticket_limit_exceeded, event_not_on_sale, sale_not_started o data_conflict",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    public OrderResponse reserve(@RequestHeader(USER_HEADER) @Positive Long userId,
-                                 @Valid @RequestBody ReservationRequest request) {
-        return reservationService.reserve(userId, request);
+    public OrderResponse reserve(Caller caller, @Valid @RequestBody ReservationRequest request) {
+        return reservationService.reserve(caller.userId(), request);
     }
 
     @PostMapping("/{id}/pay")
+    @RequiresPermission(Permission.TICKET_PURCHASE)
     @Operation(summary = "Pagar una orden", description = "Cobra el total de la orden y emite las entradas. Repetir un intento no cobra dos veces.")
     @ApiResponse(responseCode = "200", description = "Orden pagada, con sus entradas y QR")
     @ApiResponse(responseCode = "400", description = "validation_error",
@@ -69,35 +74,37 @@ public class OrderController {
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "503", description = "service_unavailable: el pago quedó sin resultado y solo se puede repetir ese intento",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    public OrderResponse pay(@RequestHeader(USER_HEADER) @Positive Long userId, @PathVariable @Positive Long id,
-                             @Valid @RequestBody PayOrderRequest request) {
-        return orderPaymentService.pay(userId, id, request);
+    public OrderResponse pay(Caller caller, @PathVariable @Positive Long id, @Valid @RequestBody PayOrderRequest request) {
+        return orderPaymentService.pay(caller.userId(), id, request);
     }
 
     @GetMapping
+    @RequiresPermission(Permission.TICKET_PURCHASE)
     @Operation(summary = "Ver mis compras", description = "El QR solo aparece en las entradas ISSUED.")
     @ApiResponse(responseCode = "200", description = "Órdenes del cliente, de la más nueva a la más vieja")
-    public List<OrderResponse> findMyOrders(@RequestHeader(USER_HEADER) @Positive Long userId) {
-        return orderQueryService.findOrdersOfCustomer(userId);
+    public List<OrderResponse> findMyOrders(Caller caller) {
+        return orderQueryService.findOrdersOfCustomer(caller.userId());
     }
 
     @GetMapping("/{id}")
+    @RequiresPermission(Permission.TICKET_PURCHASE)
     @Operation(summary = "Ver una compra")
     @ApiResponse(responseCode = "200", description = "Orden con sus entradas")
     @ApiResponse(responseCode = "404", description = "order_not_found: no existe o es de otro cliente",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    public OrderResponse findMyOrder(@RequestHeader(USER_HEADER) @Positive Long userId, @PathVariable @Positive Long id) {
-        return orderQueryService.findOrderDetailOfCustomer(userId, id);
+    public OrderResponse findMyOrder(Caller caller, @PathVariable @Positive Long id) {
+        return orderQueryService.findOrderDetailOfCustomer(caller.userId(), id);
     }
 
     @PostMapping("/{id}/cancel")
+    @RequiresPermission(Permission.TICKET_PURCHASE)
     @Operation(summary = "Abandonar una reserva", description = "Libera los lugares en el momento. Repetirlo sobre una orden abandonada responde con éxito.")
     @ApiResponse(responseCode = "200", description = "Orden abandonada")
     @ApiResponse(responseCode = "404", description = "order_not_found: no existe o es de otro cliente",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "409", description = "payment_in_progress, reservation_expired u order_not_cancellable",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    public OrderResponse cancel(@RequestHeader(USER_HEADER) @Positive Long userId, @PathVariable @Positive Long id) {
-        return orderClosingService.cancelReservation(userId, id);
+    public OrderResponse cancel(Caller caller, @PathVariable @Positive Long id) {
+        return orderClosingService.cancelReservation(caller.userId(), id);
     }
 }

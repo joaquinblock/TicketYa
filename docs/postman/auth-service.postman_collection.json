@@ -8,9 +8,286 @@
     {
       "key": "baseUrl",
       "value": "http://localhost:8080"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "adminId",
+      "value": "3"
+    },
+    {
+      "key": "organizerId",
+      "value": "2"
     }
   ],
   "item": [
+    {
+      "name": "Login con Google",
+      "description": "POST /api/auth/google canjea el ID token de Google por el JWT de TicketYa. Para entrar con una cuenta real, abrí http://localhost:8081/login (perfil dev): muestra el JWT de TicketYa para copiarlo. Acá van los casos que no necesitan Google. Sin GOOGLE_CLIENT_ID configurado, cualquier token responde 503.",
+      "item": [
+        {
+          "name": "Sin idToken",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('validation_error', () => pm.expect(pm.response.json().error).to.eql('validation_error'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{baseUrl}}/api/auth/google"
+          }
+        },
+        {
+          "name": "idToken que no es de Google",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('401, o 503 si falta GOOGLE_CLIENT_ID', () => pm.expect(pm.response.code).to.be.oneOf([401, 503]));",
+                  "const body = pm.response.json();",
+                  "if (pm.response.code === 401) {",
+                  "    pm.test('invalid_credentials', () => pm.expect(body.error).to.eql('invalid_credentials'));",
+                  "} else {",
+                  "    pm.test('service_unavailable', () => pm.expect(body.error).to.eql('service_unavailable'));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"idToken\": \"no-es-un-token-de-google\"}"
+            },
+            "url": "{{baseUrl}}/api/auth/google"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Login de desarrollo",
+      "description": "Solo con el perfil dev (la run config de IntelliJ ya lo activa). Emite el JWT de TicketYa de un usuario del seeder sin pasar por Google. El primer request guarda el token en {{token}}. Ver docs/adr/ADR-002-dev-login.md.",
+      "item": [
+        {
+          "name": "Token del cliente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Tipo Bearer', () => pm.expect(body.tokenType).to.eql('Bearer'));",
+                  "pm.test('Vence en 30 min', () => pm.expect(body.expiresIn).to.eql(1800));",
+                  "const decode = part => JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - part.length % 4) % 4)));",
+                  "const [header, claims] = body.accessToken.split('.').slice(0, 2).map(decode);",
+                  "pm.test('Firmado con RS256', () => pm.expect(header.alg).to.eql('RS256'));",
+                  "pm.test('iss = ticketya-auth', () => pm.expect(claims.iss).to.eql('ticketya-auth'));",
+                  "pm.test('aud = ticketya-api', () => pm.expect([].concat(claims.aud)).to.include('ticketya-api'));",
+                  "pm.test('exp 30 min después de iat', () => pm.expect(claims.exp - claims.iat).to.eql(1800));",
+                  "pm.test('Tiene jti', () => pm.expect(claims.jti).to.be.a('string').and.not.empty);",
+                  "pm.test('sub = 1', () => pm.expect(claims.sub).to.eql('1'));",
+                  "pm.test('Rol CLIENT', () => pm.expect(claims.role).to.eql('CLIENT'));",
+                  "pm.test('Permisos de comprador', () => pm.expect(claims.permissions).to.include.members(['EVENT_SEARCH', 'TICKET_PURCHASE', 'REFUND_REQUEST']));",
+                  "pm.test('Sin organizationId', () => pm.expect(claims).to.not.have.property('organizationId'));",
+                  "pm.collectionVariables.set('token', body.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"userId\": 1}"
+            },
+            "url": "{{baseUrl}}/api/auth/dev-login"
+          }
+        },
+        {
+          "name": "Token del organizador",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const decode = part => JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - part.length % 4) % 4)));",
+                  "const claims = decode(pm.response.json().accessToken.split('.')[1]);",
+                  "pm.test('Rol ORGANIZER', () => pm.expect(claims.role).to.eql('ORGANIZER'));",
+                  "pm.test('Organización 1', () => pm.expect(claims.organizationId).to.eql(1));",
+                  "pm.test('Tiene EVENT_MANAGE', () => pm.expect(claims.permissions).to.include('EVENT_MANAGE'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"userId\": 2}"
+            },
+            "url": "{{baseUrl}}/api/auth/dev-login"
+          }
+        },
+        {
+          "name": "Token del administrador",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const decode = part => JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - part.length % 4) % 4)));",
+                  "const claims = decode(pm.response.json().accessToken.split('.')[1]);",
+                  "pm.test('Rol ADMIN', () => pm.expect(claims.role).to.eql('ADMIN'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"userId\": 3}"
+            },
+            "url": "{{baseUrl}}/api/auth/dev-login"
+          }
+        },
+        {
+          "name": "Token del personal de acceso",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const decode = part => JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - part.length % 4) % 4)));",
+                  "const claims = decode(pm.response.json().accessToken.split('.')[1]);",
+                  "pm.test('Rol ACCESS_STAFF', () => pm.expect(claims.role).to.eql('ACCESS_STAFF'));",
+                  "pm.test('Tiene TICKET_VALIDATE', () => pm.expect(claims.permissions).to.include('TICKET_VALIDATE'));",
+                  "pm.test('Sin organizationId hasta AccessStaff (#19)', () => pm.expect(claims).to.not.have.property('organizationId'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"userId\": 4}"
+            },
+            "url": "{{baseUrl}}/api/auth/dev-login"
+          }
+        },
+        {
+          "name": "Usuario inexistente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404', () => pm.response.to.have.status(404));",
+                  "pm.test('user_not_found', () => pm.expect(pm.response.json().error).to.eql('user_not_found'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"userId\": 99}"
+            },
+            "url": "{{baseUrl}}/api/auth/dev-login"
+          }
+        },
+        {
+          "name": "userId inválido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('validation_error', () => pm.expect(pm.response.json().error).to.eql('validation_error'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"userId\": 1.5}"
+            },
+            "url": "{{baseUrl}}/api/auth/dev-login"
+          }
+        }
+      ]
+    },
     {
       "name": "Permisos",
       "item": [
@@ -35,7 +312,13 @@
           ],
           "request": {
             "method": "GET",
-            "url": "{{baseUrl}}/api/users/1/permissions"
+            "url": "{{baseUrl}}/api/users/1/permissions",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ]
           }
         },
         {
@@ -58,7 +341,13 @@
           ],
           "request": {
             "method": "GET",
-            "url": "{{baseUrl}}/api/users/2/permissions"
+            "url": "{{baseUrl}}/api/users/2/permissions",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ]
           }
         },
         {
@@ -81,7 +370,13 @@
           ],
           "request": {
             "method": "GET",
-            "url": "{{baseUrl}}/api/users/3/permissions"
+            "url": "{{baseUrl}}/api/users/3/permissions",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ]
           }
         },
         {
@@ -102,7 +397,13 @@
           ],
           "request": {
             "method": "GET",
-            "url": "{{baseUrl}}/api/users/4/permissions"
+            "url": "{{baseUrl}}/api/users/4/permissions",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ]
           }
         },
         {
@@ -120,7 +421,31 @@
           ],
           "request": {
             "method": "GET",
-            "url": "{{baseUrl}}/api/users/999999/permissions"
+            "url": "{{baseUrl}}/api/users/999999/permissions",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Permisos sin token → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('401: solo el admin ve los permisos de un usuario', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/users/1/permissions",
+            "header": []
           }
         }
       ]
@@ -244,6 +569,159 @@
           }
         }
       ]
+    },
+    {
+      "name": "Promover y quitar organizadores",
+      "description": "Solo el admin (USER_MANAGE). Promueve al cliente 1 en la organización 1 y lo vuelve a quitar, así la colección se puede repetir.",
+      "item": [
+        {
+          "name": "Un organizador no puede promover → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('403 forbidden', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{organizerId}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/organizations/1/organizers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"userId\": 1}"
+            }
+          }
+        },
+        {
+          "name": "El admin promueve al cliente 1 → 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "pm.test('Organiza para la 1', () => pm.expect(pm.response.json().organizationId).to.eql(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/organizations/1/organizers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"userId\": 1}"
+            }
+          }
+        },
+        {
+          "name": "Promoverlo otra vez → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409 data_conflict', () => pm.expect(pm.response.json().error).to.eql('data_conflict'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/organizations/1/organizers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"userId\": 1}"
+            }
+          }
+        },
+        {
+          "name": "El admin lo quita → 204",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/organizations/1/organizers/1"
+          }
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// El api-gateway valida el JWT y borra los X-User-* que mande el cliente (ADR-003). Este script pide el token",
+          "// con dev-login (perfil dev, ADR-002) para el usuario del header X-User-Id y lo manda como Authorization.",
+          "// No lo guarda: lo pide en cada request, así sigue andando si el auth-service se reinicia con otra clave.",
+          "const userHeader = pm.request.headers.get('X-User-Id');",
+          "if (userHeader) {",
+          "    const userId = pm.variables.replaceIn(userHeader);",
+          "    pm.request.headers.remove('X-User-Id');",
+          "    pm.sendRequest({",
+          "        url: pm.variables.replaceIn('{{baseUrl}}') + '/api/auth/dev-login',",
+          "        method: 'POST',",
+          "        header: { 'Content-Type': 'application/json' },",
+          "        body: { mode: 'raw', raw: JSON.stringify({ userId: Number(userId) }) }",
+          "    }, (error, response) => {",
+          "        if (error || response.code !== 200) {",
+          "            console.warn(`dev-login no dio un token para el usuario ${userId}: el request sale sin identidad`);",
+          "            return;",
+          "        }",
+          "        pm.request.headers.upsert({ key: 'Authorization', value: 'Bearer ' + response.json().accessToken });",
+          "    });",
+          "}"
+        ]
+      }
     }
   ]
 }

@@ -8,6 +8,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import org.group10.common.dto.ErrorDto;
+import org.group10.common.security.Permission;
+import org.group10.common.security.RequiresPermission;
 import org.group10.payment.dto.OrderPaymentResponse;
 import org.group10.payment.service.PaymentService;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,10 +27,19 @@ public class PaymentQueryController {
 
     private final PaymentService paymentService;
 
+    /**
+     * Pide {@code REFUND_RESOLVE}: no hay un permiso de pagos, y el administrador que resuelve devoluciones es quien
+     * necesita ver los pagos de una orden (US-PAY-14).
+     */
     @GetMapping
-    @Operation(summary = "Consultar los pagos de una orden", description = "Incluye los rechazados.")
+    @RequiresPermission(Permission.REFUND_RESOLVE)
+    @Operation(summary = "Consultar los pagos de una orden", description = "Solo un administrador. Incluye los rechazados.")
     @ApiResponse(responseCode = "200", description = "Pagos de la orden, del más antiguo al más nuevo")
     @ApiResponse(responseCode = "400", description = "invalid_parameter o validation_error: falta orderId o no es válido",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "401", description = "unauthorized: sin token",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "403", description = "forbidden: sin REFUND_RESOLVE",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "404", description = "payment_not_found: la orden no tiene pagos",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))

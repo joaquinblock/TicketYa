@@ -1,11 +1,20 @@
 {
   "info": {
     "name": "TicketYa - payment-service",
-    "description": "Una carpeta por funcionalidad. Necesita payment-service (8084) levantado. Las rutas /internal/** se llaman directo al servicio porque el gateway no las reenvía.",
+    "description": "Una carpeta por funcionalidad. Necesita payment-service (8084) levantado. Las rutas /internal/** se llaman directo al servicio porque el gateway no las reenvía, y piden el secreto entre servicios (X-Internal-Secret, US-PAY-14): la colección lo manda en todos los requests con la variable internalSecret, que por defecto es el valor de desarrollo.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      { "key": "key", "value": "X-Internal-Secret", "type": "string" },
+      { "key": "value", "value": "{{internalSecret}}", "type": "string" },
+      { "key": "in", "value": "header", "type": "string" }
+    ]
   },
   "variable": [
     { "key": "paymentUrl", "value": "http://localhost:8084" },
+    { "key": "internalSecret", "value": "dev-internal-secret" },
     { "key": "orderId", "value": "" },
     { "key": "rejectedOrderId", "value": "" },
     { "key": "retryOrderId", "value": "" },
@@ -512,6 +521,10 @@
           "request": {
             "method": "GET",
             "description": "Usa los pagos de la orden 2 que carga PaymentSeeder.",
+            "header": [
+              { "key": "X-User-Id", "value": "3", "description": "Directo al servicio, sin gateway: simula los headers que el gateway pone para el admin (usuario 3)" },
+              { "key": "X-User-Permissions", "value": "REFUND_RESOLVE" }
+            ],
             "url": "{{paymentUrl}}/api/payments?orderId={{orderWithPaymentsId}}"
           }
         },
@@ -538,6 +551,10 @@
           ] } }],
           "request": {
             "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "3", "description": "Directo al servicio, sin gateway: simula los headers que el gateway pone para el admin (usuario 3)" },
+              { "key": "X-User-Permissions", "value": "REFUND_RESOLVE" }
+            ],
             "url": "{{paymentUrl}}/api/payments?orderId=999999999"
           }
         },
@@ -551,6 +568,10 @@
           ] } }],
           "request": {
             "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "3", "description": "Directo al servicio, sin gateway: simula los headers que el gateway pone para el admin (usuario 3)" },
+              { "key": "X-User-Permissions", "value": "REFUND_RESOLVE" }
+            ],
             "url": "{{paymentUrl}}/api/payments"
           }
         },
@@ -564,6 +585,10 @@
           ] } }],
           "request": {
             "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "3", "description": "Directo al servicio, sin gateway: simula los headers que el gateway pone para el admin (usuario 3)" },
+              { "key": "X-User-Permissions", "value": "REFUND_RESOLVE" }
+            ],
             "url": "{{paymentUrl}}/api/payments?orderId=abc"
           }
         },
@@ -577,7 +602,32 @@
           ] } }],
           "request": {
             "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "3", "description": "Directo al servicio, sin gateway: simula los headers que el gateway pone para el admin (usuario 3)" },
+              { "key": "X-User-Permissions", "value": "REFUND_RESOLVE" }
+            ],
             "url": "{{paymentUrl}}/api/payments?orderId=0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "US-PAY-14: Solo los servicios llaman a /internal",
+      "item": [
+        {
+          "name": "Cobrar sin el secreto entre servicios → 401",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('401 unauthorized', () => {",
+            "  pm.response.to.have.status(401);",
+            "  pm.expect(pm.response.json().error).to.eql('unauthorized');",
+            "});"
+          ] } }],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"orderId\": 999, \"amount\": 100.00, \"paymentMethod\": \"CREDIT_CARD\", \"idempotencyKey\": \"sin-secreto\"}" },
+            "url": "{{paymentUrl}}/internal/payments"
           }
         }
       ]

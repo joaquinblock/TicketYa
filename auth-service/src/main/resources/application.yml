@@ -19,6 +19,10 @@ spring:
       # Cuando se estabilice, pasar a validate + migraciones (Flyway).
       ddl-auto: create
     open-in-view: false
+  jackson:
+    deserialization:
+      # Sin esto, {"userId": 1.5} se redondea a 1 en vez de dar 400
+      accept-float-as-int: false
 
 # Swagger del servicio: http://localhost:8081/swagger-ui.html
 springdoc:
@@ -30,6 +34,19 @@ springdoc:
   api-docs:
     path: /api-docs
 
+
+ticketya:
+  jwt:
+    issuer: ticketya-auth
+    audience: ticketya-api
+    ttl: 30m
+    # Ruta al .pem PKCS#8 con la clave privada RSA. Nunca va en el repo. Vacía: clave efímera (solo desarrollo)
+    private-key-location: ${JWT_PRIVATE_KEY_LOCATION:}
+  google:
+    # Client id de OAuth del proyecto de Google Cloud. No es secreto. Vacío: el login con Google responde 503
+    client-id: ${GOOGLE_CLIENT_ID:}
+  # Gmail del primer admin: al entrar con Google queda vinculado al admin del seeder. Vacío: admin@ticketya.com
+  bootstrap-admin-email: ${BOOTSTRAP_ADMIN_EMAIL:}
 
 management:
   endpoints:

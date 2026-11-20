@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TicketYa · Login con Google</title>
+    <script src="https://accounts.google.com/gsi/client" async></script>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #1c2330; }
+        h1 { font-size: 22px; }
+        p { color: #4a5568; }
+        textarea { width: 100%; height: 120px; font-family: monospace; font-size: 12px; }
+        pre { background: #f4f6f9; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 13px; }
+        .error { color: #b42318; }
+        [hidden] { display: none !important; }
+    </style>
+</head>
+<body>
+<h1>TicketYa · Login con Google</h1>
+<p>Página de prueba (perfil <code>dev</code>): entrá con tu cuenta de Google y copiá el JWT de TicketYa en Postman o
+    Swagger como <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+
+<div id="g_id_onload" data-client_id="{{CLIENT_ID}}" data-callback="onGoogleCredential" data-auto_prompt="false"></div>
+<div class="g_id_signin" data-type="standard" data-text="signin_with" data-locale="es"></div>
+
+<section id="result" hidden>
+    <h2>JWT de TicketYa</h2>
+    <textarea id="token" readonly></textarea>
+    <p><button id="copy" type="button">Copiar token</button> <span id="copied"></span></p>
+    <h2>Lo que dice el token</h2>
+    <pre id="claims"></pre>
+</section>
+<p id="error" class="error" hidden></p>
+
+<script>
+    const show = (id, visible) => document.getElementById(id).hidden = !visible;
+
+    async function onGoogleCredential({ credential }) {
+        show('error', false);
+        const response = await fetch('/api/auth/google', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idToken: credential })
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            document.getElementById('error').textContent =
+                `${response.status} ${body.error ?? ''}: ${body.message ?? 'no se pudo canjear el token de Google'}`;
+            show('result', false);
+            show('error', true);
+            return;
+        }
+        const payload = JSON.parse(atob(body.accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+        document.getElementById('token').value = body.accessToken;
+        document.getElementById('claims').textContent = JSON.stringify({ newUser: body.newUser, ...payload }, null, 2);
+        show('result', true);
+    }
+
+    document.getElementById('copy').addEventListener('click', async () => {
+        const token = document.getElementById('token');
+        try {
+            await navigator.clipboard.writeText(token.value);
+        } catch {
+            token.select();
+            document.execCommand('copy');
+        }
+        document.getElementById('copied').textContent = 'Copiado';
+    });
+</script>
+</body>
+</html>

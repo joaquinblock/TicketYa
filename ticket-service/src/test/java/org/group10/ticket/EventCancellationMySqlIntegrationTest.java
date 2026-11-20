@@ -1,10 +1,8 @@
 package org.group10.ticket;
 
-import org.group10.ticket.client.AuthClient;
 import org.group10.ticket.client.EventClient;
 import org.group10.ticket.client.PaymentClient;
 import org.group10.ticket.client.dto.RefundRequest;
-import org.group10.ticket.client.dto.UserPermissionsResponse;
 import org.group10.ticket.entity.EventSeatId;
 import org.group10.ticket.entity.EventSeatStatus;
 import org.group10.ticket.entity.OrderStatus;
@@ -69,9 +67,6 @@ class EventCancellationMySqlIntegrationTest {
     @MockitoBean
     private EventClient eventClient;
 
-    @MockitoBean
-    private AuthClient authClient;
-
     @Autowired
     private EventCancellationService eventCancellationService;
     @Autowired
@@ -113,8 +108,6 @@ class EventCancellationMySqlIntegrationTest {
 
     @BeforeEach
     void publishEvent() {
-        when(authClient.getPermissions(ADMINISTRATOR))
-                .thenReturn(new UserPermissionsResponse(ADMINISTRATOR, "ADMIN", Set.of("REFUND_RESOLVE")));
         client = RestClient.builder().baseUrl("http://localhost:" + port).build();
         customer = IDS.incrementAndGet();
         eventId = IDS.incrementAndGet();
@@ -257,7 +250,7 @@ class EventCancellationMySqlIntegrationTest {
     }
 
     private int synchronizeSale(long event, String status) {
-        return client.put().uri("/internal/event-sales/{eventId}", event)
+        return client.put().uri("/internal/event-sales/{eventId}", event).header("X-Internal-Secret", "dev-internal-secret")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("""
                         {"status": "%s", "eventName": "Recital", "venueName": "Estadio",
@@ -300,7 +293,7 @@ class EventCancellationMySqlIntegrationTest {
 
     private HttpResult post(String path, long user, String body) {
         return client.post().uri(path)
-                .header("X-User-Id", Long.toString(user))
+                .header("X-User-Id", Long.toString(user)).header("X-User-Permissions", permissionsOf(user))
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .exchange((request, response) ->
@@ -329,5 +322,9 @@ class EventCancellationMySqlIntegrationTest {
 
     private static String newKey() {
         return UUID.randomUUID().toString();
+    }
+
+    private static String permissionsOf(long user) {
+        return user == ADMINISTRATOR ? "REFUND_RESOLVE" : "TICKET_PURCHASE,REFUND_REQUEST";
     }
 }

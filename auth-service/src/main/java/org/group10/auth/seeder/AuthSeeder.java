@@ -13,6 +13,7 @@ import org.group10.auth.repository.OrganizerRepository;
 import org.group10.auth.repository.PermissionRepository;
 import org.group10.auth.repository.RoleRepository;
 import org.group10.auth.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
@@ -29,15 +30,22 @@ import java.util.stream.Collectors;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class
+public class AuthSeeder implements ApplicationRunner {
 
-AuthSeeder implements ApplicationRunner {
+    private static final String TEST_ADMIN_EMAIL = "admin@ticketya.com";
 
     private final PermissionRepository permissionRepository;
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
     private final OrganizationRepository organizationRepository;
     private final OrganizerRepository organizerRepository;
+
+    /**
+     * Gmail real del primer admin ({@code BOOTSTRAP_ADMIN_EMAIL}). Al entrar con Google, el login lo vincula por email
+     * al admin del seeder, así que no se crea como cliente. Vacío: el admin queda con un email de prueba.
+     */
+    @Value("${ticketya.bootstrap-admin-email:}")
+    private String bootstrapAdminEmail;
 
     @Override
     @Transactional
@@ -67,7 +75,9 @@ AuthSeeder implements ApplicationRunner {
                 permission("EVENT_ADMIN", "Suspender o cancelar cualquier evento"),
                 permission("REFUND_RESOLVE", "Aprobar o rechazar devoluciones"),
                 permission("USER_MANAGE", "Gestionar usuarios y roles"),
-                permission("TICKET_VALIDATE", "Validar entradas en el ingreso")
+                permission("TICKET_VALIDATE", "Validar entradas en el ingreso"),
+                permission("VENUE_MANAGE", "Crear, editar y borrar lugares"),
+                permission("PARTICIPANT_MANAGE", "Crear, editar y borrar artistas, equipos y disertantes")
         );
         return permissionRepository.saveAll(permissions).stream()
                 .collect(Collectors.toMap(Permission::getName, Function.identity()));
@@ -79,9 +89,10 @@ AuthSeeder implements ApplicationRunner {
         List<Role> roles = List.of(
                 role("CLIENT", "Busca eventos y compra entradas", buyer),
                 role("ORGANIZER", "Diseña y publica eventos",
-                        union(buyer, p.get("EVENT_MANAGE"), p.get("REPORT_VIEW"))),
+                        union(buyer, p.get("EVENT_MANAGE"), p.get("REPORT_VIEW"), p.get("PARTICIPANT_MANAGE"))),
                 role("ADMIN", "Gestión completa y tareas operativas",
-                        union(buyer, p.get("EVENT_ADMIN"), p.get("REFUND_RESOLVE"), p.get("USER_MANAGE"))),
+                        union(buyer, p.get("EVENT_ADMIN"), p.get("REFUND_RESOLVE"), p.get("USER_MANAGE"),
+                                p.get("VENUE_MANAGE"), p.get("PARTICIPANT_MANAGE"))),
                 role("ACCESS_STAFF", "Escanea el QR de las entradas en el ingreso",
                         union(buyer, p.get("TICKET_VALIDATE")))
         );
@@ -89,11 +100,17 @@ AuthSeeder implements ApplicationRunner {
                 .collect(Collectors.toMap(Role::getName, Function.identity()));
     }
 
+    private String adminEmail() {
+        return bootstrapAdminEmail == null || bootstrapAdminEmail.isBlank()
+                ? TEST_ADMIN_EMAIL
+                : bootstrapAdminEmail.strip();
+    }
+
     private Map<String, User> seedUsers(Map<String, Role> roles) {
         return userRepository.saveAll(List.of(
                 user("client@ticketya.com", "Juan", "Pérez", "30111222", "Tandil", roles.get("CLIENT")),
                 user("organizer@ticketya.com", "María", "Gómez", "28333444", "Buenos Aires", roles.get("ORGANIZER")),
-                user("admin@ticketya.com", "Laura", "Fernández", "25555666", "Tandil", roles.get("ADMIN")),
+                user(adminEmail(), "Laura", "Fernández", "25555666", "Tandil", roles.get("ADMIN")),
                 user("staff@ticketya.com", "Diego", "López", "35777888", "Mar del Plata", roles.get("ACCESS_STAFF")),
                 user("organizer.serrana@ticketya.com", "Sofía", "Ruiz", "32999000", "Tandil", roles.get("ORGANIZER")),
                 user("organizer.delsur@ticketya.com", "Tomás", "Acosta", "33444555", "Buenos Aires", roles.get("ORGANIZER"))

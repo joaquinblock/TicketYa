@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "TicketYa - Ciclo de vida del evento",
-    "description": "Ver, editar, borrar, publicar y cancelar eventos. Necesita auth-service (8081), event-service (8082) y api-gateway (8080) recién levantados: los requests cambian los datos del seeder y van en orden. El evento 3 es un borrador publicable, el 10 un borrador sin sectores, el 12 un borrador de la organización 2 y el 9 está finalizado. Ver docs/architecture/event-service-api.md.",
+    "description": "Cada request dice con qué usuario del seeder va en el header X-User-Id: el script de la colección pide su token con dev-login y lo manda como Authorization: Bearer. Necesita el auth-service con el perfil dev (ADR-002) y el api-gateway que valida el token. Ver, editar, borrar, publicar y cancelar eventos. Necesita auth-service (8081), event-service (8082) y api-gateway (8080) recién levantados: los requests cambian los datos del seeder y van en orden. El evento 3 es un borrador publicable, el 10 un borrador sin sectores, el 12 un borrador de la organización 2 y el 9 está finalizado. Ver docs/architecture/event-service-api.md.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -503,6 +503,36 @@
           }
         }
       ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// El api-gateway valida el JWT y borra los X-User-* que mande el cliente (ADR-003). Este script pide el token",
+          "// con dev-login (perfil dev, ADR-002) para el usuario del header X-User-Id y lo manda como Authorization.",
+          "// No lo guarda: lo pide en cada request, así sigue andando si el auth-service se reinicia con otra clave.",
+          "const userHeader = pm.request.headers.get('X-User-Id');",
+          "if (userHeader) {",
+          "    const userId = pm.variables.replaceIn(userHeader);",
+          "    pm.request.headers.remove('X-User-Id');",
+          "    pm.sendRequest({",
+          "        url: pm.variables.replaceIn('{{baseUrl}}') + '/api/auth/dev-login',",
+          "        method: 'POST',",
+          "        header: { 'Content-Type': 'application/json' },",
+          "        body: { mode: 'raw', raw: JSON.stringify({ userId: Number(userId) }) }",
+          "    }, (error, response) => {",
+          "        if (error || response.code !== 200) {",
+          "            console.warn(`dev-login no dio un token para el usuario ${userId}: el request sale sin identidad`);",
+          "            return;",
+          "        }",
+          "        pm.request.headers.upsert({ key: 'Authorization', value: 'Bearer ' + response.json().accessToken });",
+          "    });",
+          "}"
+        ]
+      }
     }
   ]
 }

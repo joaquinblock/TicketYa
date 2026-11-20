@@ -180,7 +180,22 @@ El enunciado pide que en la Entrega 1 sea simulada, así que `MockPaymentGateway
 Cobrar, reintegrar y anular van en `/internal/**`, que el gateway no reenvía. La protección es por etapas:
 
 - **Entrega 1:** `/internal/payments` y `/internal/refunds` a través del gateway responden 404, y lo verifica `InternalRoutesTest` en `api-gateway`. El puerto 8084 del servicio sigue accesible de forma directa, así que esas rutas no tienen protección si se llega sin pasar por el gateway.
-- **Entrega 2:** el `docker-compose` general no publica el puerto de payment-service, y las llamadas entre servicios se autentican con una credencial de servicio (sin ella, 401). `GET /api/payments` exige rol administrador.
+- **Entrega 2:** el `docker-compose` general no publica el puerto de payment-service, y las llamadas entre servicios se autentican con una credencial de servicio (sin ella, 401). `GET /api/payments` exige rol administrador: pide `REFUND_RESOLVE`, porque no hay un permiso de pagos y quien resuelve devoluciones es quien necesita ver los pagos de una orden. No publicar el puerto queda para el `docker-compose` general (épica #11).
+
+### El secreto entre servicios (US-PAY-14)
+
+Toda ruta `/internal/**` pide el header **`X-Internal-Secret`**, con un secreto que comparten los servicios. Sin él, o con otro valor: `401 unauthorized`, antes de leer el body. Llegar al puerto 8084 ya no alcanza para cobrar o reintegrar.
+
+| Pieza | Dónde | Qué hace |
+|---|---|---|
+| `InternalSecretInterceptor` | `common`, en cada servicio | Exige el secreto en `/internal/**`. Compara en tiempo constante |
+| `InternalSecretRequestInterceptor` | `common`, en cada cliente `@HttpExchange` | Agrega el secreto a las llamadas a `/internal/**` de otro servicio. A una ruta pública no lo manda |
+| `InternalSecretAutoConfiguration` | `common` | Registra los dos. No aplica al api-gateway, que no tiene `/internal` y para el que esas rutas siguen dando 404 |
+
+- **Aplica a las tres que hay hoy:** event → ticket (`/internal/event-sales`), ticket → event (`/internal/events/{id}/sold-out` y `/back-on-sale`) y ticket → payment (`/internal/payments`, `/internal/refunds`). Ningún servicio tuvo que tocar sus clientes.
+- **Sale de `INTERNAL_SECRET`,** y tiene que ser el mismo en todos los servicios. Sin la variable se usa `dev-internal-secret`, que está en el repo: sirve para levantar todo en local y en los tests, y el servicio loguea un `WARN`. El `docker-compose` general (épica #11) tiene que pasar uno real.
+- **Postman:** las colecciones de payment y ticket mandan el header en sus requests a `/internal`, con la variable `internalSecret`.
+- **Falta de la US-PAY-14:** `GET /api/payments` solo para el administrador y no publicar el puerto 8084 en el compose general.
 
 ## Contrato con ticket-service
 
@@ -192,7 +207,7 @@ REST síncrono en la Entrega 1. **payment-service nunca llama a ticket-service**
 | `POST /internal/payments/cancel` (Entrega 2) | `idempotencyKey` | 200 con el estado final del pago; 404 `payment_not_found` |
 | `POST /internal/refunds` | `ticketId`, `orderId`, `amount`, `reason`, `returnRequestId` | 201 creado; 200 si ya existe y no falló; 404 `payment_not_found`; 409 `payment_not_refundable` (pago no aprobado o supera lo cobrado); 409 `data_conflict` si ya existe con otros datos y no falló; 502 `refund_failed` |
 | `GET /internal/payments?orderId=` | | 200 con los pagos de la orden; 404 `payment_not_found` |
-| `GET /api/payments?orderId=` | Solo administrador, por el gateway | 200 con los pagos de la orden; 404 `payment_not_found` |
+| `GET /api/payments?orderId=` | Solo administrador (`REFUND_RESOLVE`), por el gateway. Sin token, 401; con otro rol, 403 | 200 con los pagos de la orden; 404 `payment_not_found` |
 
 - **Reintento de un cobro:** con la misma clave y los mismos datos responde con el mismo status y cuerpo que la primera vez. Si fue rechazado, vuelve a dar 422 `payment_rejected`, sin llamar a la pasarela. Si todavía no tiene resultado, vuelve a llamar a la pasarela con la misma clave y responde como un cobro normal, o con 503 `payment_gateway_unavailable` si la pasarela falla otra vez. La pasarela no cobra dos veces la misma clave, aunque reciba dos reintentos simultáneos.
 - **Reintento de un reintegro:** si está `CREDITED`, se devuelve el existente con 200. Si sigue `REQUESTED`, se vuelve a llamar a la pasarela y responde 200, o 502 `refund_failed` si falla. Si falló, se reintenta sobre la misma fila y responde 201 o 502.

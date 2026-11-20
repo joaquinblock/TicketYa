@@ -490,7 +490,7 @@ Servicio: ticket-service · Involucra: api-gateway, auth-service · Consigna: NF
 - Sin token válido: 401 `unauthorized`. Con un rol que no corresponde: 403 `forbidden`.
 - Un cliente no puede operar en nombre de otro.
 
-**Notas técnicas:** el usuario sale del JWT y reemplaza al header `X-User-Id` de la Entrega 1.
+**Notas técnicas:** el usuario sale del JWT y reemplaza al header `X-User-Id` de la Entrega 1. **Decisión:** la disponibilidad (US-TKT-02) sigue pública, como buscar eventos: el front la muestra antes de iniciar sesión. La US-TKT-19 y la US-TKT-20 toman `TICKET_VALIDATE` y `REPORT_VIEW` cuando tengan endpoint.
 
 ### US-TKT-27: Registrar requests y operaciones críticas
 
@@ -847,11 +847,12 @@ Como usuario quiero iniciar sesión para que el sistema sepa quién soy sin mand
 Servicio: auth-service · Involucra: api-gateway, todos los servicios · Consigna: NF · Épica: #9 · Entrega 2
 
 **Criterios de aceptación**
-- Con credenciales válidas se obtiene un JWT con el usuario, su rol y sus permisos. Con credenciales inválidas: 401 `invalid_credentials`.
-- Sin token, o con uno vencido o adulterado, un endpoint protegido responde 401 `unauthorized`. Con un rol que no corresponde: 403 `forbidden`.
-- El usuario se toma del token y ya no del header `X-User-Id`.
+- Con un ID token de Google válido se obtiene un JWT de TicketYa con el usuario, su rol y sus permisos. Si el ID token es inválido, está vencido, es de otra audiencia o el email no está verificado: 401 `invalid_credentials`.
+- Si la persona no tiene cuenta, se crea como cliente. Si un admin había precargado su email, se vincula por email verificado y conserva su rol.
+- Sin token, o con uno vencido o adulterado, un endpoint protegido responde 401 `unauthorized`. Con un rol que no corresponde: 403 `forbidden`. El token lo valida solo el gateway, y los servicios toman el usuario de sus headers ([ADR-003](adr/ADR-003-jwt-validated-only-in-gateway.md)).
+- El usuario se toma del token y ya no del header `X-User-Id`. Si un `userId` de la ruta o del body no coincide con el del token, y el rol no permite operar sobre otros usuarios (como el administrador): 403 `forbidden`.
 
-**Notas técnicas:** la modalidad (auth propio o proveedor externo) se discute en el [RFC-001](rfc/RFC-001-auth-modality.md). Con el token, el interceptor de permisos se reemplaza por `@PreAuthorize`.
+**Notas técnicas:** login externo con Google; el diseño y sus decisiones están en el [RFC-001](rfc/RFC-001-auth-modality.md). El interceptor de permisos y `@RequiresPermission` se mueven a `common` y toman los permisos de los headers del gateway. No se usa `@PreAuthorize` porque corre después de validar el body (ver el RFC-001). Para probar sin Google, `dev-login` en el perfil `dev` (ver el ADR-001).
 
 ### US-AUTH-04: Asignar personal de acceso a un evento
 

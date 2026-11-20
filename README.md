@@ -42,20 +42,22 @@ La primera vez, instalar el módulo `common`, del que dependen todos los servici
 Después, en cinco terminales, desde la raíz del repo y en este orden:
 
 ```bash
-./mvnw -pl auth-service spring-boot:run
+./mvnw -pl auth-service spring-boot:run -Dspring-boot.run.profiles=dev
 ./mvnw -pl event-service spring-boot:run
 ./mvnw -pl ticket-service spring-boot:run
 ./mvnw -pl payment-service spring-boot:run
 ./mvnw -pl api-gateway spring-boot:run
 ```
 
-En IntelliJ es lo mismo: se corre la clase `*Application` de cada módulo (las configuraciones están en `.run/`).
+En IntelliJ es lo mismo: se corre la clase `*Application` de cada módulo (las configuraciones están en `.run/`). La del auth-service ya activa el perfil `dev`.
+
+El perfil `dev` del auth-service habilita `POST /api/auth/dev-login {"userId": 2}`, que devuelve el JWT de cualquier usuario del seeder sin pasar por Google. Cómo y cuándo usarlo: [ADR-002](docs/adr/ADR-002-dev-login.md).
 
 Hay que usar `spring-boot:run`: con `java -jar` el servicio no arranca, porque `spring-boot-docker-compose` es una dependencia de desarrollo, no se empaqueta en el jar y sin ella no hay datasource. El despliegue con contenedores y un único `docker-compose.yml` es de la Entrega 2.
 
 - **Todo entra por el gateway (`http://localhost:8080`).** Las rutas `/internal/**` (llamadas entre servicios) no pasan por el gateway: se usan directo contra el puerto de cada servicio.
-- **Swagger de todo el sistema:** http://localhost:8080/swagger-ui.html. Arriba a la derecha se elige el servicio.
-- **La identidad va en el header `X-User-Id`**, y al crear un evento el organizador manda además `X-Organization-Id`. La Entrega 1 no tiene autenticación (ver *Modalidad de entrega*). Los permisos se verifican contra el auth-service (ver [`permissions.md`](docs/architecture/permissions.md)).
+- **Swagger de todo el sistema:** http://localhost:8080/swagger-ui.html. Arriba a la derecha se elige el servicio. Los endpoints con candado piden token: *Authorize* y pegar el `accessToken` de `dev-login` (ver *Swagger* en [`permissions.md`](docs/architecture/permissions.md)).
+- **La identidad va en un JWT** (`Authorization: Bearer`). El api-gateway lo valida y les pasa a los servicios el usuario, sus permisos y su organización en headers (ver [`permissions.md`](docs/architecture/permissions.md)). Para probar, el token se pide con `dev-login`; las colecciones de Postman lo hacen solas con el usuario del header `X-User-Id` de cada request.
 - **El primer request a un servicio recién levantado puede tardar unos segundos**, mientras se calienta.
 - **La primera vez que se crea el contenedor de una base, MySQL tarda en inicializarse**, y el servicio puede fallar al arrancar con `Communications link failure`. El contenedor queda levantado igual: alcanza con volver a arrancar el servicio.
 
@@ -65,7 +67,7 @@ Cada servicio recrea su base al arrancar (`ddl-auto: create`) y su seeder la vue
 
 | Seeder | Qué carga |
 |---|---|
-| `AuthSeeder` | 9 permisos, 4 roles y 6 usuarios: `1` cliente, `2` organizador de la org 1, `3` admin, `4` personal de acceso, `5` organizador de la org 2 y `6` organizador de la org 1 sin eventos propios. Organizaciones `1` *Del Sur Producciones* y `2` *Cultura Serrana* |
+| `AuthSeeder` | 11 permisos, 4 roles y 6 usuarios: `1` cliente, `2` organizador de la org 1, `3` admin (con el Gmail de `BOOTSTRAP_ADMIN_EMAIL`, si está configurado), `4` personal de acceso, `5` organizador de la org 2 y `6` organizador de la org 1 sin eventos propios. Organizaciones `1` *Del Sur Producciones* y `2` *Cultura Serrana* |
 | `EventSeeder` | 5 lugares en 5 ciudades, 239 asientos, 11 participantes y 12 eventos en todos los estados, con fechas relativas al día de arranque (ver *Datos de prueba* en [`event-service.md`](docs/architecture/event-service.md)) |
 | `TicketSeeder` | El inventario de todos los eventos del seeder, dos compras pagadas (una con una devolución pendiente) y una reserva en curso (ver [`ticket-service.md`](docs/architecture/ticket-service.md)) |
 | `PaymentSeeder` | Los pagos de esas órdenes: aprobados, uno rechazado y uno pendiente |
@@ -86,9 +88,10 @@ Solo hay tests de lo que pide la consigna y de lo que no se puede romper:
 | ticket-service | Reserva y no doble venta con muchos hilos (`ReservationMySqlIntegrationTest`), pago y emisión (`OrderPaymentMySqlIntegrationTest`), devoluciones (`ReturnRequestMySqlIntegrationTest`) y reintegros al cancelar (`EventCancellationMySqlIntegrationTest`), todos contra MySQL |
 | payment-service | Cobro y rechazo (`PaymentServiceTest`), cobro idempotente ante reintentos (`PaymentIdempotencyIntegrationTest`) y reintegros sin duplicar (`RefundMySqlIntegrationTest`) |
 | event-service | Búsqueda (`EventSearchServiceTest`), alta, sectores, publicación, suspensión, cancelación y finalización (`EventServiceTest`, `SectorServiceTest`, `EventLifecycleServiceTest`, `EventStatusMachineTest`) y los ids que los otros seeders asumen (`EventSeederTest`) |
-| api-gateway | Que las rutas `/internal/**` no se expongan (`InternalRoutesTest`) |
+| api-gateway | Que las rutas `/internal/**` no se expongan (`InternalRoutesTest`) y la validación del JWT (`IdentityHeadersTest`, `JwksUnavailableTest`) |
+| Permisos por rol | Cada endpoint protegido, sin token (401), con un rol que no corresponde (403) y con el que sí: tabla en *Qué test prueba cada endpoint* de [`permissions.md`](docs/architecture/permissions.md) |
 
-Los controllers, los ABM de lugares y participantes y el manejo de errores de `common` no tienen tests propios: se probaron a mano con las colecciones de Postman.
+Los ABM de lugares y participantes y el manejo de errores de `common` se probaron también a mano con las colecciones de Postman.
 
 - **Necesitan Docker:** varios tests corren contra el MySQL real de cada servicio. Usan las mismas bases que los servicios, así que conviene correrlos con los servicios apagados. Dejan la base recreada: después hay que reiniciar el servicio.
 - **Si la primera corrida falla con `Communications link failure`**, es MySQL inicializando un contenedor recién creado: alcanza con volver a correrlos.
@@ -97,6 +100,8 @@ Los controllers, los ABM de lugares y participantes y el manejo de errores de `c
 ### Colecciones de Postman
 
 Están en [`docs/postman/`](docs/postman/). Se importan en Postman y cada una trae sus variables. Para correr una entera: clic derecho → *Run collection*.
+
+**El token lo piden solas.** Cada request dice con qué usuario del `AuthSeeder` va, en el header `X-User-Id`. El script de la colección pide su token con `dev-login` y lo manda como `Authorization: Bearer`, así que **hace falta el auth-service con el perfil `dev`** además del servicio que se prueba. Los usuarios son los de *Datos de prueba*: `1` cliente, `2`, `5` y `6` organizadores, `3` admin, `4` personal de acceso.
 
 | Colección | Qué cubre | Apunta a | ¿Cambia datos? |
 |---|---|---|---|
@@ -108,8 +113,8 @@ Están en [`docs/postman/`](docs/postman/). Se importan en Postman y cada una tr
 | `event-lifecycle` | Ver, editar, borrar, publicar y cancelar | Gateway | Sí: **reiniciar el event-service antes** |
 | `event-sectors` | Sectores y precios de un borrador | Gateway | Sí: **reiniciar el event-service antes** |
 | `event-suspension` | Suspender, reanudar y quién puede hacerlo | Gateway | Sí: **reiniciar el event-service antes** |
-| `ticket-service` | Inventario, reserva, pago, compras y devoluciones | Gateway, y `:8083` para `/internal/**` (necesita también el payment-service y el auth-service) | Crea su propio evento: se puede repetir |
-| `payment-service` | Cobros, rechazos, reintentos y reintegros | `:8084` | Crea sus propias órdenes: se puede repetir |
+| `ticket-service` | Inventario, reserva, pago, compras, devoluciones y permisos por rol | Gateway, y `:8083` para `/internal/**` (necesita también el payment-service) | Crea su propio evento: se puede repetir |
+| `payment-service` | Cobros, rechazos, reintentos y reintegros | `:8084`, sin token: son llamadas entre servicios | Crea sus propias órdenes: se puede repetir |
 
 ## Documentación
 

@@ -399,7 +399,7 @@ class ReservationMySqlIntegrationTest {
     }
 
     private HttpResult synchronizeSale(String status, String saleStart, int price, int capacity, int maxTickets) {
-        return client.put().uri("/internal/event-sales/{eventId}", eventId)
+        return client.put().uri("/internal/event-sales/{eventId}", eventId).header("X-Internal-Secret", "dev-internal-secret")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("""
                         {"status": "%s", "eventName": "Recital", "venueName": "Estadio", "venueAddress": "Calle 1",
@@ -438,7 +438,7 @@ class ReservationMySqlIntegrationTest {
 
     private HttpResult post(String path, long customer, String body) {
         return client.post().uri(path)
-                .header("X-User-Id", Long.toString(customer))
+                .header("X-User-Id", Long.toString(customer)).header("X-User-Permissions", permissionsOf(customer))
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .exchange((request, response) ->
@@ -517,5 +517,9 @@ class ReservationMySqlIntegrationTest {
 
     private static String newKey() {
         return UUID.randomUUID().toString();
+    }
+
+    private static String permissionsOf(long user) {
+        return "TICKET_PURCHASE,REFUND_REQUEST";
     }
 }

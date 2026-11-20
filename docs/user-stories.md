@@ -375,18 +375,7 @@ Servicio: ticket-service · Involucra: event-service, payment-service · Consign
 
 ### US-TKT-19: Validar el QR en el ingreso
 
-Como personal de acceso quiero escanear el QR de una entrada para dejar pasar solo a quien corresponde.
-
-Servicio: ticket-service · Involucra: auth-service · Consigna: 8 · Épica: #7 · Entrega 2
-
-**Criterios de aceptación**
-- Si la entrada es válida pasa a `USED`, y queda registrado quién la validó y cuándo.
-- Si el QR no existe, es de otro evento o la entrada está `VOIDED` o `REFUNDED`: 400 `invalid_qr`.
-- Si la entrada ya está `USED`: 409 `ticket_already_used`.
-- Si el personal no está asignado al evento: 403 `staff_not_assigned`, tal como lo responde el auth-service.
-- Con dos escaneos simultáneos del mismo QR, exactamente uno se acepta y el otro recibe 409 `ticket_already_used`.
-
-**Notas técnicas:** `@Version` en `ticket`. Un conflicto de bloqueo optimista se traduce a `ticket_already_used`.
+Historia y criterios de aceptación: [`stories/62-validar-qr-ingreso.md`](stories/62-validar-qr-ingreso.md).
 
 ## F7. Reportes
 
@@ -408,16 +397,7 @@ Servicio: ticket-service · Involucra: event-service, auth-service · Consigna: 
 
 ### US-TKT-21: Exigir el turno en eventos de alta demanda
 
-Como cliente quiero que en un evento de alta demanda se respete el orden de la fila para comprar de forma justa.
-
-Servicio: ticket-service · Involucra: queue-service · Consigna: 6 · Épica: #7 · Entrega 2
-
-**Criterios de aceptación**
-- En un evento de alta demanda, reservar requiere un turno vigente de ese cliente para ese evento.
-- Sin turno, con turno vencido o de otro cliente o evento: 403 `invalid_queue_token`.
-- Los eventos que no son de alta demanda no lo requieren.
-
-**Notas técnicas:** token con vencimiento emitido por el queue-service, validado sin llamarlo en cada compra. El evento se identifica con `event_sale.high_demand`.
+Historia y criterios de aceptación: [`stories/64-exigir-turno-alta-demanda.md`](stories/64-exigir-turno-alta-demanda.md).
 
 ## F9. Consistencia y resiliencia
 
@@ -856,31 +836,13 @@ Servicio: auth-service · Involucra: api-gateway, todos los servicios · Consign
 
 ### US-AUTH-04: Asignar personal de acceso a un evento
 
-Como organizador quiero asignar al personal que va a escanear las entradas en mi evento.
-
-Servicio: auth-service · Involucra: event-service · Sirve a: US-TKT-19 · Consigna: 8 · Épica: #7 · Entrega 2
-
-**Criterios de aceptación**
-- El organizador asigna personal de acceso de su organización a uno de sus eventos.
-- Un personal de acceso de otra organización: 403 `forbidden`.
-- El personal asignado puede validar entradas de ese evento y no de otros: 403 `staff_not_assigned`.
+Historia y criterios de aceptación: [`stories/148-asignar-personal-acceso.md`](stories/148-asignar-personal-acceso.md).
 
 ## F21. Fila virtual
 
 ### US-QUE-01: Hacer la fila virtual en un evento de alta demanda
 
-Como cliente quiero entrar a una fila virtual cuando abre la venta de un evento masivo, para comprar en el orden en que llegué.
-
-Servicio: queue-service · Involucra: event-service, ticket-service · Sirve a: US-TKT-21 · Consigna: 6 · Épica: #7 · Entrega 2
-
-**Criterios de aceptación**
-- En un evento de alta demanda, a partir de `saleStart`, el cliente entra a la fila y recibe su posición.
-- El cliente consulta su posición, que baja a medida que avanza la fila.
-- Los clientes se habilitan por tandas, en el orden de llegada. Al habilitarse, recibe un turno con vencimiento para comprar.
-- Entrar dos veces a la fila del mismo evento devuelve la misma posición.
-- En un evento que no es de alta demanda, o antes de `saleStart`: 409.
-
-**Notas técnicas:** la fila vive en Redis. La consigna permite una versión simplificada, justificando las simplificaciones.
+Historia y criterios de aceptación: [`stories/147-fila-virtual-alta-demanda.md`](stories/147-fila-virtual-alta-demanda.md).
 
 ## F22. Notificaciones
 

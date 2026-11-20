@@ -74,6 +74,15 @@ Alternativas descartadas: **OpenFeign** (en mantenimiento), **WebClient** (react
 
 Cada client es una interfaz `@HttpExchange` en el paquete `client`, registrada en `config/HttpClientsConfig` con `@ImportHttpServices`. La URL base va en `spring.http.serviceclient.<servicio>.base-url` del `application.yml`, con variable de entorno para Docker (p. ej. `EVENT_SERVICE_URL`).
 
+### Mensajería asíncrona
+
+Según el [ADR 0004](../adr/0004-rabbitmq-para-avisos-entre-servicios.md): un exchange topic `ticketya.events` y una clave por tipo de aviso. Hoy la usan ticket-service (declara el exchange) y notification-service, cada uno con su `config/RabbitConfig`; la mensajería no va en `common`.
+
+- **Broker:** uno solo para todos, en `rabbitmq.compose.yaml` de la raíz. Se levanta antes que los servicios.
+- **Conexión:** `spring.rabbitmq.*` desde `RABBITMQ_HOST`, `RABBITMQ_PORT`, `RABBITMQ_USER` y `RABBITMQ_PASSWORD` (por defecto `localhost:5672`, `ticketya` / `ticketya`), con `connection-timeout: 2s`.
+- **Formato:** JSON con el `JsonMapper` de Boot (`JacksonJsonMessageConverter`). Cada servicio tiene su propia copia del contrato del mensaje, como con los clients HTTP.
+- **Sin broker:** los servicios arrancan igual; `/actuator/health` queda `DOWN` con el detalle `rabbit`. ticket-service intenta declarar el exchange al arrancar y, si no puede, lo declara en la primera conexión.
+
 ### Timeouts y reintentos
 
 Hoy solo el event-service los tiene configurados. Los demás servicios tienen que copiar la misma configuración cuando agreguen sus clients.

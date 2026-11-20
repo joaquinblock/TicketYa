@@ -33,7 +33,8 @@ Reglas que aplican a todos los servicios:
 ## Estado
 
 - **Implementado:** clients síncronos con sus timeouts, rutas `/internal/**` y manejo común de errores.
-- **Pendiente (Entrega 2):** RabbitMQ. Todavía ningún servicio tiene la dependencia.
+- **Implementado (base de RabbitMQ):** broker para desarrollo, conexión de ticket-service y notification-service, exchange `ticketya.events` y mensajes en JSON ([ADR 0004](../adr/0004-rabbitmq-para-avisos-entre-servicios.md)).
+- **Pendiente (Entrega 2):** publicar y consumir los avisos concretos, empezando por la compra confirmada (#67, #152).
 
 ## Dónde verlo
 

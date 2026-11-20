@@ -8,7 +8,15 @@
 
 1. Pide la orden a `GET /internal/orders/{id}` del ticket-service: el evento (nombre, fecha, lugar) y las entradas con su ubicación y su `qrCode`. Solo responde órdenes `PAID`.
 2. Pide el email y el nombre a `GET /internal/users/{id}` del auth-service.
-3. `PurchaseMailComposer` arma un HTML simple, sin motor de plantillas, y se envía con `JavaMailSender`. Por ahora el QR va como código en texto; la imagen viene después.
+3. `PurchaseMailComposer` arma un HTML simple, sin motor de plantillas, y se envía con `JavaMailSender`.
+
+## El QR en el mail
+
+`QrCodeGenerator` convierte el `qrCode` de cada entrada (un UUID) en un PNG de 240 × 240 con el núcleo de ZXing (`com.google.zxing:core`). La imagen se arma con `ImageIO`, así no hace falta el módulo `javase` de ZXing.
+
+- **Va como imagen embebida**, no como `data:` en el HTML. El HTML la referencia con `<img src="cid:qr-{ticketId}">` y el mail lleva una parte `image/png` por entrada. Gmail y otros clientes bloquean las imágenes `data:`.
+- **Debajo va el código en texto**, por si el cliente de mail no muestra imágenes o el lector del ingreso falla.
+- Una entrada sin `qrCode` (por ejemplo, reintegrada) muestra "No disponible" y no lleva imagen.
 
 Los dos clientes mandan el secreto interno solos (`common`, US-PAY-14) y tienen timeouts de 1 s para conectar y 2 s para leer.
 
@@ -37,5 +45,4 @@ En desarrollo, el `compose.yaml` del servicio levanta **Mailpit**: recibe los ma
 ## Pendiente
 
 - Escuchar `purchase.confirmed` en RabbitMQ y descartar los mensajes repetidos por `messageId` (US-NOT-01, US-TKT-24).
-- La imagen del QR en el mail.
 - Los avisos de cancelación y cambios de un evento (US-NOT-02) y de artistas favoritos (US-NOT-03).

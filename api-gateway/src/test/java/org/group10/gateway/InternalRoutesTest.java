@@ -26,7 +26,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 class InternalRoutesTest {
 
     private static final List<String> PATHS_RECEIVED_BY_PAYMENT_SERVICE = new CopyOnWriteArrayList<>();
+    private static final List<String> PATHS_RECEIVED_BY_TICKET_SERVICE = new CopyOnWriteArrayList<>();
     private static final HttpServer PAYMENT_SERVICE = startPaymentServiceAnsweringOk();
+    private static final HttpServer TICKET_SERVICE = startTicketServiceAnsweringOk();
 
     @Value("${local.server.port}")
     private int port;
@@ -34,16 +36,19 @@ class InternalRoutesTest {
     @DynamicPropertySource
     static void routePaymentServiceToTheStub(DynamicPropertyRegistry registry) {
         registry.add("PAYMENT_SERVICE_URL", () -> "http://localhost:" + PAYMENT_SERVICE.getAddress().getPort());
+        registry.add("TICKET_SERVICE_URL", () -> "http://localhost:" + TICKET_SERVICE.getAddress().getPort());
     }
 
     @BeforeEach
     void forgetPreviousRequests() {
         PATHS_RECEIVED_BY_PAYMENT_SERVICE.clear();
+        PATHS_RECEIVED_BY_TICKET_SERVICE.clear();
     }
 
     @AfterAll
     static void stopPaymentService() {
         PAYMENT_SERVICE.stop(0);
+        TICKET_SERVICE.stop(0);
     }
 
     @ParameterizedTest
@@ -66,6 +71,12 @@ class InternalRoutesTest {
         assertThat(PATHS_RECEIVED_BY_PAYMENT_SERVICE).containsExactly("/api/payments");
     }
 
+    @Test
+    void get_eventReportRoute_isForwardedToTicketService() {
+        assertThat(statusOf(HttpMethod.GET, "/api/events/1/report")).isEqualTo(200);
+        assertThat(PATHS_RECEIVED_BY_TICKET_SERVICE).containsExactly("/api/events/1/report");
+    }
+
     private int statusOf(HttpMethod method, String path) {
         RestClient.RequestBodySpec request = RestClient.create("http://localhost:" + port)
                 .method(method)
@@ -80,6 +91,21 @@ class InternalRoutesTest {
             HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
             server.createContext("/", exchange -> {
                 PATHS_RECEIVED_BY_PAYMENT_SERVICE.add(exchange.getRequestURI().getPath());
+                exchange.sendResponseHeaders(200, -1);
+                exchange.close();
+            });
+            server.start();
+            return server;
+        } catch (IOException failure) {
+            throw new UncheckedIOException(failure);
+        }
+    }
+
+    private static HttpServer startTicketServiceAnsweringOk() {
+        try {
+            HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+            server.createContext("/", exchange -> {
+                PATHS_RECEIVED_BY_TICKET_SERVICE.add(exchange.getRequestURI().getPath());
                 exchange.sendResponseHeaders(200, -1);
                 exchange.close();
             });

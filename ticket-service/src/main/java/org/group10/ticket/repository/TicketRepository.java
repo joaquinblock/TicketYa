@@ -18,6 +18,31 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
     List<Ticket> findByOrderIdInOrderById(Collection<Long> orderIds);
 
     @Query("""
+            select new org.group10.ticket.repository.EventSectorReportAggregate(
+                t.eventSectorId,
+                count(case when t.status in (
+                    org.group10.ticket.entity.TicketStatus.ISSUED,
+                    org.group10.ticket.entity.TicketStatus.USED
+                ) then t.id else null end),
+                count(case when t.status = org.group10.ticket.entity.TicketStatus.REFUNDED
+                    then t.id else null end),
+                sum(case when t.status in (
+                    org.group10.ticket.entity.TicketStatus.ISSUED,
+                    org.group10.ticket.entity.TicketStatus.USED
+                ) then t.price else null end)
+            )
+            from Ticket t
+            where t.order.eventId = :eventId
+              and t.status in (
+                  org.group10.ticket.entity.TicketStatus.ISSUED,
+                  org.group10.ticket.entity.TicketStatus.USED,
+                  org.group10.ticket.entity.TicketStatus.REFUNDED
+              )
+            group by t.eventSectorId
+            """)
+    List<EventSectorReportAggregate> findReportAggregatesByEventId(Long eventId);
+
+    @Query("""
             select count(t) from Ticket t
             where t.order.eventId = :eventId and t.status = org.group10.ticket.entity.TicketStatus.RESERVED
             """)

@@ -16,7 +16,7 @@
 |---|---|---|---|
 | [auth-service](#auth-service) | 8081 | 3 | Usuarios, permisos, organizaciones y organizadores. |
 | [event-service](#event-service) | 8082 | 31 | Lugares, sectores, asientos, participantes y eventos (alta, configuración, estados y búsqueda). |
-| [ticket-service](#ticket-service) | 8083 | 12 | Disponibilidad, reservas, pago y emisión de entradas, compras, devoluciones e ingreso con QR. |
+| [ticket-service](#ticket-service) | 8083 | 13 | Disponibilidad, reservas, pago y emisión de entradas, compras, devoluciones, ingreso con QR y reportes. |
 | [payment-service](#payment-service) | 8084 | 4 | Cobros y reintegros contra la pasarela simulada. |
 
 ## auth-service
@@ -91,6 +91,7 @@ Disponibilidad, reservas, pago y emisión de entradas, compras, devoluciones e i
 | Método | Ruta | Qué hace | Parámetros | Quién | Respuestas |
 |---|---|---|---|---|---|
 | `GET` | `/api/availability` | Consultar la disponibilidad de un evento | `?eventId` | Público | **200** Disponibilidad por sector<br>**404** resource_not_found: el evento no tiene lugares a la venta |
+| `GET` | `/api/events/{eventId}/report` | Consultar el reporte de un evento | `{eventId}` | `REPORT_VIEW`, organizador de la organización del evento | **200** Reporte por sector y total del evento<br>**400** validation_error<br>**401** unauthorized<br>**403** forbidden<br>**404** event_not_found<br>**503** service_unavailable: el event-service no responde |
 | `POST` | `/api/orders` | Reservar lugares | header `X-User-Id`<br>body `ReservationRequest` | `X-User-Id`, sin validar rol | **201** Reserva creada, o la orden ya creada por ese mismo intento<br>**400** validation_error<br>**404** resource_not_found: el evento, sector o asiento no existe<br>**409** seat_unavailable, sector_sold_out, ticket_limit_exceeded, event_not_on_sale, sale_not_started o data_conflict |
 | `POST` | `/api/orders/{id}/pay` | Pagar una orden | header `X-User-Id`<br>`{id}`<br>body `PayOrderRequest` | `X-User-Id`, sin validar rol | **200** Orden pagada, con sus entradas y QR<br>**400** validation_error<br>**404** order_not_found: no existe o es de otro cliente<br>**409** reservation_expired, payment_window_closed, order_not_payable o payment_in_progress<br>**422** payment_rejected, con reason y rejectedAttempts en detail<br>**503** service_unavailable: el pago quedó sin resultado y solo se puede repetir ese intento |
 | `GET` | `/api/orders` | Ver mis compras | header `X-User-Id` | `X-User-Id`, sin validar rol | **200** Órdenes del cliente, de la más nueva a la más vieja |

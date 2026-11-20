@@ -32,6 +32,14 @@
     {
       "key": "staffId",
       "value": "4"
+    },
+    {
+      "key": "organizerId",
+      "value": "2"
+    },
+    {
+      "key": "reportEventId",
+      "value": "1"
     }
   ],
   "item": [
@@ -1933,6 +1941,38 @@
               }
             }
           }
+        }
+      ]
+    },
+    {
+      "name": "US-TKT-20 Reporte de evento",
+      "item": [
+        {
+          "name": "Evento de prueba → 200",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{organizerId}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/events/{{reportEventId}}/report",
+            "description": "El organizador 2 del seeder tiene REPORT_VIEW y organiza para la organización del evento."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const report = pm.response.json();",
+                  "pm.test('Incluye sectores', () => pm.expect(report.sectors).not.to.be.empty);",
+                  "pm.test('Incluye métricas totales', () => pm.expect(report.total).to.include.all.keys('capacity', 'soldTickets', 'returnedTickets', 'occupancyPercentage', 'revenue'));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },

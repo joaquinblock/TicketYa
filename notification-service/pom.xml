@@ -14,6 +14,10 @@
     <name>notification-service</name>
     <description>Notificaciones por email y push</description>
 
+    <properties>
+        <zxing.version>3.5.3</zxing.version>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -28,6 +32,12 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+        <!-- Solo el núcleo de ZXing: la imagen se arma con ImageIO, sin el módulo javase y sus dependencias -->
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>core</artifactId>
+            <version>${zxing.version}</version>
         </dependency>
 
         <dependency>

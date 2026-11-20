@@ -5,6 +5,7 @@ import org.group10.common.exception.TicketYaException;
 import org.group10.ticket.dto.OrderResponse;
 import org.group10.ticket.entity.EventSale;
 import org.group10.ticket.entity.Order;
+import org.group10.ticket.entity.OrderStatus;
 import org.group10.ticket.entity.Ticket;
 import org.group10.ticket.exception.TicketErrorCode;
 import org.group10.ticket.mapper.OrderMapper;
@@ -45,6 +46,24 @@ public class OrderQueryService {
 
     public OrderResponse findOrderDetailOfCustomer(Long userId, Long orderId) {
         return toResponse(findOrderOfCustomer(userId, orderId));
+    }
+
+    /**
+     * La orden pagada con sus entradas y su QR, para otro servicio (el mail de la compra del notification-service).
+     * No filtra por cliente: la ruta es interna. Solo responde órdenes PAID, para no avisar una compra que no se
+     * concretó.
+     *
+     * @throws TicketYaException {@code ORDER_NOT_FOUND} o {@code ORDER_NOT_PAID}
+     */
+    public OrderResponse findPaidOrderDetail(Long orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new TicketYaException(TicketErrorCode.ORDER_NOT_FOUND,
+                        "No se encontró la orden con id %d".formatted(orderId)));
+        if (order.getStatus() != OrderStatus.PAID) {
+            throw new TicketYaException(TicketErrorCode.ORDER_NOT_PAID,
+                    "La orden %d no está pagada: está %s".formatted(orderId, order.getStatus()));
+        }
+        return toResponse(order);
     }
 
     public Order findOrderOfCustomer(Long userId, Long orderId) {

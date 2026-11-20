@@ -106,6 +106,7 @@ Disponibilidad, reservas, pago y emisión de entradas, compras y devoluciones. D
 | Método | Ruta | Qué hace | Parámetros | Quién | Respuestas |
 |---|---|---|---|---|---|
 | `PUT` | `/internal/event-sales/{eventId}` | Sincronizar la venta de un evento | `{eventId}`<br>body `EventSaleRequest` | Solo entre servicios | **204** Venta sincronizada<br>**400** validation_error |
+| `GET` | `/internal/orders/{id}` | Ver una orden pagada con el evento y el QR de cada entrada | `{id}`<br>header `X-Internal-Secret` | Solo entre servicios | **200** Orden PAID con sus entradas<br>**400** validation_error<br>**401** unauthorized: sin el secreto interno<br>**404** order_not_found<br>**409** order_not_paid |
 
 ## payment-service
 

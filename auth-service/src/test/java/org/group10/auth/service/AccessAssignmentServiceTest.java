@@ -18,6 +18,7 @@ import org.mockito.quality.Strictness;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
@@ -46,6 +47,30 @@ class AccessAssignmentServiceTest {
         when(accessAssignmentRepository.existsByAccessStaffUserIdAndEventId(STAFF_ID, EVENT_B)).thenReturn(false);
 
         assertError(() -> accessAssignmentService.ensureAssigned(STAFF_ID, EVENT_B), AuthErrorCode.STAFF_NOT_ASSIGNED);
+    }
+
+    @Test
+    void ensureAssigned_userWithoutAccessStaffRow_isStaffNotAssigned() {
+        when(accessStaffRepository.findById(STAFF_ID)).thenReturn(Optional.empty());
+
+        assertError(() -> accessAssignmentService.ensureAssigned(STAFF_ID, EVENT_A), AuthErrorCode.STAFF_NOT_ASSIGNED);
+    }
+
+    @Test
+    void ensureAssigned_removedStaffWithAnOldAssignment_isStaffNotAssigned() {
+        when(accessStaffRepository.findById(STAFF_ID))
+                .thenReturn(Optional.of(staff(STAFF_ID, LocalDateTime.of(2026, 1, 1, 0, 0))));
+        when(accessAssignmentRepository.existsByAccessStaffUserIdAndEventId(STAFF_ID, EVENT_A)).thenReturn(true);
+
+        assertError(() -> accessAssignmentService.ensureAssigned(STAFF_ID, EVENT_A), AuthErrorCode.STAFF_NOT_ASSIGNED);
+    }
+
+    @Test
+    void ensureAssigned_activeStaffAssignedToTheEvent_passes() {
+        when(accessStaffRepository.findById(STAFF_ID)).thenReturn(Optional.of(staff(STAFF_ID, null)));
+        when(accessAssignmentRepository.existsByAccessStaffUserIdAndEventId(STAFF_ID, EVENT_A)).thenReturn(true);
+
+        assertThatCode(() -> accessAssignmentService.ensureAssigned(STAFF_ID, EVENT_A)).doesNotThrowAnyException();
     }
 
     private AccessStaff staff(Long userId, LocalDateTime deletedAt) {

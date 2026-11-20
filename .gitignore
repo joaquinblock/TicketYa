@@ -30,3 +30,8 @@ Thumbs.db
 
 # Claves privadas (JWT): se montan como secreto, nunca van en el repo
 *.pem
+
+### Flujo con agentes ###
+.work/
+.claude/settings.local.json
+CLAUDE.local.md

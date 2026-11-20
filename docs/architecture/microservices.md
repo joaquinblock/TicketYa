@@ -69,7 +69,7 @@ Alternativas descartadas: **OpenFeign** (en mantenimiento), **WebClient** (react
 | ticket-service | `EventClient`, `PaymentClient`, `AuthClient` | Sector, precio y asiento; cobrar y reintegrar; límite por usuario y asignación del personal de acceso |
 | payment-service | — | Solo habla con la pasarela externa, que va como adaptador mock y no como client de otro servicio nuestro |
 | queue-service | `EventClient` | Saber si el evento es de alta demanda y cuándo abre la venta |
-| notification-service | `AuthClient`, `EventClient` | Email y datos del destinatario; datos del evento para el mensaje |
+| notification-service | `AuthClient`, `TicketClient`, `EventClient` | Email y nombre del destinatario; la orden pagada con el evento y el QR de cada entrada; datos del evento para los avisos de cambios |
 | recommendation-service | `EventClient`, `TicketClient` | Datos de eventos; historial de compras |
 
 Cada client es una interfaz `@HttpExchange` en el paquete `client`, registrada en `config/HttpClientsConfig` con `@ImportHttpServices`. La URL base va en `spring.http.serviceclient.<servicio>.base-url` del `application.yml`, con variable de entorno para Docker (p. ej. `EVENT_SERVICE_URL`).

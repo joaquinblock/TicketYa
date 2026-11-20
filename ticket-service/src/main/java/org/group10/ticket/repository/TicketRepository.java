@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -73,6 +74,22 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
             where t.id = :id and t.status = org.group10.ticket.entity.TicketStatus.ISSUED
             """)
     int markIssuedTicketAsRefunded(Long id);
+
+    @Query("select t from Ticket t join fetch t.order where t.qrCode = :qrCode")
+    Optional<Ticket> findWithOrderByQrCode(String qrCode);
+
+    /**
+     * Marca la entrada como usada solo si sigue {@code ISSUED}: si dos lectores la escanean a la vez, uno actualiza
+     * la fila y el otro recibe 0.
+     */
+    @Modifying
+    @Query("""
+            update Ticket t
+            set t.status = org.group10.ticket.entity.TicketStatus.USED, t.usedAt = :usedAt,
+                t.validatedBy = :validatedBy, t.version = t.version + 1
+            where t.id = :id and t.status = org.group10.ticket.entity.TicketStatus.ISSUED
+            """)
+    int markIssuedTicketAsUsed(Long id, LocalDateTime usedAt, Long validatedBy);
 
     @Query("""
             select t from Ticket t join fetch t.order o

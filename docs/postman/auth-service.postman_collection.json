@@ -20,6 +20,14 @@
     {
       "key": "organizerId",
       "value": "2"
+    },
+    {
+      "key": "authUrl",
+      "value": "http://localhost:8081"
+    },
+    {
+      "key": "internalSecret",
+      "value": "dev-internal-secret"
     }
   ],
   "item": [
@@ -566,6 +574,107 @@
           "request": {
             "method": "GET",
             "url": "{{baseUrl}}/api/organizers/1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Contacto de un usuario (interno)",
+      "description": "GET /internal/users/{id}: email y nombre de un usuario activo, para el mail de una compra (US-NOT-01). Es una ruta entre servicios: va directo al auth-service (8081), no por el gateway, y pide el secreto X-Internal-Secret (US-PAY-14). internalSecret tiene el valor de desarrollo.",
+      "item": [
+        {
+          "name": "Contacto del cliente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('Email y nombre del cliente', () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.userId).to.eql(1);",
+                  "    pm.expect(body.email).to.eql('client@ticketya.com');",
+                  "    pm.expect(body.firstName).to.eql('Juan');",
+                  "    pm.expect(body.lastName).to.eql('Pérez');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-Secret",
+                "value": "{{internalSecret}}"
+              }
+            ],
+            "url": "{{authUrl}}/internal/users/1"
+          }
+        },
+        {
+          "name": "Usuario inexistente → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404', () => pm.response.to.have.status(404));",
+                  "pm.test('user_not_found', () => pm.expect(pm.response.json().error).to.eql('user_not_found'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-Secret",
+                "value": "{{internalSecret}}"
+              }
+            ],
+            "url": "{{authUrl}}/internal/users/999"
+          }
+        },
+        {
+          "name": "Sin el secreto interno → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));",
+                  "pm.test('unauthorized', () => pm.expect(pm.response.json().error).to.eql('unauthorized'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{authUrl}}/internal/users/1"
+          }
+        },
+        {
+          "name": "Por el gateway no existe → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404: el gateway no expone /internal', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-Secret",
+                "value": "{{internalSecret}}"
+              }
+            ],
+            "url": "{{baseUrl}}/internal/users/1"
           }
         }
       ]

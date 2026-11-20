@@ -27,3 +27,8 @@ Thumbs.db
 
 ### Env ###
 .env
+
+### Flujo con agentes ###
+.work/
+.claude/settings.local.json
+CLAUDE.local.md

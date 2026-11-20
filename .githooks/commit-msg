@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Última barrera: aplica a cualquiera que commitee, persona o agente.
+# Se activa con: git config core.hooksPath .githooks
+
+MSG_FILE="$1"
+MAX_BULLETS=6
+MAX_TITLE=72
+TYPES='feat|fix|refactor|test|docs|chore'
+
+MSG="$(grep -v '^#' "$MSG_FILE")"
+SUBJECT="$(printf '%s\n' "$MSG" | sed -n '1p')"
+ERR=0
+
+if printf '%s' "$SUBJECT" | grep -Eq '^(Merge|Revert|fixup!|squash!)'; then
+  exit 0
+fi
+
+if printf '%s' "$MSG" | grep -Eiq 'co-authored-by:.*(claude|anthropic)|generated with|claude-session:|noreply@anthropic'; then
+  echo "✗ El mensaje tiene una firma de IA. Sacala." >&2
+  ERR=1
+fi
+
+if ! printf '%s' "$SUBJECT" | grep -Eq "^($TYPES)(\([a-z0-9-]+\))?!?: .+"; then
+  echo "✗ Título inválido: '$SUBJECT'" >&2
+  echo "  Formato: tipo: descripción corta   (tipos: feat, fix, refactor, test, docs, chore)" >&2
+  ERR=1
+fi
+
+if [ "${#SUBJECT}" -gt "$MAX_TITLE" ]; then
+  echo "✗ El título tiene ${#SUBJECT} caracteres (máximo $MAX_TITLE)." >&2
+  ERR=1
+fi
+
+BULLETS="$(printf '%s\n' "$MSG" | grep -Ec '^[[:space:]]*[-*][[:space:]]')"
+if [ "$BULLETS" -gt "$MAX_BULLETS" ]; then
+  echo "✗ El commit tiene $BULLETS bullets (máximo $MAX_BULLETS). Si mezcla cambios distintos, partilo con git add -p." >&2
+  ERR=1
+fi
+
+BRANCH="$(git symbolic-ref --short HEAD 2>/dev/null)"
+case "$BRANCH" in
+  main|master|develop|"") ;;
+  *)
+    if ! printf '%s' "$BRANCH" | grep -Eq "^($TYPES)/([0-9]+-)?[a-z0-9-]+$"; then
+      echo "✗ Rama inválida: '$BRANCH'. Formato: tipo/NUM-descripcion (ej. feat/34-login-con-email) o tipo/descripcion si no hay ticket." >&2
+      ERR=1
+    fi ;;
+esac
+
+[ "$ERR" -ne 0 ] && echo "Commit rechazado por .githooks/commit-msg" >&2
+exit $ERR

@@ -1496,7 +1496,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"status\": \"PUBLISHED\",\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"saleStart\": null,\n  \"highDemand\": false,\n  \"maxTicketsPerCustomer\": 4,\n  \"sectors\": [\n    {\"eventSectorId\": {{checkInSectorId}}, \"price\": 1000, \"seatIds\": [1, 2]}\n  ]\n}",
+              "raw": "{\n  \"status\": \"PUBLISHED\",\n  \"eventName\": \"Recital de prueba\",\n  \"venueName\": \"Estadio del Sur\",\n  \"venueAddress\": \"Av. del Estadio 1000\",\n  \"venueCity\": \"Buenos Aires\",\n  \"dateTime\": \"2099-12-12T21:00:00\",\n  \"saleStart\": null,\n  \"highDemand\": false,\n  \"maxTicketsPerCustomer\": 4,\n  \"sectors\": [\n    {\"eventSectorId\": {{checkInSectorId}}, \"sectorName\": \"Platea\", \"price\": 1000,\n     \"seats\": [{\"seatId\": 1, \"row\": \"A\", \"number\": 1}, {\"seatId\": 2, \"row\": \"A\", \"number\": 2}]}\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1714,7 +1714,7 @@
                   "  pm.response.to.have.status(200);",
                   "});",
                   "const body = pm.response.json();",
-                  "pm.test('Es la entrada comprada, con su asiento', () => { pm.expect(body.ticketId).to.eql(Number(pm.collectionVariables.get('checkInTicketId'))); pm.expect(body.row).to.be.a('string'); pm.expect(body.number).to.eql(1); });",
+                  "pm.test('Es la entrada comprada, con su asiento', () => { pm.expect(body.ticketId).to.eql(Number(pm.collectionVariables.get('checkInTicketId'))); pm.expect(body.sectorName).to.eql('Platea'); pm.expect(body.row).to.eql('A'); pm.expect(body.number).to.eql(1); });",
                   "pm.test('Tiene la hora de ingreso', () => pm.expect(body.usedAt).to.be.a('string'));"
                 ]
               }

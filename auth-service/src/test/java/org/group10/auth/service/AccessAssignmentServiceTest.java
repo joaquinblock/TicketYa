@@ -134,6 +134,16 @@ class AccessAssignmentServiceTest {
     }
 
     @Test
+    void assign_eventOfAnotherOrganization_isForbiddenWithoutSaving() {
+        when(accessStaffRepository.findById(STAFF_ID)).thenReturn(Optional.of(staff(STAFF_ID, null)));
+        when(eventClient.findEvent(EVENT_B)).thenReturn(new EventOrganizationResponse(2L));
+
+        assertError(() -> accessAssignmentService.assign(organizerOfOrganization1, STAFF_ID, EVENT_B),
+                CommonErrorCode.FORBIDDEN);
+        verify(accessAssignmentRepository, never()).save(any());
+    }
+
+    @Test
     void ensureAssigned_staffAssignedToAnotherEvent_isStaffNotAssigned() {
         when(accessStaffRepository.findById(STAFF_ID)).thenReturn(Optional.of(staff(STAFF_ID, null)));
         when(accessAssignmentRepository.existsByAccessStaffUserIdAndEventId(STAFF_ID, EVENT_A)).thenReturn(true);

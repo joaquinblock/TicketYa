@@ -255,7 +255,7 @@ Cuando la transacción que deja la orden `PAID` se confirma, el ticket-service p
 - **Cuándo.** Dentro de esa transacción se dispara el evento de Spring `PurchaseConfirmed`, y `PurchaseConfirmedPublisher` lo manda con `@TransactionalEventListener(AFTER_COMMIT)`. Si la transacción vuelve atrás, porque se perdieron los lugares o venció la reserva mientras se cobraba, no se avisa nada. El aviso no sale al aprobarse el cobro porque la compra todavía puede terminar en un reintegro.
 - **Una sola vez.** Solo publica el intento que pasó la orden de `PENDING` a `PAID`. Un pago repetido o concurrente que la encuentra `PAID` no publica.
 - **Contenido.** Solo ids: los datos de la orden y del usuario los pide quien consume. `occurredAt` es el momento en que la orden pasó a `PAID`. `messageId` es un UUID nuevo por compra, con el que el consumidor descarta las reentregas.
-- **Si RabbitMQ falla.** El pago responde igual (200 con la orden `PAID`) y el error queda en el log con el id de la orden. Sin outbox, ese aviso se pierde. Se publica en el mismo hilo: con el broker caído, la respuesta tarda hasta el `connection-timeout` (2 s) más.
+- **Si RabbitMQ falla.** El pago responde igual (200 con la orden `PAID`) y el error queda en el log con el id de la orden. Sin outbox, ese aviso se pierde. Se publica en el mismo hilo: con el broker caído, la respuesta tarda hasta el `connection-timeout` (2 s) más, y durante ese tiempo el pago sigue ocupando su conexión a la base: Spring corre `AFTER_COMMIT` antes de devolverla al pool.
 
 ### Intentos de pago: la orden `PENDING` es la reserva
 

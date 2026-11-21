@@ -26,8 +26,12 @@ public class AccessAssignmentService {
     @Transactional
     public AccessAssignmentOutcome assign(Caller caller, Long staffId, Long eventId) {
         AccessStaff staff = accessStaffRepository.findById(staffId).orElseThrow();
+        AccessAssignmentResponse assignment = new AccessAssignmentResponse(staffId, eventId);
+        if (accessAssignmentRepository.existsByAccessStaffUserIdAndEventId(staffId, eventId)) {
+            return new AccessAssignmentOutcome(assignment, false);
+        }
         accessAssignmentRepository.save(AccessAssignment.builder().accessStaff(staff).eventId(eventId).build());
-        return new AccessAssignmentOutcome(new AccessAssignmentResponse(staffId, eventId), true);
+        return new AccessAssignmentOutcome(assignment, true);
     }
 
     /**

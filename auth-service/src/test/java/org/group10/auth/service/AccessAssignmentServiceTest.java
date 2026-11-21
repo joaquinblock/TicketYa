@@ -16,6 +16,13 @@ import org.group10.common.exception.TicketYaException;
 import org.group10.common.security.Caller;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -26,6 +33,8 @@ import org.mockito.quality.Strictness;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Stream;
+import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -141,6 +150,26 @@ class AccessAssignmentServiceTest {
         assertError(() -> accessAssignmentService.assign(organizerOfOrganization1, STAFF_ID, EVENT_B),
                 CommonErrorCode.FORBIDDEN);
         verify(accessAssignmentRepository, never()).save(any());
+    }
+
+    @ParameterizedTest
+    @MethodSource("eventServiceFailures")
+    void assign_eventServiceFails_propagatesTheFailureWithoutSaving(RuntimeException failure) {
+        when(accessStaffRepository.findById(STAFF_ID)).thenReturn(Optional.of(staff(STAFF_ID, null)));
+        when(eventClient.findEvent(EVENT_A)).thenThrow(failure);
+
+        assertThatThrownBy(() -> accessAssignmentService.assign(organizerOfOrganization1, STAFF_ID, EVENT_A))
+                .isSameAs(failure);
+        verify(accessAssignmentRepository, never()).save(any());
+    }
+
+    static Stream<RuntimeException> eventServiceFailures() {
+        return Stream.of(
+                HttpClientErrorException.create(HttpStatus.NOT_FOUND, "not found", new HttpHeaders(), new byte[0],
+                        StandardCharsets.UTF_8),
+                HttpServerErrorException.create(HttpStatus.INTERNAL_SERVER_ERROR, "down", new HttpHeaders(),
+                        new byte[0], StandardCharsets.UTF_8),
+                new ResourceAccessException("event-service no respondió a tiempo"));
     }
 
     @Test

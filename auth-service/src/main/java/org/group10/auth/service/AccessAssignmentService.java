@@ -9,10 +9,13 @@ import org.group10.auth.entity.AccessStaff;
 import org.group10.auth.exception.AuthErrorCode;
 import org.group10.auth.repository.AccessAssignmentRepository;
 import org.group10.auth.repository.AccessStaffRepository;
+import org.group10.common.exception.CommonErrorCode;
 import org.group10.common.exception.TicketYaException;
 import org.group10.common.security.Caller;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -26,12 +29,20 @@ public class AccessAssignmentService {
     @Transactional
     public AccessAssignmentOutcome assign(Caller caller, Long staffId, Long eventId) {
         AccessStaff staff = accessStaffRepository.findById(staffId).orElseThrow();
+        ensureSameOrganization(caller, staff.getOrganization().getId(),
+                "El personal %d no pertenece a la organización del usuario %d".formatted(staffId, caller.userId()));
         AccessAssignmentResponse assignment = new AccessAssignmentResponse(staffId, eventId);
         if (accessAssignmentRepository.existsByAccessStaffUserIdAndEventId(staffId, eventId)) {
             return new AccessAssignmentOutcome(assignment, false);
         }
         accessAssignmentRepository.save(AccessAssignment.builder().accessStaff(staff).eventId(eventId).build());
         return new AccessAssignmentOutcome(assignment, true);
+    }
+
+    private static void ensureSameOrganization(Caller caller, Long organizationId, String message) {
+        if (!Objects.equals(caller.organizationId(), organizationId)) {
+            throw new TicketYaException(CommonErrorCode.FORBIDDEN, message);
+        }
     }
 
     /**

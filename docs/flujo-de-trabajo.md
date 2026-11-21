@@ -37,7 +37,8 @@ Cómo se trabaja en este repo, para personas y para agentes.
 | Qué | Dónde | Vida |
 |---|---|---|
 | Mapa del proyecto para agentes | `AGENTS.md` (+ `CLAUDE.md`, que lo importa) | Permanente, se carga siempre |
-| Skills del flujo y reviewers | `~/.claude/skills/`, `~/.claude/agents/` | De cada dev, se cargan al usarse |
+| Skills `/ticket`, `/tracker`, `/implement` | `~/.claude/skills/` | De cada dev, se cargan al usarse |
+| Skills `/rdd` (con sus lentes y el verificador) y `/retro` | `.claude/skills/rdd/`, `.claude/skills/retro/` | Del repo, se cargan al usarse |
 | Reglas por zona del código | `.claude/rules/` | Permanente, se carga al tocar esos paths |
 | Conocimiento del sistema | `docs/` | Permanente, se lee cuando hace falta |
 | Tickets | `docs/stories/` | Permanente |

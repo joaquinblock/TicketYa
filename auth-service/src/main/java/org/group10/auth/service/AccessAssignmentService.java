@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.group10.auth.client.EventClient;
 import org.group10.auth.dto.AccessAssignmentOutcome;
 import org.group10.auth.dto.AccessAssignmentResponse;
+import org.group10.auth.entity.AccessAssignment;
 import org.group10.auth.entity.AccessStaff;
 import org.group10.auth.exception.AuthErrorCode;
 import org.group10.auth.repository.AccessAssignmentRepository;
@@ -24,7 +25,9 @@ public class AccessAssignmentService {
 
     @Transactional
     public AccessAssignmentOutcome assign(Caller caller, Long staffId, Long eventId) {
-        return new AccessAssignmentOutcome(new AccessAssignmentResponse(staffId, eventId), false);
+        AccessStaff staff = accessStaffRepository.findById(staffId).orElseThrow();
+        accessAssignmentRepository.save(AccessAssignment.builder().accessStaff(staff).eventId(eventId).build());
+        return new AccessAssignmentOutcome(new AccessAssignmentResponse(staffId, eventId), true);
     }
 
     /**

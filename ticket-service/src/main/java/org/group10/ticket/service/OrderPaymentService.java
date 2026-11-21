@@ -16,15 +16,18 @@ import org.group10.ticket.entity.PaymentMethod;
 import org.group10.ticket.entity.Ticket;
 import org.group10.ticket.entity.TicketStatus;
 import org.group10.ticket.exception.TicketErrorCode;
+import org.group10.ticket.messaging.PurchaseConfirmed;
 import org.group10.ticket.repository.EventSeatRepository;
 import org.group10.ticket.repository.OrderRepository;
 import org.group10.ticket.repository.TicketRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -46,6 +49,7 @@ public class OrderPaymentService {
     private final TransactionOperations transactions;
     private final ReservationProperties reservationProperties;
     private final Clock clock;
+    private final ApplicationEventPublisher events;
 
     public OrderResponse pay(Long userId, Long orderId, PayOrderRequest request) {
         Order order = orderQueryService.findOrderOfCustomer(userId, orderId);
@@ -137,6 +141,8 @@ public class OrderPaymentService {
 
             if (issued) {
                 tickets.stream().filter(ticket -> ticket.getStatus() == TicketStatus.RESERVED).forEach(Ticket::issue);
+                events.publishEvent(new PurchaseConfirmed(order.getId(), order.getUserId(), order.getEventId(),
+                        Instant.now(clock)));
             } else {
                 transaction.setRollbackOnly();
             }

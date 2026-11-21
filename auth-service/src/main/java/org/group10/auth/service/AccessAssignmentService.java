@@ -28,7 +28,10 @@ public class AccessAssignmentService {
 
     @Transactional
     public AccessAssignmentOutcome assign(Caller caller, Long staffId, Long eventId) {
-        AccessStaff staff = accessStaffRepository.findById(staffId).orElseThrow();
+        AccessStaff staff = accessStaffRepository.findById(staffId)
+                .filter(AccessStaff::isActive)
+                .orElseThrow(() -> new TicketYaException(AuthErrorCode.ACCESS_STAFF_NOT_FOUND,
+                        "El usuario %d no es personal de acceso".formatted(staffId)));
         ensureSameOrganization(caller, staff.getOrganization().getId(),
                 "El personal %d no pertenece a la organización del usuario %d".formatted(staffId, caller.userId()));
         AccessAssignmentResponse assignment = new AccessAssignmentResponse(staffId, eventId);

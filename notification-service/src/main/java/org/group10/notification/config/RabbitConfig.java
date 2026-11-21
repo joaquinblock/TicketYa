@@ -12,6 +12,8 @@ import tools.jackson.databind.json.JsonMapper;
 @Configuration
 public class RabbitConfig {
 
+    public static final String PURCHASE_QUEUE = "notification.purchase";
+
     /** La autoconfiguración lo usa en el RabbitTemplate y en los listeners. */
     @Bean
     MessageConverter jsonMessageConverter(JsonMapper jsonMapper) {

@@ -22,6 +22,16 @@ spring:
     username: ${RABBITMQ_USER:ticketya}
     password: ${RABBITMQ_PASSWORD:ticketya}
     connection-timeout: 2s
+    listener:
+      simple:
+        # 3 intentos en total (max-retries cuenta los reintentos), con 1 s y 2 s de espera.
+        # Al agotarlos, RabbitConfig manda el mensaje a notification.purchase.dlq.
+        retry:
+          enabled: true
+          max-retries: 2
+          initial-interval: 1s
+          multiplier: 2
+          max-interval: 10s
   # Mailpit (compose.yaml) recibe los mails sin enviarlos: se ven en http://localhost:8025
   mail:
     host: ${MAIL_HOST:localhost}

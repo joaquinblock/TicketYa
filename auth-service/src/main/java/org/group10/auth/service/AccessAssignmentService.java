@@ -34,6 +34,8 @@ public class AccessAssignmentService {
                         "El usuario %d no es personal de acceso".formatted(staffId)));
         ensureSameOrganization(caller, staff.getOrganization().getId(),
                 "El personal %d no pertenece a la organización del usuario %d".formatted(staffId, caller.userId()));
+        ensureSameOrganization(caller, eventClient.findEvent(eventId).organizationId(),
+                "El usuario %d no pertenece a la organización del evento %d".formatted(caller.userId(), eventId));
         AccessAssignmentResponse assignment = new AccessAssignmentResponse(staffId, eventId);
         if (accessAssignmentRepository.existsByAccessStaffUserIdAndEventId(staffId, eventId)) {
             return new AccessAssignmentOutcome(assignment, false);

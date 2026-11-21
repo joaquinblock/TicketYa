@@ -71,7 +71,7 @@ GET /api/users/99/permissions
 | `VENUE_MANAGE` | | | ✅ | |
 | `PARTICIPANT_MANAGE` | | ✅ | ✅ | |
 
-Usuarios de prueba: `1` cliente, `2` organizador (org `1`), `3` admin, `4` personal de acceso, `5` organizador (org `2`), `6` organizador (org `1`, sin eventos propios).
+Usuarios de prueba: `1` cliente, `2` organizador (org `1`), `3` admin, `4` personal de acceso (org `1`), `5` organizador (org `2`), `6` organizador (org `1`, sin eventos propios), `7` personal de acceso (org `2`).
 
 ## Endpoints protegidos hoy
 

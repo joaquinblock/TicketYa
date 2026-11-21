@@ -1,6 +1,7 @@
 package org.group10.auth.seeder;
 
 import org.group10.auth.entity.User;
+import org.group10.auth.repository.AccessStaffRepository;
 import org.group10.auth.repository.OrganizationRepository;
 import org.group10.auth.repository.OrganizerRepository;
 import org.group10.auth.repository.PermissionRepository;
@@ -42,6 +43,8 @@ class AuthSeederAdminEmailTest {
     private OrganizationRepository organizationRepository;
     @Mock
     private OrganizerRepository organizerRepository;
+    @Mock
+    private AccessStaffRepository accessStaffRepository;
 
     @InjectMocks
     private AuthSeeder seeder;

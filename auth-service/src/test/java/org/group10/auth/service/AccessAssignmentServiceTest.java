@@ -11,6 +11,7 @@ import org.group10.auth.exception.AuthErrorCode;
 import org.group10.auth.repository.AccessAssignmentRepository;
 import org.group10.auth.repository.AccessStaffRepository;
 import org.group10.common.exception.ErrorCode;
+import org.group10.common.exception.CommonErrorCode;
 import org.group10.common.exception.TicketYaException;
 import org.group10.common.security.Caller;
 import org.junit.jupiter.api.Test;
@@ -82,6 +83,33 @@ class AccessAssignmentServiceTest {
 
         verify(accessAssignmentRepository, never()).save(any());
         assertThat(outcome).isEqualTo(new AccessAssignmentOutcome(new AccessAssignmentResponse(STAFF_ID, EVENT_A), false));
+    }
+
+    @Test
+    void assign_staffAlreadyAssignedToAnotherEvent_createsTheSecondAssignment() {
+        when(accessStaffRepository.findById(STAFF_ID)).thenReturn(Optional.of(staff(STAFF_ID, null)));
+        when(eventClient.findEvent(EVENT_B)).thenReturn(new EventOrganizationResponse(1L));
+        when(accessAssignmentRepository.existsByAccessStaffUserIdAndEventId(STAFF_ID, EVENT_A)).thenReturn(true);
+        when(accessAssignmentRepository.existsByAccessStaffUserIdAndEventId(STAFF_ID, EVENT_B)).thenReturn(false);
+
+        AccessAssignmentOutcome outcome = accessAssignmentService.assign(organizerOfOrganization1, STAFF_ID, EVENT_B);
+
+        ArgumentCaptor<AccessAssignment> saved = ArgumentCaptor.forClass(AccessAssignment.class);
+        verify(accessAssignmentRepository).save(saved.capture());
+        assertThat(saved.getValue().getEventId()).isEqualTo(EVENT_B);
+        assertThat(outcome.created()).isTrue();
+    }
+
+    @Test
+    void assign_staffOfAnotherOrganization_isForbiddenWithoutLookingUpTheEvent() {
+        Organization otherOrganization = Organization.builder().id(2L).build();
+        AccessStaff staffOfOrganization2 = AccessStaff.builder().userId(7L).organization(otherOrganization).build();
+        when(accessStaffRepository.findById(7L)).thenReturn(Optional.of(staffOfOrganization2));
+
+        assertError(() -> accessAssignmentService.assign(organizerOfOrganization1, 7L, EVENT_A),
+                CommonErrorCode.FORBIDDEN);
+        verifyNoInteractions(eventClient);
+        verify(accessAssignmentRepository, never()).save(any());
     }
 
     @Test

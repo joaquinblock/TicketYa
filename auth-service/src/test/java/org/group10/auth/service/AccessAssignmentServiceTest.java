@@ -30,6 +30,9 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -67,6 +70,18 @@ class AccessAssignmentServiceTest {
         assertThat(saved.getValue().getAccessStaff()).isSameAs(staff);
         assertThat(saved.getValue().getEventId()).isEqualTo(EVENT_A);
         assertThat(outcome).isEqualTo(new AccessAssignmentOutcome(new AccessAssignmentResponse(STAFF_ID, EVENT_A), true));
+    }
+
+    @Test
+    void assign_alreadyAssigned_returnsTheExistingAssignmentWithoutSavingAnother() {
+        when(accessStaffRepository.findById(STAFF_ID)).thenReturn(Optional.of(staff(STAFF_ID, null)));
+        when(eventClient.findEvent(EVENT_A)).thenReturn(new EventOrganizationResponse(1L));
+        when(accessAssignmentRepository.existsByAccessStaffUserIdAndEventId(STAFF_ID, EVENT_A)).thenReturn(true);
+
+        AccessAssignmentOutcome outcome = accessAssignmentService.assign(organizerOfOrganization1, STAFF_ID, EVENT_A);
+
+        verify(accessAssignmentRepository, never()).save(any());
+        assertThat(outcome).isEqualTo(new AccessAssignmentOutcome(new AccessAssignmentResponse(STAFF_ID, EVENT_A), false));
     }
 
     @Test

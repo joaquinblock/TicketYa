@@ -113,6 +113,27 @@ class AccessAssignmentServiceTest {
     }
 
     @Test
+    void assign_userWithoutAccessStaffRow_isAccessStaffNotFound() {
+        when(accessStaffRepository.findById(1L)).thenReturn(Optional.empty());
+
+        assertError(() -> accessAssignmentService.assign(organizerOfOrganization1, 1L, EVENT_A),
+                AuthErrorCode.ACCESS_STAFF_NOT_FOUND);
+        verifyNoInteractions(eventClient);
+        verify(accessAssignmentRepository, never()).save(any());
+    }
+
+    @Test
+    void assign_removedStaff_isAccessStaffNotFound() {
+        when(accessStaffRepository.findById(STAFF_ID))
+                .thenReturn(Optional.of(staff(STAFF_ID, LocalDateTime.of(2026, 1, 1, 0, 0))));
+
+        assertError(() -> accessAssignmentService.assign(organizerOfOrganization1, STAFF_ID, EVENT_A),
+                AuthErrorCode.ACCESS_STAFF_NOT_FOUND);
+        verifyNoInteractions(eventClient);
+        verify(accessAssignmentRepository, never()).save(any());
+    }
+
+    @Test
     void ensureAssigned_staffAssignedToAnotherEvent_isStaffNotAssigned() {
         when(accessStaffRepository.findById(STAFF_ID)).thenReturn(Optional.of(staff(STAFF_ID, null)));
         when(accessAssignmentRepository.existsByAccessStaffUserIdAndEventId(STAFF_ID, EVENT_A)).thenReturn(true);

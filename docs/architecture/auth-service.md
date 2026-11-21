@@ -9,6 +9,9 @@ erDiagram
     role ||--o{ user : "has"
     user ||--o| organizer : "is (organizers only)"
     organization ||--o{ organizer : "employs"
+    user ||--o| access_staff : "is (access staff only)"
+    organization ||--o{ access_staff : "employs"
+    access_staff ||--o{ access_assignment : "works at"
 
     user {
         bigint id PK
@@ -32,9 +35,19 @@ erDiagram
         bigint organization_id FK
         datetime deleted_at "NULL while active"
     }
+    access_staff {
+        bigint user_id PK "FK to user.id"
+        bigint organization_id FK
+        datetime deleted_at "NULL while active"
+    }
+    access_assignment {
+        bigint id PK
+        bigint access_staff_id FK "unique with event_id"
+        bigint event_id "event-service, no FK"
+    }
 ```
 
-En `organization` y en `organizer`, la única columna nullable es `deleted_at`.
+En `organization`, `organizer` y `access_staff`, la única columna nullable es `deleted_at`.
 
 ## Decisiones del modelo
 
@@ -42,12 +55,16 @@ En `organization` y en `organizer`, la única columna nullable es `deleted_at`.
 |---|---|
 | `organization` | La empresa u organización sin fines de lucro que organiza los eventos |
 | `organizer` | Un `user` que una organización designa para organizar sus eventos |
+| `access_staff` | Un `user` con rol `ACCESS_STAFF` que trabaja para una organización en el ingreso a sus eventos |
+| `access_assignment` | En qué eventos puede validar entradas cada personal de acceso (US-AUTH-04) |
 
 - **`organizer` comparte el id de `user`.** `user_id` es a la vez PK y FK 1 a 1 hacia `user.id`. En JPA se mapea con `@OneToOne` + `@MapsId`. Un organizador es un usuario con datos propios, así que no necesita un id aparte: `GET /api/organizers/{userId}` usa el mismo id que el usuario.
 - **Un organizador trabaja para una sola organización** (`organization_id`, N a 1). Una organización puede tener varios organizadores.
 - **Baja lógica, no borrado.** Nada se borra (supuesto del DER). `organizer.deleted_at` es la fecha en que dejó de ser organizador (la `fecha_baja` del diseño), y `organization.deleted_at` la fecha en que se dio de baja la organización. Los eventos del event-service guardan el id del organizador que los creó y esa referencia no tiene FK, así que si se borrara la fila quedarían apuntando a la nada (ver RFC-004).
 - **`tax_id` es único.** Es el CUIT, y no puede haber dos organizaciones con el mismo.
 - **La relación es unidireccional.** `Organizer` conoce su `User` y su `Organization`, pero `User` no conoce su `Organizer`. Así la entidad `User` queda igual para los usuarios que no son organizadores.
+- **`access_staff` sigue el mismo modelo que `organizer`.** Comparte el id del usuario (`@MapsId`), pertenece a una sola organización y se da de baja con `deleted_at`. Lo carga el seeder: todavía no hay alta de personal.
+- **Una asignación por personal y evento.** `access_assignment` tiene unique (`access_staff_id`, `event_id`). El service consulta antes de guardar (asignar otra vez da 200), y el unique queda como respaldo si dos pedidos llegan a la vez. `event_id` es un id del event-service sin FK, igual que `event.organization_id`.
 
 ### Relación con el event-service
 
@@ -68,6 +85,8 @@ Los consume el event-service con `AuthClient`. Swagger: `/swagger-ui.html` en el
 | `POST` | `/api/auth/dev-login` | JWT de un usuario **activo**, sin Google. **Solo con el perfil `dev`**: fuera de él da 404 (ver [ADR-002](../adr/ADR-002-dev-login.md)) | 200 |
 | `GET` | `/.well-known/jwks.json` | Clave pública para verificar los JWT. La usa el api-gateway, directo contra el servicio | 200 |
 | `GET` | `/internal/users/{id}` | Email y nombre de un usuario **activo**. Lo usa el notification-service para el mail de una compra (US-NOT-01). Solo entre servicios: no pasa por el gateway y pide `X-Internal-Secret` | 200 |
+| `PUT` | `/api/users/{staffId}/access-assignments/{eventId}` | **Solo un organizador** (`EVENT_MANAGE`). Asigna a su personal de acceso a un evento de su organización (US-AUTH-04). Asignarlo otra vez da 200 y no lo duplica | 201 / 200 |
+| `GET` | `/internal/access-staff/{staffId}/events/{eventId}` | Confirma que el personal está activo y asignado al evento. Lo usa el ticket-service antes de validar un QR (US-TKT-19). Solo entre servicios, con `X-Internal-Secret` | 204 |
 
 ```http
 GET /api/organizations/1
@@ -89,6 +108,12 @@ POST /api/auth/google   { "idToken": "eyJhbGciOiJSUzI1NiIsImtpZCI6..." }
 
 POST /api/auth/dev-login   { "userId": 2 }
 → { "accessToken": "eyJhbGciOiJSUzI1NiJ9...", "tokenType": "Bearer", "expiresIn": 1800 }
+
+PUT /api/users/4/access-assignments/1   (token del organizador 2)
+→ 201 { "staffId": 4, "eventId": 1 }
+
+GET /internal/access-staff/4/events/1   X-Internal-Secret: …
+→ 204
 ```
 
 ## Reglas
@@ -97,6 +122,9 @@ POST /api/auth/dev-login   { "userId": 2 }
 - **Qué es un organizador activo:** `organizer.deleted_at`, `user.deleted_at` y el `deleted_at` de su organización en `NULL`. Si alguno tiene fecha, la respuesta es `404 organizer_not_found`, igual que si no existiera, para que nadie dado de baja pueda crear eventos.
 - **Datos que no salen del servicio.** `OrganizationResponse` no incluye `tax_id` ni `bank_account`. Ningún otro servicio los necesita para mostrar o validar un evento, y son datos fiscales y bancarios.
 - **La respuesta del organizador trae `organizationId`.** El event-service lo usa para comprobar que el organizador pertenece a la organización del evento.
+- **Asignar personal, en este orden:** primero se busca el personal **activo** (si no, `404 access_staff_not_found`), después se controla que sea de la organización del organizador (`403 forbidden`, sin consultar el evento) y por último se pide el evento al event-service con `GET /api/events/{id}`, que debe ser de la misma organización (`403 forbidden`). La llamada al event-service va antes de guardar: si falla, no se crea nada.
+- **No se asigna a borradores.** El event-service responde `404 event_not_found` a un borrador que no pide su organizador, y el auth-service consulta sin token de usuario, así que ese 404 se reenvía tal cual. Para asignar personal, el evento tiene que estar publicado.
+- **Validar en la puerta:** la consulta interna da `204` solo si el personal está activo y asignado a ese evento. Cualquier otro caso (asignado a otro evento, sin fila en `access_staff`, dado de baja) da `403 staff_not_assigned`.
 
 ## Errores
 
@@ -107,27 +135,34 @@ Todos usan el `ErrorDto` común (ver [`error-handling.md`](error-handling.md)). 
 | `organization_not_found` | 404 | No existe la organización, o está dada de baja |
 | `organizer_not_found` | 404 | El usuario no es organizador, o está dado de baja él, su usuario o su organización |
 | `user_not_found` | 404 | No existe el usuario, o está dado de baja (`GET /api/users/{id}/permissions`, `GET /internal/users/{id}`) |
+| `access_staff_not_found` | 404 | Al asignar: el usuario no es personal de acceso, no existe o está dado de baja |
+| `staff_not_assigned` | 403 | `GET /internal/access-staff/…`: el personal no está asignado al evento, o está dado de baja |
+| `forbidden` | 403 | Al asignar: sin `EVENT_MANAGE`, o el personal o el evento son de otra organización |
+| `event_not_found` | 404 | Al asignar: lo reenvía el event-service (el evento no existe o es un borrador) |
 | `unauthorized` | 401 | `/internal/**` sin `X-Internal-Secret` o con uno incorrecto |
 | `invalid_credentials` | 401 | Login con Google: el ID token es inválido, está vencido, es de otra app o su email no está verificado |
 | `user_disabled` | 403 | Login con Google: la cuenta está dada de baja |
 | `data_conflict` | 409 | Login con Google: el email ya está vinculado a otra cuenta de Google |
-| `service_unavailable` | 503 | Login con Google: falta `GOOGLE_CLIENT_ID`, o no se pudieron obtener las claves públicas de Google |
+| `service_unavailable` | 503 | Login con Google: falta `GOOGLE_CLIENT_ID`, o no se pudieron obtener las claves públicas de Google. Al asignar: el event-service no responde (timeouts de 1 s para conectar y 2 s para leer) o da un 5xx |
 
 ## Código
 
 | Capa | Clases |
 |---|---|
-| `entity` | `Organization`, `OrganizationType`, `Organizer` |
-| `repository` | `OrganizationRepository`, `OrganizerRepository`, `UserRepository` |
-| `dto` | `OrganizationResponse`, `OrganizerResponse`, `UserPermissionsResponse` |
-| `service` | `OrganizationService`, `OrganizerService`, `UserService` |
-| `controller` | `OrganizationController`, `OrganizerController`, `UserController` |
+| `entity` | `Organization`, `OrganizationType`, `Organizer`, `AccessStaff`, `AccessAssignment` |
+| `repository` | `OrganizationRepository`, `OrganizerRepository`, `UserRepository`, `AccessStaffRepository`, `AccessAssignmentRepository` |
+| `dto` | `OrganizationResponse`, `OrganizerResponse`, `UserPermissionsResponse`, `AccessAssignmentResponse`, `AccessAssignmentOutcome` |
+| `service` | `OrganizationService`, `OrganizerService`, `UserService`, `AccessAssignmentService` |
+| `controller` | `OrganizationController`, `OrganizerController`, `UserController`, `AccessAssignmentController`, `InternalAccessStaffController` |
+| `client` | `EventClient` (`GET /api/events/{id}`, solo lee `organizationId`) |
 
 - **Datos de prueba.** `AuthSeeder` carga dos organizaciones, con los organizadores que asume `EventSeeder`:
   - la `1` (*Del Sur Producciones*), con `organizer@ticketya.com` (user `2`, que crea sus eventos) y `organizer.delsur@ticketya.com` (user `6`, sin eventos propios: sirve para probar que solo el creador puede suspender o cancelar);
   - la `2` (*Cultura Serrana*), con `organizer.serrana@ticketya.com` (user `5`).
 
   El user `2` no organiza para la `2`, así que crear un evento de la org `2` con `X-User-Id: 2` sigue dando `organizer_not_in_organization`.
+
+  Personal de acceso: `staff@ticketya.com` (user `4`) es de la org `1` y `staff.serrana@ticketya.com` (user `7`) de la org `2`. No hay asignaciones cargadas: el organizador las crea con el `PUT`. El user `2` no puede asignar al user `7` (`403 forbidden`).
 - **El organizador se busca en una sola query.** `OrganizerRepository.findWithUserAndOrganizationByUserId` usa `@EntityGraph` para traer también el `user` y la `organization`, que son lazy. Sin eso, armar la respuesta haría una query más por cada relación, y fuera de la transacción tiraría `LazyInitializationException`.
 
 ## Login con Google
@@ -173,7 +208,7 @@ Mientras no haya front, **`http://localhost:8081/login`** muestra el botón de G
 
 ## Firma del JWT
 
-El auth-service emite el JWT de TicketYa con `JwtTokenProvider`, firmado con RS256. Lo usan el login con Google y `dev-login`. `AuthService.issueTokenFor` arma el token: el organizador lleva su `organizationId` y el personal de acceso todavía no, hasta que exista `AccessStaff` (#19).
+El auth-service emite el JWT de TicketYa con `JwtTokenProvider`, firmado con RS256. Lo usan el login con Google y `dev-login`. `AuthService.issueTokenFor` arma el token: el organizador lleva su `organizationId`. El personal de acceso no lo lleva: su organización está en `access_staff`, y el ticket-service no la necesita porque le pregunta la asignación al auth-service en cada ingreso.
 
 | Claim | Valor |
 |---|---|
@@ -205,4 +240,5 @@ GET /.well-known/jwks.json
 | Tema | Detalle |
 |---|---|
 | ABM | No hay endpoints para crear, modificar ni dar de baja organizaciones u organizadores |
+| Personal de acceso | No hay alta ni baja de personal (sale del seeder), ni se puede quitar o listar asignaciones. Al asignar no se controla el estado ni la fecha del evento, salvo que no sea un borrador |
 | Autorización | La Entrega 1 no tiene autenticación: el usuario llega en `X-User-Id` y sus permisos se piden a `/api/users/{id}/permissions` (ver [`permissions.md`](permissions.md)). Con la Épica 9, el usuario y sus permisos salen del JWT |

@@ -11,6 +11,7 @@ import org.group10.common.dto.ErrorDto;
 import org.group10.common.security.Caller;
 import org.group10.common.security.Permission;
 import org.group10.common.security.RequiresPermission;
+import org.group10.ticket.client.AuthClient;
 import org.group10.ticket.dto.CheckInRequest;
 import org.group10.ticket.dto.CheckInResponse;
 import org.group10.ticket.service.CheckInService;
@@ -26,21 +27,25 @@ import org.springframework.web.bind.annotation.RestController;
 public class CheckInController {
 
     private final CheckInService checkInService;
+    private final AuthClient authClient;
 
     @PostMapping("/check-in")
     @RequiresPermission(Permission.TICKET_VALIDATE)
     @Operation(summary = "Validar el QR de una entrada en el ingreso",
-            description = "Solo el personal de acceso. Si la entrada es del evento y está ISSUED, pasa a USED con quién la validó y cuándo. Un QR entra una sola vez, aun con escaneos simultáneos.")
+            description = "Solo el personal de acceso asignado al evento: se controla antes de mirar el QR. Si la entrada es del evento y está ISSUED, pasa a USED con quién la validó y cuándo. Un QR entra una sola vez, aun con escaneos simultáneos.")
     @ApiResponse(responseCode = "200", description = "Entrada validada: puede pasar")
     @ApiResponse(responseCode = "400", description = "invalid_qr: el QR no existe, es de otro evento o la entrada está anulada o reintegrada; o validation_error",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "401", description = "unauthorized: sin token",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    @ApiResponse(responseCode = "403", description = "forbidden: sin TICKET_VALIDATE",
+    @ApiResponse(responseCode = "403", description = "forbidden: sin TICKET_VALIDATE. staff_not_assigned: el personal no está asignado al evento",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "409", description = "ticket_already_used: la entrada ya ingresó",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "503", description = "service_unavailable: el auth-service no responde",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     public CheckInResponse checkIn(Caller caller, @Valid @RequestBody CheckInRequest request) {
+        authClient.ensureStaffAssigned(caller.userId(), request.eventId());
         return checkInService.checkIn(caller.userId(), request.eventId(), request.qrCode());
     }
 }

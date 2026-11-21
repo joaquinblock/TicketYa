@@ -1,5 +1,8 @@
 package org.group10.ticket;
 
+import org.group10.ticket.client.AuthClient;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+
 import org.group10.ticket.entity.Order;
 import org.group10.ticket.entity.OrderStatus;
 import org.group10.ticket.entity.PaymentMethod;
@@ -52,6 +55,8 @@ class CheckInMySqlIntegrationTest {
     private OrderRepository orderRepository;
     @Autowired
     private TicketRepository ticketRepository;
+    @MockitoBean
+    private AuthClient authClient;
 
     private RestClient client;
     private long eventId;

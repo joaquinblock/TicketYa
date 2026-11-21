@@ -1,6 +1,15 @@
 package org.group10.ticket.controller;
 
 import org.group10.common.exception.TicketYaException;
+import org.group10.common.dto.ErrorDto;
+import org.group10.ticket.client.AuthClient;
+import org.mockito.InOrder;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
+import java.nio.charset.StandardCharsets;
 import org.group10.ticket.dto.CheckInResponse;
 import org.group10.ticket.exception.TicketErrorCode;
 import org.group10.ticket.service.CheckInService;
@@ -17,6 +26,8 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import java.time.LocalDateTime;
 
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -38,6 +49,9 @@ class CheckInControllerTest {
 
     @MockitoBean
     private CheckInService checkInService;
+
+    @MockitoBean
+    private AuthClient authClient;
 
     @Test
     void checkIn_staff_validatesAsTheUserOfTheTokenAndReturnsThePlace() throws Exception {
@@ -104,6 +118,51 @@ class CheckInControllerTest {
         mockMvc.perform(asStaff(checkIn(BODY)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error").value("ticket_already_used"));
+    }
+
+    @Test
+    void checkIn_asksAuthForTheTokenUserAndTheBodyEventBeforeValidatingTheQr() throws Exception {
+        mockMvc.perform(asStaff(checkIn(BODY))).andExpect(status().isOk());
+
+        InOrder order = inOrder(authClient, checkInService);
+        order.verify(authClient).ensureStaffAssigned(5L, 1L);
+        order.verify(checkInService).checkIn(5L, 1L, QR);
+    }
+
+    @Test
+    void checkIn_staffNotAssigned_forwards403StaffNotAssignedWithoutLookingUpTheQr() throws Exception {
+        HttpClientErrorException notAssigned = HttpClientErrorException.create(HttpStatus.FORBIDDEN, "forbidden",
+                new HttpHeaders(), new byte[0], StandardCharsets.UTF_8);
+        notAssigned.setBodyConvertFunction(type ->
+                new ErrorDto("staff_not_assigned", "El usuario 5 no está asignado al evento 1", 403, null));
+        doThrow(notAssigned).when(authClient).ensureStaffAssigned(5L, 1L);
+
+        mockMvc.perform(asStaff(checkIn(BODY)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("staff_not_assigned"));
+        verifyNoInteractions(checkInService);
+    }
+
+    @Test
+    void checkIn_authServiceDoesNotRespond_returns503WithoutLookingUpTheQr() throws Exception {
+        doThrow(new ResourceAccessException("auth-service no respondió a tiempo"))
+                .when(authClient).ensureStaffAssigned(5L, 1L);
+
+        mockMvc.perform(asStaff(checkIn(BODY)))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error").value("service_unavailable"));
+        verifyNoInteractions(checkInService);
+    }
+
+    @Test
+    void checkIn_authServiceAnswers5xx_returns503WithoutLookingUpTheQr() throws Exception {
+        doThrow(HttpServerErrorException.create(HttpStatus.INTERNAL_SERVER_ERROR, "down", new HttpHeaders(),
+                new byte[0], StandardCharsets.UTF_8)).when(authClient).ensureStaffAssigned(5L, 1L);
+
+        mockMvc.perform(asStaff(checkIn(BODY)))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error").value("service_unavailable"));
+        verifyNoInteractions(checkInService);
     }
 
     private static MockHttpServletRequestBuilder checkIn(String body) {

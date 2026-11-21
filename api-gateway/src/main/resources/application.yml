@@ -16,6 +16,10 @@ spring:
               uri: ${AUTH_SERVICE_URL:http://localhost:8081}
               predicates:
                 - Path=/api/auth/**,/api/users/**,/api/roles/**,/api/permissions/**,/api/organizations/**,/api/organizers/**
+            - id: ticket-event-report
+              uri: ${TICKET_SERVICE_URL:http://localhost:8083}
+              predicates:
+                - Path=/api/events/*/report
             - id: event-service
               uri: ${EVENT_SERVICE_URL:http://localhost:8082}
               predicates:

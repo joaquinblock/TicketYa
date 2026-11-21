@@ -1,6 +1,7 @@
 package org.group10.auth.service;
 
 import lombok.RequiredArgsConstructor;
+import org.group10.auth.dto.UserContactResponse;
 import org.group10.auth.dto.UserPermissionsResponse;
 import org.group10.auth.entity.Permission;
 import org.group10.auth.entity.Role;
@@ -38,5 +39,19 @@ public class UserService {
                 .map(Permission::getName)
                 .collect(Collectors.toCollection(TreeSet::new));
         return new UserPermissionsResponse(user.getId(), role.getName(), permissions);
+    }
+
+    /**
+     * Returns the email and name of an active user, so another service can contact it. A deleted user is treated
+     * as not existing.
+     *
+     * @throws TicketYaException {@code USER_NOT_FOUND}
+     */
+    public UserContactResponse findContact(Long userId) {
+        User user = userRepository.findById(userId)
+                .filter(User::isActive)
+                .orElseThrow(() -> new TicketYaException(AuthErrorCode.USER_NOT_FOUND,
+                        "No se encontró el usuario con id %d".formatted(userId)));
+        return new UserContactResponse(user.getId(), user.getEmail(), user.getFirstName(), user.getLastName());
     }
 }

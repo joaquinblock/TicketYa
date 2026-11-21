@@ -8,14 +8,24 @@ spring:
     serviceclient:
       auth-service:
         base-url: ${AUTH_SERVICE_URL:http://localhost:8081}
+        connect-timeout: 1s
+        read-timeout: 2s
       event-service:
         base-url: ${EVENT_SERVICE_URL:http://localhost:8082}
+      ticket-service:
+        base-url: ${TICKET_SERVICE_URL:http://localhost:8083}
+        connect-timeout: 1s
+        read-timeout: 2s
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USER:ticketya}
     password: ${RABBITMQ_PASSWORD:ticketya}
     connection-timeout: 2s
+  # Mailpit (compose.yaml) recibe los mails sin enviarlos: se ven en http://localhost:8025
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
   docker:
     compose:
       file: compose.yaml
@@ -44,3 +54,7 @@ management:
     health:
       # Muestra qué componente está caído (p. ej. rabbit) sin exponer sus detalles
       show-components: always
+
+ticketya:
+  mail:
+    from: ${MAIL_FROM:no-reply@ticketya.com}

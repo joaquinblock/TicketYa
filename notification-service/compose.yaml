@@ -9,3 +9,8 @@ services:
       - 'MYSQL_ROOT_PASSWORD=group10'
     ports:
       - '3311:3306'
+  mailpit:
+    image: 'axllent/mailpit:v1.21'
+    ports:
+      - '1025:1025'
+      - '8025:8025'

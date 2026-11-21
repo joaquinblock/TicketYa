@@ -1,5 +1,6 @@
 package org.group10.auth.service;
 
+import org.group10.auth.dto.UserContactResponse;
 import org.group10.auth.dto.UserPermissionsResponse;
 import org.group10.auth.entity.Permission;
 import org.group10.auth.entity.Role;
@@ -58,6 +59,38 @@ class UserServiceTest {
         assertThatThrownBy(() -> userService.findPermissions(2L))
                 .isInstanceOf(TicketYaException.class)
                 .extracting("errorCode").isEqualTo(AuthErrorCode.USER_NOT_FOUND);
+    }
+
+    @Test
+    void findContact_activeUser_returnsItsEmailAndName() {
+        when(userRepository.findById(1L)).thenReturn(Optional.of(client(null)));
+
+        UserContactResponse response = userService.findContact(1L);
+
+        assertThat(response).isEqualTo(new UserContactResponse(1L, "client@ticketya.com", "Juan", "Pérez"));
+    }
+
+    @Test
+    void findContact_missingUser_throwsUserNotFound() {
+        when(userRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.findContact(99L))
+                .isInstanceOf(TicketYaException.class)
+                .extracting("errorCode").isEqualTo(AuthErrorCode.USER_NOT_FOUND);
+    }
+
+    @Test
+    void findContact_deletedUser_throwsUserNotFound() {
+        when(userRepository.findById(1L)).thenReturn(Optional.of(client(LocalDateTime.of(2026, 1, 1, 0, 0))));
+
+        assertThatThrownBy(() -> userService.findContact(1L))
+                .isInstanceOf(TicketYaException.class)
+                .extracting("errorCode").isEqualTo(AuthErrorCode.USER_NOT_FOUND);
+    }
+
+    private static User client(LocalDateTime deletedAt) {
+        return User.builder().id(1L).email("client@ticketya.com").firstName("Juan").lastName("Pérez")
+                .deletedAt(deletedAt).build();
     }
 
     private static User organizer(LocalDateTime deletedAt) {

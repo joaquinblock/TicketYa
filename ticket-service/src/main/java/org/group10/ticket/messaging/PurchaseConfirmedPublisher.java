@@ -31,7 +31,7 @@ public class PurchaseConfirmedPublisher {
         try {
             rabbitTemplate.convertAndSend(RabbitConfig.EVENTS_EXCHANGE, ROUTING_KEY, message);
         } catch (AmqpException e) {
-            // Una excepción en AFTER_COMMIT le llega a quien pagó, aunque la orden ya quedó PAID.
+            // Spring atraparía la excepción igual, pero la loguearía sin decir de qué orden era el aviso.
             log.error("No se pudo avisar la compra de la orden {}", purchase.orderId(), e);
         }
     }

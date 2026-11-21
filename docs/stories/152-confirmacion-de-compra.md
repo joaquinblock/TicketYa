@@ -26,7 +26,7 @@ notification-service ya arma y envía el mail de la compra (#144) con la imagen 
 - **CA3: Reintento si algo falla**
   Dado que ticket-service, auth-service o el SMTP no responden
   Cuando se procesa el mensaje
-  Entonces se reintenta hasta 3 veces con espera creciente, y si sigue fallando el mensaje pasa a la cola `notification.purchase.dlq` y queda en el log
+  Entonces se intenta hasta 3 veces en total con espera creciente, y si sigue fallando el mensaje pasa a la cola `notification.purchase.dlq` y queda en el log con el id de la orden
 - **CA4: Reintentar no cuenta como procesado**
   Dado un intento que falló
   Cuando se reintenta
@@ -34,7 +34,7 @@ notification-service ya arma y envía el mail de la compra (#144) con la imagen 
 - **CA5: Sin compra que avisar**
   Dado que la orden no existe o no está pagada, o el usuario se dio de baja
   Cuando se procesa el mensaje
-  Entonces no se envía nada ni se reintenta, y queda un `WARN` en el log
+  Entonces no se envía nada ni se reintenta, el `messageId` queda procesado y queda un `WARN` en el log
 - **CA6: Mensaje que no se puede leer**
   Dado un mensaje con un JSON inválido o sin `orderId` o `userId`
   Cuando llega

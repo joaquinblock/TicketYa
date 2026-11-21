@@ -244,6 +244,19 @@ Una orden en `PENDING` puede terminar por varios caminos a la vez: se confirma e
 
 Si el pago se aprobó y la orden ya no puede pasar a `PAID`, no se emiten entradas y se pide el reintegro de cada `ticket` con motivo `PURCHASE_COMPENSATION`.
 
+### Aviso de compra confirmada (`purchase.confirmed`)
+
+Cuando la transacción que deja la orden `PAID` se confirma, el ticket-service publica en el exchange `ticketya.events`, con la clave `purchase.confirmed` (ADR 0004):
+
+```json
+{ "messageId": "uuid", "occurredAt": "2026-11-21T18:00:00Z", "orderId": 42, "userId": 7, "eventId": 3 }
+```
+
+- **Cuándo.** Dentro de esa transacción se dispara el evento de Spring `PurchaseConfirmed`, y `PurchaseConfirmedPublisher` lo manda con `@TransactionalEventListener(AFTER_COMMIT)`. Si la transacción vuelve atrás, porque se perdieron los lugares o venció la reserva mientras se cobraba, no se avisa nada. El aviso no sale al aprobarse el cobro porque la compra todavía puede terminar en un reintegro.
+- **Una sola vez.** Solo publica el intento que pasó la orden de `PENDING` a `PAID`. Un pago repetido o concurrente que la encuentra `PAID` no publica.
+- **Contenido.** Solo ids: los datos de la orden y del usuario los pide quien consume. `occurredAt` es el momento en que la orden pasó a `PAID`. `messageId` es un UUID nuevo por compra, con el que el consumidor descarta las reentregas.
+- **Si RabbitMQ falla.** El pago responde igual (200 con la orden `PAID`) y el error queda en el log con el id de la orden. Sin outbox, ese aviso se pierde. Se publica en el mismo hilo: con el broker caído, la respuesta tarda hasta el `connection-timeout` (2 s) más.
+
 ### Intentos de pago: la orden `PENDING` es la reserva
 
 La orden nace `PENDING` al reservar y es la reserva misma. No se puede crear recién al aprobar: hace falta antes para saber cuánto cupo devolver, a qué compra pertenece cada asiento y cuánto cobrar. Solo una orden `PAID` cuenta como compra, y es la única con entradas `ISSUED`.
@@ -392,4 +405,5 @@ La respuesta incluye `eventId`, una lista `sectors` con capacidad, ventas, devol
 | ticket-service → event-service | Pedir `SOLD_OUT` y su reversa; capacidad y organización para los reportes | US-TKT-13, 20 |
 | ticket-service → payment-service | Cobrar por `order_id` con el monto de `orders.total` y la clave del intento; anular un intento sin resultado; reintegrar por `ticket_id`. Contrato en `payment-service.md` | US-TKT-09 a 11, 16, 18, 22, 23 |
 | ticket-service → auth-service | Confirmar la asignación del personal de acceso y la organización del organizador | US-TKT-19, 20 |
+| ticket-service → RabbitMQ (`ticketya.events`) | Avisar `purchase.confirmed` cuando una orden queda `PAID`. Lo consumen notification-service y recommendation-service | US-TKT-24 |
 | recommendation-service → ticket-service | Historial de compras | US-TKT-25 |

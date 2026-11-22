@@ -1,7 +1,7 @@
 # 67: US-TKT-24: Publicar compras y cancelaciones
 
 **Tipo:** Story
-**Estado:** compras hechas (#67 sigue abierta por las cancelaciones de US-NOT-02)
+**Estado:** hecha. Las compras, en el PR de #67; las cancelaciones las publica event-service (no ticket-service), en el PR de US-NOT-02, que cierra #67
 **Funcionalidad:** Épica 8: Preferencias, recomendaciones, notificaciones y reportes (#8)
 
 Servicio: ticket-service · Involucra: notification-service, recommendation-service · Consigna: 10, 11 · Entrega 2
@@ -37,7 +37,7 @@ Cuando se paga una orden, las entradas quedan `ISSUED` con su QR, pero ningún o
   Entonces tiene el mismo `messageId` y puede descartarlo
 
 ## Fuera de alcance
-- Publicar los reintegros de un evento cancelado: queda para US-NOT-02. El PR de esta story dice `Part of #67`.
+- Publicar los reintegros de un evento cancelado: queda para US-NOT-02. El PR de esta story dice `Part of #67`. Al hacer US-NOT-02 se decidió que la cancelación la publica event-service (`event.cancelled`), que es quien cambia el estado; el ticket-service solo expone los compradores del evento.
 - Outbox: si RabbitMQ no está disponible al confirmar, el aviso se pierde y queda en el log.
 - Consumir el mensaje: es US-NOT-01 (#152). recommendation-service lo consume en su propia story.
 

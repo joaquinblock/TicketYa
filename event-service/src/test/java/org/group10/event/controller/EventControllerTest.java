@@ -2,9 +2,13 @@ package org.group10.event.controller;
 
 import org.group10.common.security.Caller;
 import org.group10.event.dto.EventCreateRequest;
+import org.group10.event.dto.EventSearchRequest;
+import org.group10.event.entity.EventType;
 import org.group10.event.service.EventSearchService;
 import org.group10.event.service.EventService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -42,6 +46,26 @@ class EventControllerTest {
 
     @MockitoBean
     private EventSearchService eventSearchService;
+
+    @Test
+    void search_repeatedTypeAndParticipantId_arriveAsLists() throws Exception {
+        mockMvc.perform(get("/api/events?type=CONCERT&type=THEATER&participantId=1&participantId=4"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<EventSearchRequest> request = ArgumentCaptor.forClass(EventSearchRequest.class);
+        verify(eventSearchService).search(request.capture());
+        assertThat(request.getValue().type()).containsExactly(EventType.CONCERT, EventType.THEATER);
+        assertThat(request.getValue().participantId()).containsExactly(1L, 4L);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"participantId=abc", "participantId=0", "participantId=-1", "type=OPERA"})
+    void search_invalidRepeatedFilter_returns400(String query) throws Exception {
+        mockMvc.perform(get("/api/events?" + query))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("validation_error"));
+        verifyNoInteractions(eventSearchService);
+    }
 
     @Test
     void create_withoutIdentity_returns401AndDoesNotCreate() throws Exception {

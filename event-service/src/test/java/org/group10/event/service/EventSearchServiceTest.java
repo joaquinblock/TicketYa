@@ -7,6 +7,7 @@ import org.group10.event.dto.EventSearchRequest;
 import org.group10.event.dto.EventSort;
 import org.group10.event.dto.EventSummaryResponse;
 import org.group10.event.entity.EventType;
+import org.group10.event.repository.ParticipantRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -33,6 +34,9 @@ class EventSearchServiceTest {
 
     @Autowired
     private EventSearchService searchService;
+
+    @Autowired
+    private ParticipantRepository participantRepository;
 
     @Test
     void withoutFilters_showsOnlyPublishedAndSoldOutFromTheNearest() {
@@ -110,11 +114,39 @@ class EventSearchServiceTest {
     @Test
     void paging_countsEveryResult() {
         EventPageResponse second = searchService.search(
-                new EventSearchRequest(null, null, null, null, null, null, null, null, 1, 4));
+                new EventSearchRequest(null, null, null, null, null, null, null, null, null, 1, 4));
 
         assertThat(ids(second)).containsExactly(1L, 4L);
         assertThat(second.totalElements()).isEqualTo(6);
         assertThat(second.totalPages()).isEqualTo(2);
+    }
+
+    @Test
+    void bySeveralTypes_matchesAnyOfThem() {
+        assertThat(ids(searchBy(List.of(EventType.CONCERT, EventType.THEATER), null)))
+                .containsExactly(6L, 11L, 2L, 1L);
+    }
+
+    @Test
+    void byParticipantId_leavesTheSuspendedEventOut() {
+        assertThat(ids(searchBy(null, List.of(participantId("Los Serranos"))))).containsExactly(1L, 4L);
+    }
+
+    @Test
+    void bySeveralParticipantIds_matchesAnyOfThem() {
+        assertThat(ids(searchBy(null, List.of(participantId("Los Serranos"), participantId("Trío Costero")))))
+                .containsExactly(6L, 1L, 4L);
+    }
+
+    @Test
+    void byParticipantIdAndType_combine() {
+        assertThat(ids(searchBy(List.of(EventType.FESTIVAL), List.of(participantId("Los Serranos")))))
+                .containsExactly(4L);
+    }
+
+    @Test
+    void byParticipantIdThatDoesNotExist_findsNothing() {
+        assertThat(ids(searchBy(null, List.of(Long.MAX_VALUE)))).isEmpty();
     }
 
     @Test
@@ -127,8 +159,19 @@ class EventSearchServiceTest {
 
     private EventPageResponse search(String q, EventType type, String city, String participant, Long organizationId,
                                      LocalDate from, LocalDate to, EventSort sort) {
-        return searchService.search(new EventSearchRequest(q, type, city, participant, organizationId, from, to, sort,
-                null, null));
+        return searchService.search(new EventSearchRequest(q, type == null ? null : List.of(type), city, participant,
+                null, organizationId, from, to, sort, null, null));
+    }
+
+    private EventPageResponse searchBy(List<EventType> types, List<Long> participantIds) {
+        return searchService.search(new EventSearchRequest(null, types, null, null, participantIds, null, null, null,
+                null, null, null));
+    }
+
+    private long participantId(String name) {
+        return participantRepository.findAll().stream()
+                .filter(participant -> participant.getName().equals(name))
+                .findFirst().orElseThrow().getId();
     }
 
     private static List<Long> ids(EventPageResponse page) {

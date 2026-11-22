@@ -59,6 +59,13 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             """)
     List<Long> findIdsOfPendingOrdersOfEvent(Long eventId);
 
+    @Query("""
+            select distinct o.userId from Order o
+            where o.eventId = :eventId and o.status = org.group10.ticket.entity.OrderStatus.PAID
+            order by o.userId
+            """)
+    List<Long> findDistinctUserIdsOfPaidOrdersOfEvent(Long eventId);
+
     @Modifying
     @Query("""
             update Order o set o.status = :nextStatus

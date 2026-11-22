@@ -10,6 +10,7 @@ import org.group10.queue.repository.QueueRepository;
 import org.group10.queue.security.QueueTokenProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -41,7 +42,16 @@ public class QueueService {
     }
 
     public QueueEntryResponse join(Long eventId, Long userId) {
-        QueueEventResponse event = eventClient.findEventForQueue(eventId);
+        QueueEventResponse event;
+        try {
+            event = eventClient.findEventForQueue(eventId);
+        } catch (RestClientResponseException exception) {
+            if (exception.getStatusCode().value() == 404) {
+                throw new TicketYaException(QueueErrorCode.EVENT_NOT_FOUND,
+                        "No existe el evento %d".formatted(eventId));
+            }
+            throw exception;
+        }
         if (!event.highDemand()) {
             throw new TicketYaException(QueueErrorCode.EVENT_NOT_HIGH_DEMAND,
                     "El evento %d no es de alta demanda".formatted(eventId));

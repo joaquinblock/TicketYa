@@ -267,7 +267,7 @@ public class EventService {
                 saleSnapshotOf(getEvent(id), EventStatus.CANCELLED)));
 
         return transactions.execute(tx -> {
-            Event managed = getEvent(id);
+            Event managed = getLockedEvent(id);
             EventStatus previous = managed.getStatus();
             managed.changeStatus(EventStatus.CANCELLED, statusMachine);
             if (previous != EventStatus.CANCELLED) {
@@ -323,7 +323,7 @@ public class EventService {
                 saleSnapshotOf(getEvent(id), EventStatus.SUSPENDED)));
 
         return transactions.execute(tx -> {
-            Event managed = getEvent(id);
+            Event managed = getLockedEvent(id);
             EventStatus previous = managed.getStatus();
             managed.suspend(statusMachine);
             if (previous != EventStatus.SUSPENDED) {
@@ -358,7 +358,7 @@ public class EventService {
         }));
 
         return transactions.execute(tx -> {
-            Event managed = getEvent(id);
+            Event managed = getLockedEvent(id);
             ensureCanBeResumedOn(managed, newDate);
             boolean rescheduled = newDate != null && !newDate.equals(managed.getDateTime());
             if (newDate != null) {
@@ -582,6 +582,15 @@ public class EventService {
 
     private Event getEvent(Long id) {
         return eventRepository.findById(id).orElseThrow(() -> eventNotFound(id));
+    }
+
+    /**
+     * For the transaction that changes the status and notifies the buyers: with the row locked, a second cancel,
+     * suspend or resume of the same event waits and then reads the new status, so the change is published once.
+     */
+    private Event getLockedEvent(Long id) {
+        eventRepository.lockById(id);
+        return getEvent(id);
     }
 
     private static TicketYaException eventNotFound(Long id) {

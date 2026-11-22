@@ -1,7 +1,7 @@
 # 151: RabbitMQ base para los avisos entre servicios
 
 **Tipo:** Enabler
-**Estado:** borrador
+**Estado:** hecho
 **Funcionalidad:** Épica 8: Preferencias, recomendaciones, notificaciones y reportes (#8)
 
 Servicios: ticket-service, notification-service · Entrega 2
@@ -26,7 +26,7 @@ La comunicación asíncrona con RabbitMQ ya está elegida (`quality-attributes/c
 - Outbox, clúster o alta disponibilidad del broker.
 
 ## Definition of Done
-- [ ] Cada criterio de terminado se verificó
-- [ ] Review aprobada
-- [ ] ADR 0004 aceptado
-- [ ] Documentación afectada actualizada (`README.md`, `communication.md`, `microservices.md`)
+- [x] Cada criterio de terminado se verificó
+- [x] Review aprobada
+- [x] ADR 0004 aceptado
+- [x] Documentación afectada actualizada (`README.md`, `communication.md`, `microservices.md`)

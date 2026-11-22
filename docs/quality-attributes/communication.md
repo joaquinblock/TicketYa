@@ -33,7 +33,11 @@ Reglas que aplican a todos los servicios:
 ## Estado
 
 - **Implementado:** clients síncronos con sus timeouts, rutas `/internal/**` y manejo común de errores.
-- **Pendiente (Entrega 2):** RabbitMQ. Todavía ningún servicio tiene la dependencia.
+- **Implementado (base de RabbitMQ):** broker para desarrollo, conexión de ticket-service y notification-service, exchange `ticketya.events` y mensajes en JSON ([ADR 0004](../adr/0004-rabbitmq-para-avisos-entre-servicios.md)).
+- **Implementado (#67):** ticket-service publica `purchase.confirmed` después del commit que deja la orden `PAID`. Si el broker falla, el pago responde igual y el aviso queda en el log (ver `ticket-service.md`).
+- **Implementado (#152):** notification-service consume `purchase.confirmed` en `notification.purchase`, descarta los `messageId` repetidos, intenta hasta 3 veces en total los errores momentáneos y manda a `notification.purchase.dlq` lo que no puede procesar (ver [`notification-service.md`](../architecture/notification-service.md)).
+- **Pendiente (Entrega 2):** los demás avisos: reintegros por evento cancelado (US-NOT-02), artistas favoritos y fila virtual.
+- **A resolver en el compose general (#11):** sin broker, `/actuator/health` de ticket-service y notification-service da `DOWN` 503 aunque el servicio atienda. Si ese health se usa en un `healthcheck` o en `depends_on: service_healthy`, un RabbitMQ caído deja al servicio por muerto. Evaluar sacar `rabbit` del grupo de readiness.
 
 ## Dónde verlo
 

@@ -1,0 +1,27 @@
+# Broker de mensajes compartido por todos los servicios (ADR 0004).
+# No va en el compose.yaml de un servicio porque es uno solo para todos: se levanta una vez, antes que los servicios.
+#   docker compose -f rabbitmq.compose.yaml up -d
+# El docker-compose.yml general (Épica 11) lo suma con `include:` y los servicios pasan a usar RABBITMQ_HOST=rabbitmq.
+name: ticketya-rabbitmq
+services:
+  rabbitmq:
+    image: 'rabbitmq:4.1-management'
+    # Nombre fijo: RabbitMQ guarda sus datos por nombre de host, y sin esto el volumen no sirve al recrear el contenedor
+    hostname: rabbitmq
+    environment:
+      # Solo para desarrollo. El usuario guest solo entra desde localhost y no serviría con los servicios en contenedores.
+      - 'RABBITMQ_DEFAULT_USER=ticketya'
+      - 'RABBITMQ_DEFAULT_PASS=ticketya'
+    ports:
+      - '5672:5672'   # AMQP: los servicios
+      - '15672:15672' # Consola de administración: http://localhost:15672
+    volumes:
+      - 'rabbitmq-data:/var/lib/rabbitmq'
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  rabbitmq-data:

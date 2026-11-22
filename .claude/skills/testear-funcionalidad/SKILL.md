@@ -52,6 +52,8 @@ Recursos de Mockito:
 - `ArgumentCaptor` o capturar lo guardado cuando el resultado está en lo que se persiste.
 - `verifyNoInteractions` para probar que un rechazo ocurrió antes de cobrar.
 
+Para configuración de Spring sin levantar toda la aplicación (beans, conversores, conexión a un broker caído) se usa `ApplicationContextRunner`. Ojo: publica `ContextRefreshedEvent` pero no `ApplicationReadyEvent`, así que lo que deba ejecutarse al arrancar y probarse con el runner tiene que escuchar `ContextRefreshedEvent`.
+
 Se mockea en el borde del sistema, como `PaymentGateway`, y el resto se construye real. No mockear mappers estáticos, records ni entidades.
 
 ## 3. Concurrencia
@@ -94,6 +96,7 @@ Cada resultado se consume con `future.get(timeout)`, y las excepciones inesperad
 - **Tragarse timeouts** en helpers de espera: el test puede pasar sin haber corrido la carrera.
 - **Llamar `IntegrationTest` a una clase con todo mockeado**: el nombre promete una garantía que no da.
 - **Verificar llamadas internas** en vez del resultado, salvo que la llamada sea el efecto, como cobrar o no cobrar.
+- **Correr un test con broker real con el servicio levantado**: los dos consumen de la misma cola, el servicio se queda con parte de los mensajes y el test falla o pasa por azar.
 
 ## 6. Convenciones
 

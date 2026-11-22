@@ -188,6 +188,16 @@ public class QueueRepository {
         return Optional.of(toSnapshot(result));
     }
 
+    public String storeQueueTokenIfAbsent(Long eventId, String entryId, String token) {
+        String tokenKey = prefix(eventId) + "queue-token";
+        redis.opsForHash().putIfAbsent(tokenKey, entryId, token);
+        Object storedToken = redis.opsForHash().get(tokenKey, entryId);
+        if (storedToken == null) {
+            throw new IllegalStateException("Redis no devolvió el turno almacenado");
+        }
+        return storedToken.toString();
+    }
+
     private static QueueEntrySnapshot toSnapshot(List<?> result) {
         String entryId = result.get(0).toString();
         String status = result.get(1).toString();

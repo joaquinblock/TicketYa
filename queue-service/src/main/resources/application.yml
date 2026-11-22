@@ -18,6 +18,10 @@ ticketya:
     batch-size: ${QUEUE_BATCH_SIZE:100}
     batch-interval: ${QUEUE_BATCH_INTERVAL:30s}
     enabled-window: ${QUEUE_ENABLED_WINDOW:10m}
+    jwt:
+      issuer: ${QUEUE_JWT_ISSUER:ticketya-queue}
+      audience: ${QUEUE_JWT_AUDIENCE:ticket-service}
+      private-key-location: ${QUEUE_JWT_PRIVATE_KEY_LOCATION:}
 
 springdoc:
   swagger-ui:

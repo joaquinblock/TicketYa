@@ -14,6 +14,7 @@ import org.group10.queue.dto.QueueEntryResponse;
 import org.group10.queue.service.QueueService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -39,5 +40,17 @@ public class QueueController {
     @ApiResponse(responseCode = "503", description = "service_unavailable")
     public ResponseEntity<QueueEntryResponse> join(@PathVariable Long eventId, Caller caller) {
         return ResponseEntity.status(HttpStatus.CREATED).body(queueService.join(eventId, caller.userId()));
+    }
+
+    @GetMapping("/{eventId}/me")
+    @RequiresPermission(Permission.TICKET_PURCHASE)
+    @Operation(summary = "Consultar estado y posición de la fila virtual")
+    @ApiResponse(responseCode = "200", description = "Estado actual de la fila")
+    @ApiResponse(responseCode = "401", description = "unauthorized")
+    @ApiResponse(responseCode = "403", description = "forbidden: sin TICKET_PURCHASE")
+    @ApiResponse(responseCode = "404", description = "queue_entry_not_found",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    public QueueEntryResponse getStatus(@PathVariable Long eventId, Caller caller) {
+        return queueService.getStatus(eventId, caller.userId());
     }
 }

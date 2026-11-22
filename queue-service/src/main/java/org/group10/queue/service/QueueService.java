@@ -7,10 +7,14 @@ import org.group10.queue.dto.QueueEntryResponse;
 import org.group10.queue.entity.QueueEntrySnapshot;
 import org.group10.queue.exception.QueueErrorCode;
 import org.group10.queue.repository.QueueRepository;
+import org.group10.queue.security.QueueTokenProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 @Service
 public class QueueService {
@@ -18,11 +22,22 @@ public class QueueService {
     private final EventClient eventClient;
     private final QueueRepository queueRepository;
     private final Clock clock;
+    private final Optional<QueueTokenProvider> queueTokenProvider;
 
-    public QueueService(EventClient eventClient, QueueRepository queueRepository, Clock clock) {
+    @Autowired
+    public QueueService(EventClient eventClient, QueueRepository queueRepository, Clock clock,
+                        QueueTokenProvider queueTokenProvider) {
         this.eventClient = eventClient;
         this.queueRepository = queueRepository;
         this.clock = clock;
+        this.queueTokenProvider = Optional.of(queueTokenProvider);
+    }
+
+    QueueService(EventClient eventClient, QueueRepository queueRepository, Clock clock) {
+        this.eventClient = eventClient;
+        this.queueRepository = queueRepository;
+        this.clock = clock;
+        this.queueTokenProvider = Optional.empty();
     }
 
     public QueueEntryResponse join(Long eventId, Long userId) {
@@ -37,6 +52,30 @@ public class QueueService {
         }
 
         QueueEntrySnapshot entry = queueRepository.join(eventId, userId, clock.instant());
+        if ("ENABLED".equals(entry.status())) {
+            return getStatus(eventId, userId);
+        }
         return new QueueEntryResponse(entry.status(), entry.position(), null, null);
+    }
+
+    public QueueEntryResponse getStatus(Long eventId, Long userId) {
+        Instant now = clock.instant();
+        QueueEntrySnapshot entry = queueRepository.findCurrent(eventId, userId, now)
+                .orElseThrow(() -> new TicketYaException(QueueErrorCode.QUEUE_ENTRY_NOT_FOUND,
+                        "El cliente %d no ingresó a la fila del evento %d".formatted(userId, eventId)));
+        if (!"ENABLED".equals(entry.status())) {
+            return new QueueEntryResponse(entry.status(), entry.position(), null, null);
+        }
+
+        Instant enabledAt = Instant.ofEpochMilli(entry.enabledAtEpochMillis());
+        Instant enabledUntil = Instant.ofEpochMilli(entry.enabledUntilEpochMillis());
+        String queueToken = entry.queueToken();
+        if (queueToken == null) {
+            String issuedToken = queueTokenProvider.orElseThrow(() ->
+                            new IllegalStateException("QueueTokenProvider no está configurado"))
+                    .issue(eventId, userId, entry.entryId(), enabledAt, enabledUntil);
+            queueToken = queueRepository.storeQueueTokenIfAbsent(eventId, entry.entryId(), issuedToken);
+        }
+        return new QueueEntryResponse(entry.status(), null, queueToken, enabledUntil);
     }
 }

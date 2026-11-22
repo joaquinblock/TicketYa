@@ -47,21 +47,22 @@ Si se revierte alguna, hay que actualizar este doc, el `@Operation` de `EventCon
 
 ## Filtros
 
-Todos son opcionales y se combinan con *y*.
+Todos son opcionales y se combinan con *y*. `type` y `participantId` se pueden repetir, y sus valores se combinan con *o*: `?type=CONCERT&type=THEATER&participantId=1` trae los conciertos u obras de teatro en los que está el participante 1.
 
 | Parámetro | Ejemplo | Cómo filtra |
 |---|---|---|
 | `q` | `serranos` | Texto libre: parte del nombre, de la descripción o del nombre de un participante, sin distinguir mayúsculas |
-| `type` | `CONCERT` | Tipo de evento, exacto |
+| `type` | `CONCERT` | Tipo de evento, exacto. Repetible |
 | `city` | `cordoba` | Ciudad del lugar, completa. No distingue mayúsculas ni acentos: la collation de MySQL los ignora, así que `cordoba` encuentra *Córdoba* |
 | `participant` | `serranos` | Parte del nombre de un artista, equipo o disertante |
+| `participantId` | `1` | Id de un participante. Repetible. Un id inexistente no da error: no encuentra nada |
 | `organizationId` | `1` | Organización que publica el evento |
 | `from`, `to` | `2026-12-01` | Días, los dos inclusive. `from` posterior a `to` da `400 invalid_parameter` |
 | `sort` | `PRICE` | `DATE` (por defecto), `PRICE` o `RELEVANCE` |
 | `page`, `size` | `0`, `20` | Página desde 0. `size` va de 1 a 50, y por defecto es 20 |
 
 - **El organizador se filtra por `organizationId`,** no por nombre. Por el [RFC-004](../rfc/RFC-004-cross-service-relations.md), el event-service solo guarda el id. Por eso la respuesta tampoco trae el nombre de la organización.
-- **El participante se filtra por nombre,** porque es lo que escribe un cliente. No hay `participantId` (YAGNI): se agrega cuando el front lo elija de una lista o lo pida el recommendation-service.
+- **El participante se filtra por nombre o por id.** El nombre es lo que escribe un cliente. El id lo usa el recommendation-service, que guarda los favoritos por id: buscar por nombre confundiría a *Serrano* con *Los Serranos*.
 - **`%` y `_` se toman como texto,** no como comodines.
 
 ## Orden

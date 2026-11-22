@@ -888,4 +888,4 @@ Servicio: recommendation-service · Involucra: event-service, ticket-service · 
 - Se suman los que compraron los clientes que compraron entradas para los mismos eventos que él (*"quienes compraron entradas para este evento también compraron…"*).
 - No se sugieren eventos para los que el cliente ya compró.
 
-**Notas técnicas:** usa el historial que expone el ticket-service (US-TKT-25) y los eventos de compra (US-TKT-24). La consigna permite una versión simplificada.
+**Notas técnicas:** el historial sale de los eventos de compra (US-TKT-24): recommendation-service consume `purchase.confirmed` y lo guarda en `purchase_history`, sin pedirlo al ticket-service (US-TKT-25). La consigna permite una versión simplificada.

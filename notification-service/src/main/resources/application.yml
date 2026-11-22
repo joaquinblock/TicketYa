@@ -27,7 +27,7 @@ spring:
     listener:
       simple:
         # 3 intentos en total (max-retries cuenta los reintentos), con 1 s y 2 s de espera.
-        # Al agotarlos, RabbitConfig manda el mensaje a notification.purchase.dlq.
+        # Al agotarlos, RabbitConfig manda el mensaje a la DLQ de su cola (<cola>.dlq).
         retry:
           enabled: true
           max-retries: 2

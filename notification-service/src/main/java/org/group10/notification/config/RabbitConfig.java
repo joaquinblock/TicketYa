@@ -24,7 +24,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Mensajería con RabbitMQ (ADR 0004).
  * <ul>
- *   <li>El exchange {@code ticketya.events} es de ticket-service, pero se declara también acá (con los mismos
+ *   <li>El exchange {@code ticketya.events} lo declaran ticket-service y event-service, y también acá (con los mismos
  *       atributos) para que el binding no dependa de qué servicio arranque primero.</li>
  *   <li>{@code notification.purchase} recibe {@code purchase.confirmed}, y {@code notification.event} los cambios de
  *       un evento que publica event-service ({@code event.*}). Lo que se rechaza sin requeue pasa, por el exchange

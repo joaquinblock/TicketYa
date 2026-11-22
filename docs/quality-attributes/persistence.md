@@ -23,7 +23,7 @@ Cada servicio tiene su propia base en su propio contenedor. Sin embargo, algunas
 - **Referencias por ID, sin FK física.** Por ejemplo, `orders.user_id` apunta a un usuario de otra base. El enunciado las llama "entidades solapadas".
 - **Copias deliberadas.** `event_sale` y `event_sector_price` copian en ticket-service los datos de venta del evento, para que reservar no dependa de event-service. `payment.amount` conserva lo que realmente se cobró.
 - **Restricciones en la base y no solo en el código.** Las garantías importantes son `UNIQUE`, `CHECK` y columnas generadas.
-- **Esquema y datos de prueba.** En desarrollo se usa `ddl-auto: create` con un seeder por servicio, y cada seeder omite la carga si ya hay datos.
+- **Esquema y datos de prueba.** En desarrollo se usa `ddl-auto: create` con un seeder por servicio, y cada seeder omite la carga si ya hay datos. La excepción es notification-service, que usa `update` para que los mensajes procesados sobrevivan a un reinicio.
 
 ## Qué descartamos
 

@@ -47,7 +47,8 @@ spring:
       lifecycle-management: start-only
   jpa:
     hibernate:
-      ddl-auto: create
+      # update y no create: processed_message tiene que sobrevivir a un reinicio para no repetir mails
+      ddl-auto: update
     open-in-view: false
 
 springdoc:

@@ -22,10 +22,13 @@ El cliente genera una clave por cada intento y la repite en los reintentos de es
 | Reservar | `orders.idempotency_key`, UNIQUE | La orden existente, sin reservar de nuevo |
 | Cobrar | `payment.idempotency_key`, UNIQUE, también enviada a la pasarela | El resultado del primer intento, sin cobrar de nuevo |
 | Reintegrar | `refund.ticket_id`, UNIQUE | El reintegro existente |
+| Mail de la compra (consumir `purchase.confirmed`) | `processed_message.message_id`, PK, en notification-service | Ack sin mandar otro mail |
 
 La clave se guarda en la misma fila que la operación, y no en una tabla aparte. Así las dos se confirman en la misma transacción, y no puede quedar una clave registrada sin su operación, ni al revés.
 
 Si dos reintentos llegan a la vez, el UNIQUE hace que solo uno inserte. El otro falla y lee lo que guardó el primero.
+
+El mail de la compra es la excepción: la operación es un envío y no una fila, así que el `messageId` va en una tabla propia. Se inserta antes de enviar, en la misma transacción: si el envío falla, el rollback borra la fila y el reintento la vuelve a insertar. Riesgo aceptado: si el mail sale y el commit falla, se manda dos veces ([`notification-service.md`](../architecture/notification-service.md)).
 
 ## Capa de datos
 
@@ -70,6 +73,7 @@ Los tests de concurrencia usan MySQL real e hilos alineados con `CountDownLatch`
 - `ReservationMySqlIntegrationTest`: mismo asiento y último lugar.
 - `OrderPaymentMySqlIntegrationTest` y `ReturnRequestMySqlIntegrationTest`: pagos y devoluciones simultáneos.
 - `PaymentIdempotencyIntegrationTest` y `RefundMySqlIntegrationTest`: cobros y reintegros simultáneos.
+- `PurchaseNotificationMySqlIntegrationTest`: el mismo `messageId` en dos hilos manda un solo mail.
 
 ## Dónde verlo
 

@@ -27,4 +27,5 @@ Los avisos entre servicios van por RabbitMQ, con un exchange topic `ticketya.eve
 - Quien consume tiene que ser idempotente: puede recibir el mismo mensaje dos veces.
 - Sin outbox, un aviso se pierde si RabbitMQ no está disponible justo al confirmar.
 - En desarrollo hay que levantar RabbitMQ antes que los servicios que lo usan.
+- Como el exchange lo declaran el que publica y el que consume, sus atributos (topic, durable) se cambian en todos los servicios a la vez. RabbitMQ rechaza una redeclaración distinta con `PRECONDITION_FAILED`.
 - Cada servicio pone en un paquete `messaging/` sus eventos internos, los records de sus mensajes y sus publicadores o consumidores, igual que `client/` para HTTP.

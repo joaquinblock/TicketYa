@@ -1,7 +1,7 @@
 # 152: US-NOT-01: Recibir la confirmación de la compra
 
 **Tipo:** Story
-**Estado:** borrador
+**Estado:** implementada; falta correr `PurchaseDeadLetterLogRabbitIntegrationTest` y la prueba de punta a punta (ver [`docs/tasks/152-verificacion-pendiente.md`](../tasks/152-verificacion-pendiente.md))
 **Funcionalidad:** Épica 8: Preferencias, recomendaciones, notificaciones y reportes (#8)
 
 Servicio: notification-service · Involucra: ticket-service, auth-service · Consigna: 11 · Entrega 2
@@ -50,5 +50,5 @@ notification-service declara su cola `notification.purchase`, el binding a `tick
 
 ## Definition of Done
 - [ ] Cada criterio tiene un test que pasa
-- [ ] Review aprobada
-- [ ] Documentación afectada actualizada (`notification-service.md`, `communication.md`)
+- [x] Review aprobada
+- [x] Documentación afectada actualizada (`notification-service.md`, `communication.md`)

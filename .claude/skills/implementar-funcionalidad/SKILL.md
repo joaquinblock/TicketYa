@@ -18,6 +18,7 @@ El enunciado del trabajo está completo en `README.md`. Es la fuente de verdad s
 3. Leer el contrato y las decisiones en `docs/architecture/<servicio>.md`, y los códigos en `docs/architecture/error-handling.md`.
 4. Si el enunciado, la historia y el diseño no coinciden, frenar y avisar antes de implementar. No elegir en silencio.
 5. Explicar y acordar antes cualquier clase, módulo o configuración que no sea obvia, con la alternativa más simple.
+6. Antes de planificar con una propiedad de Spring Boot, verificarla en `META-INF/spring-configuration-metadata.json` del jar de la versión del proyecto. En Boot 4 varias cambiaron de nombre o de significado, como `retry.max-attempts`, que pasó a `max-retries` y cuenta reintentos (ver `docs/learnings/`).
 
 ## 2. Una funcionalidad por vez
 

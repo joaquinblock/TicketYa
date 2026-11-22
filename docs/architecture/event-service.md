@@ -175,6 +175,9 @@ Organización `1` (*Del Sur Producciones*, organizador `2`), salvo los dos últi
 | 10 | Muestra de fin de año | `THEATER` | Tandil | `DRAFT` | +50 días | Borrador sin sectores ni participantes: no se puede publicar |
 | 11 | Peña folklórica serrana | `CONCERT` | Tandil | `PUBLISHED` | +18 días | Organización `2` |
 | 12 | Cultura y territorio | `CONFERENCE` | Tandil | `DRAFT` | +70 días | Organización `2` |
+| 13–42 | Cartelera (*Noche de tango*, *Hamlet*, *Final de vóley*…) | Los cinco | Las cinco | `PUBLISHED` | +75 días, uno cada 3 | Que la cartelera del front tenga varias páginas |
+
+**La cartelera (13 a 42)** son 30 eventos publicados, de un solo sector, sin participantes y sin "serr" en el nombre. Van después de todos los demás en fecha (desde +75) y en precio (desde $50.000, con $1.500 más cada uno), así que por fecha y por precio los seis visibles de arriba siguen primeros. Por tipo: 7 recitales, 5 festivales, 6 obras, 6 partidos y 6 conferencias.
 
 **Para el ABM de participantes:** *Sofía Lanza* (`SPEAKER`) no está en ningún evento y se puede borrar. El Festival (evento 4) es el evento de referencia con todos los campos completos, y `EventSeederTest` verifica que siga así.
 

@@ -60,7 +60,18 @@ public class EventSeeder implements ApplicationRunner {
     private final EventSectorRepository eventSectorRepository;
     private final Clock clock;
 
+    /** The billboard starts after every other seeded event (the last one is 70 days ahead). */
+    private static final int BILLBOARD_FIRST_DAY = 75;
+    private static final int BILLBOARD_DAYS_APART = 3;
+    private static final int BILLBOARD_BASE_PRICE = 50000;
+    private static final int BILLBOARD_PRICE_STEP = 1500;
+    private static final int BILLBOARD_MAX_TICKETS = 4;
+
     private LocalDate today;
+
+    /** A published event with a single sector, for the billboard. The venue is the sector's. */
+    private record BillboardEvent(String name, EventType type, Sector sector) {
+    }
 
     @Override
     @Transactional
@@ -216,6 +227,41 @@ public class EventSeeder implements ApplicationRunner {
                 eventSector(cultureTalks, theaterStalls, "3000")
         ));
 
+        // Published events after all the others, so the billboard has several pages (8 per page in the front).
+        // Their names don't contain "serr", so the front's search tests keep their results.
+        seedBillboard(List.of(
+                new BillboardEvent("Noche de tango", EventType.CONCERT, stadiumField),
+                new BillboardEvent("Rock del Litoral", EventType.CONCERT, litoralTerrace),
+                new BillboardEvent("Cuarteto en la Arena", EventType.CONCERT, arenaField),
+                new BillboardEvent("Jazz de medianoche", EventType.CONCERT, harborRoom),
+                new BillboardEvent("Coro de cámara", EventType.CONCERT, theaterStalls),
+                new BillboardEvent("Orquesta sinfónica juvenil", EventType.CONCERT, theaterStalls),
+                new BillboardEvent("Pop nacional en vivo", EventType.CONCERT, stadiumField),
+                new BillboardEvent("Festival de cerveza artesanal", EventType.FESTIVAL, arenaField),
+                new BillboardEvent("Festival del Río", EventType.FESTIVAL, litoralTerrace),
+                new BillboardEvent("Festival de jazz costero", EventType.FESTIVAL, harborRoom),
+                new BillboardEvent("Festival de rock del Sur", EventType.FESTIVAL, stadiumField),
+                new BillboardEvent("Encuentro de murgas", EventType.FESTIVAL, arenaField),
+                new BillboardEvent("Hamlet", EventType.THEATER, theaterStalls),
+                new BillboardEvent("Bodas de sangre", EventType.THEATER, theaterBalcony),
+                new BillboardEvent("La nona", EventType.THEATER, theaterStalls),
+                new BillboardEvent("Comedia de enredos", EventType.THEATER, harborRoom),
+                new BillboardEvent("El método Grönholm", EventType.THEATER, theaterBalcony),
+                new BillboardEvent("Improvisación en vivo", EventType.THEATER, harborRoom),
+                new BillboardEvent("Final de vóley", EventType.SPORTS, arenaField),
+                new BillboardEvent("Torneo de básquet", EventType.SPORTS, arenaField),
+                new BillboardEvent("Litoral vs. Paraná", EventType.SPORTS, litoralTerrace),
+                new BillboardEvent("Copa de rugby del Sur", EventType.SPORTS, stadiumField),
+                new BillboardEvent("Maratón nocturna", EventType.SPORTS, stadiumField),
+                new BillboardEvent("Clásico de handball", EventType.SPORTS, litoralTerrace),
+                new BillboardEvent("Congreso de desarrollo web", EventType.CONFERENCE, arenaField),
+                new BillboardEvent("Jornada de datos abiertos", EventType.CONFERENCE, harborRoom),
+                new BillboardEvent("Charla de diseño de producto", EventType.CONFERENCE, theaterStalls),
+                new BillboardEvent("Encuentro de emprendedores", EventType.CONFERENCE, litoralTerrace),
+                new BillboardEvent("Seminario de ciberseguridad", EventType.CONFERENCE, arenaField),
+                new BillboardEvent("Foro de energías renovables", EventType.CONFERENCE, stadiumField)
+        ));
+
         log.info("EventSeeder: {} lugares, {} sectores, {} asientos, {} participantes y {} eventos cargados",
                 venueRepository.count(), sectorRepository.count(), seatRepository.count(),
                 participantRepository.count(), eventRepository.count());
@@ -236,6 +282,23 @@ public class EventSeeder implements ApplicationRunner {
                 .dateTime(dateTime)
                 .status(status)
                 .highDemand(false);
+    }
+
+    /**
+     * One every few days, each a bit pricier than the previous one. They start after the other events in date and
+     * in price, so EventSearchServiceTest still sees the original six first.
+     */
+    private void seedBillboard(List<BillboardEvent> billboard) {
+        for (int index = 0; index < billboard.size(); index++) {
+            BillboardEvent item = billboard.get(index);
+            Event event = eventRepository.save(base(item.name(), "Función de la cartelera", item.type(),
+                    item.sector().getVenue(), at(BILLBOARD_FIRST_DAY + index * BILLBOARD_DAYS_APART, 21, 0),
+                    EventStatus.PUBLISHED)
+                    .maxTicketsPerCustomer(BILLBOARD_MAX_TICKETS)
+                    .build());
+            String price = String.valueOf(BILLBOARD_BASE_PRICE + index * BILLBOARD_PRICE_STEP);
+            eventSectorRepository.save(eventSector(event, item.sector(), price));
+        }
     }
 
     /**

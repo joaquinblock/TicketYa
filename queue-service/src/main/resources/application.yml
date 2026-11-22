@@ -13,6 +13,12 @@ spring:
       file: compose.yaml
       lifecycle-management: start-only
 
+ticketya:
+  queue:
+    batch-size: ${QUEUE_BATCH_SIZE:100}
+    batch-interval: ${QUEUE_BATCH_INTERVAL:30s}
+    enabled-window: ${QUEUE_ENABLED_WINDOW:10m}
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html

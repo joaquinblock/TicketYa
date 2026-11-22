@@ -1,7 +1,7 @@
 # 0004: RabbitMQ para los avisos entre servicios
 
 - **Fecha:** 2026-11-20
-- **Estado:** propuesta
+- **Estado:** aceptada
 
 ## Contexto
 Cuando se confirma una compra, otros servicios tienen que enterarse (notification-service para el mail, después recommendation-service), pero la compra no puede fallar ni esperar si ellos están caídos. La consigna permite mensajería para notificaciones, y `quality-attributes/communication.md` ya eligió RabbitMQ para la Entrega 2, sin definir cómo se usa.

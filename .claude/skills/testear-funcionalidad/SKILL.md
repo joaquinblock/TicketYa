@@ -96,6 +96,7 @@ Cada resultado se consume con `future.get(timeout)`, y las excepciones inesperad
 - **Tragarse timeouts** en helpers de espera: el test puede pasar sin haber corrido la carrera.
 - **Llamar `IntegrationTest` a una clase con todo mockeado**: el nombre promete una garantía que no da.
 - **Verificar llamadas internas** en vez del resultado, salvo que la llamada sea el efecto, como cobrar o no cobrar.
+- **Correr un test con broker real con el servicio levantado**: los dos consumen de la misma cola, el servicio se queda con parte de los mensajes y el test falla o pasa por azar.
 
 ## 6. Convenciones
 

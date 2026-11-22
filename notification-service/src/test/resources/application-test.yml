@@ -1,0 +1,14 @@
+spring:
+  docker:
+    compose:
+      skip:
+        in-tests: false
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+
+# Los tests mockean JavaMailSender y el health de mail necesita un JavaMailSenderImpl real
+management:
+  health:
+    mail:
+      enabled: false

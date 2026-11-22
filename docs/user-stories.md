@@ -910,7 +910,7 @@ Servicio: recommendation-service · Involucra: event-service · Consigna: 10 · 
 
 **Criterios de aceptación**
 - El cliente consulta y reemplaza sus preferencias: tipos de evento, participantes favoritos y ciudad.
-- Un participante o un tipo de evento inexistente: 404.
+- Un tipo de evento inexistente: 400. Un participante inexistente: 404.
 
 **Notas técnicas:** las preferencias se guardan en MongoDB. Los participantes se referencian por id del event-service.
 

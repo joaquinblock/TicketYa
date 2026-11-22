@@ -36,6 +36,11 @@ spring:
   mail:
     host: ${MAIL_HOST:localhost}
     port: ${MAIL_PORT:1025}
+    # Sin estos límites, un SMTP que no contesta deja colgado el listener con la transacción abierta (en ms)
+    properties:
+      mail.smtp.connectiontimeout: 2000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
   docker:
     compose:
       file: compose.yaml

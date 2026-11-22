@@ -75,7 +75,7 @@ event-service publica en `ticketya.events` cuando un evento se cancela, se suspe
 `EventChangeNotificationService.notifyChange`:
 
 1. Pide el evento a `GET /api/events/{id}` del event-service (nombre, fecha y lugar). Con la fecha que tiene en ese momento: en una reprogramación, la nueva.
-2. Pide los compradores a `GET /internal/events/{eventId}/buyers` del ticket-service: los `userId` distintos de órdenes `PAID` del evento. Un comprador con varias entradas u órdenes aparece una sola vez.
+2. Pide los compradores a `GET /internal/events/{eventId}/buyers` del ticket-service: los `userId` distintos de órdenes `PAID` del evento, sin los que ya devolvieron todas sus entradas. Un comprador con varias entradas u órdenes aparece una sola vez.
 3. Por cada comprador, `BuyerNotifier.notifyBuyer` pide el contacto al auth-service, arma el mail con `EventChangeMailComposer` (texto plano) y lo envía.
 
 **Un aviso por comprador.** Cada comprador va en su propia transacción (`BuyerNotifier` es un bean aparte por el proxy de `@Transactional`). Igual que en la compra, antes de enviar inserta en `processed_message` una clave `UUID.nameUUIDFromBytes(messageId + ":" + userId)`, así que no hace falta otra tabla. Si un comprador falla, se sigue con los demás y al final se tira una excepción para que se reintente el mensaje; en el reintento, la clave de los ya avisados choca y se saltean.

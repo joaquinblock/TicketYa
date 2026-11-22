@@ -139,6 +139,7 @@ Cuando un evento se cancela, se suspende o se reprograma, el event-service lo pu
 
 - **Cuándo.** `EventService` dispara el evento de Spring `EventChanged` dentro de la última transacción de `cancel`, `suspend` o `resume`, la que cambia el estado. `EventChangedPublisher` lo manda con `@TransactionalEventListener(AFTER_COMMIT)`. Si falla el aviso al ticket-service, el estado no cambia y no se publica nada.
 - **Solo si cambió algo.** Repetir una cancelación o una suspensión no publica. Reanudar publica `event.rescheduled` solo con una fecha nueva distinta de la que tenía; sin fecha o con la misma, no avisa.
+- **Dos cambios a la vez.** La última transacción bloquea la fila del evento (`EventRepository.lockById`, `select … for update`) antes de leerlo. Si llegan dos cambios a la vez, el segundo espera, lee el estado nuevo y no publica; un segundo `resume` se rechaza. Lo prueba `EventChangeConcurrencyMySqlIntegrationTest`.
 - **Contenido.** Solo ids: notification-service pide el evento y los compradores. `occurredAt` sale del `Clock`.
 - **Si RabbitMQ falla.** La operación responde igual y queda un `WARN` con el cambio y el id del evento. Sin outbox, ese aviso se pierde.
 

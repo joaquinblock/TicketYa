@@ -5,7 +5,7 @@
 ## Convenciones
 
 - **Todo entra por el gateway** (`http://localhost:8080`). Las rutas `/internal/**` son llamadas entre servicios: el gateway no las enruta y se usan contra el puerto de cada servicio.
-- **Identidad:** en la Entrega 1 va en el header `X-User-Id` (sin JWT). En el event-service, los endpoints con permiso lo verifican contra el auth-service antes de entrar (ver [`permissions.md`](permissions.md)): si falta, `400`; si el usuario no tiene el permiso, `403 forbidden`; si no existe, `404 user_not_found`.
+- **Identidad:** en la Entrega 1 va en el header `X-User-Id` (sin JWT). En la Entrega 2, el api-gateway valida el JWT y reenvía la identidad y los permisos en `X-User-*` (ADR-003). El event-service de la Entrega 1 verifica los permisos contra auth-service (ver [`permissions.md`](permissions.md)).
 - **Errores:** todos responden con el mismo `ErrorDto` (`error`, `message`, `status` y, a veces, `detail`). Los códigos de cada servicio están en [`error-handling.md`](error-handling.md).
 - **Validación:** un body o un parámetro inválido responde `400 validation_error` con cada campo en `detail`, aunque la tabla no lo repita en cada fila. Un servicio del que se depende y no responde da `503 service_unavailable`.
 - **Fechas:** ISO-8601 sin zona (`2026-12-12T21:00:00`). **Montos:** decimales con dos posiciones, en pesos.
@@ -18,6 +18,7 @@
 | [event-service](#event-service) | 8082 | 31 | Lugares, sectores, asientos, participantes y eventos (alta, configuración, estados y búsqueda). |
 | [ticket-service](#ticket-service) | 8083 | 13 | Disponibilidad, reservas, pago y emisión de entradas, compras, devoluciones, ingreso con QR y reportes. |
 | [payment-service](#payment-service) | 8084 | 4 | Cobros y reintegros contra la pasarela simulada. |
+| [queue-service](#queue-service) | 8085 | 3 | Fila virtual, turnos de compra y publicación de la clave pública para verificarlos. |
 
 ## auth-service
 
@@ -127,6 +128,23 @@ Cobros y reintegros contra la pasarela simulada. Detalle de reglas y decisiones:
 | `POST` | `/internal/payments` | Cobrar una orden | body `PaymentRequest` | Solo entre servicios | **201** Pago aprobado<br>**400** validation_error<br>**409** data_conflict: la clave ya se usó con otros datos o la orden ya tiene otro pago PENDING o APPROVED<br>**422** payment_rejected, con reason y rejectedAttempts en detail<br>**503** payment_gateway_unavailable: la pasarela no respondió y se puede reintentar con la misma clave |
 | `GET` | `/internal/payments` | Consultar los pagos de una orden | `?orderId` | Solo entre servicios | **200** Pagos de la orden, del más antiguo al más nuevo<br>**400** invalid_parameter o validation_error: falta orderId o no es válido<br>**404** payment_not_found: la orden no tiene pagos |
 | `POST` | `/internal/refunds` | Reintegrar una entrada | body `RefundRequest` | Solo entre servicios | **201** Reintegro acreditado<br>**200** La entrada ya tenía ese reintegro y no se acredita de nuevo<br>**400** validation_error<br>**404** payment_not_found: la orden no tiene pagos<br>**409** payment_not_refundable: sin pago aprobado o supera lo cobrado. data_conflict: la entrada ya tiene un reintegro con otros datos<br>**502** refund_failed: la pasarela no acreditó y se puede reintentar |
+
+## queue-service
+
+Fila virtual para eventos de alta demanda. El cliente entra y consulta por el gateway; ticket-service obtiene directamente el JWKS para validar el turno sin llamar a queue-service por cada reserva. Diseño y simplificaciones: [`queue-service.md`](queue-service.md).
+
+### Públicos
+
+| Método | Ruta | Qué hace | Parámetros | Quién | Respuestas |
+|---|---|---|---|---|---|
+| `POST` | `/api/queue/{eventId}/join` | Entrar o reintentar el ingreso a la fila | `{eventId}` | `TICKET_PURCHASE` | **201** Estado `WAITING` con posición, o estado vigente si ya estaba habilitado<br>**401** unauthorized<br>**403** forbidden<br>**404** event_not_found<br>**409** event_not_high_demand / sale_not_started<br>**503** service_unavailable: event-service no responde |
+| `GET` | `/api/queue/{eventId}/me` | Consultar posición o turno actual | `{eventId}` | `TICKET_PURCHASE` | **200** Estado `WAITING`, `ENABLED` con turno y `enabledUntil`, o `EXPIRED` sin turno<br>**401** unauthorized<br>**403** forbidden<br>**404** queue_entry_not_found |
+
+### Entre servicios
+
+| Método | Ruta | Qué hace | Parámetros | Quién | Respuestas |
+|---|---|---|---|---|---|
+| `GET` | `/.well-known/jwks.json` | Publicar la clave para verificar los turnos RS256 | — | ticket-service, directo a queue-service (`8085`) | **200** JWKS de claves públicas vigentes |
 
 ## Ejemplos
 
@@ -248,6 +266,31 @@ Content-Type: application/json
 ```
 
 El flujo completo, con el rechazo y el vencimiento de la reserva, está en [`purchase-sequence.md`](purchase-sequence.md).
+
+### Entrar y consultar la fila (queue-service)
+
+```http
+POST /api/queue/1/join
+Authorization: Bearer <JWT de auth-service con TICKET_PURCHASE>
+```
+```json
+201 Created
+{ "status": "WAITING", "position": 1, "queueToken": null, "enabledUntil": null }
+```
+```http
+GET /api/queue/1/me
+Authorization: Bearer <JWT de auth-service con TICKET_PURCHASE>
+```
+```json
+200 OK
+{
+  "status": "ENABLED",
+  "position": null,
+  "queueToken": "<JWT RS256 emitido por queue-service>",
+  "enabledUntil": "2026-11-22T13:10:30Z"
+}
+```
+El token de turno vence exactamente en `enabledUntil`; consultas posteriores no renuevan la ventana.
 
 ### Un error de permisos (event-service)
 

@@ -88,7 +88,7 @@ public class RabbitConfig {
             public void recover(Message message, Throwable cause) {
                 JsonNode body = readBody(jsonMapper, message);
                 log.error("El mensaje {} de la orden {} va a {}: {}", body.path("messageId").asString("desconocido"),
-                        body.path("orderId").asString("desconocida"), PURCHASE_DLQ, rootMessage(cause));
+                        body.path("orderId").asString("desconocida"), PURCHASE_DLQ, rootCauseType(cause));
                 super.recover(message, cause);
             }
         };
@@ -112,11 +112,12 @@ public class RabbitConfig {
         }
     }
 
-    private static String rootMessage(Throwable cause) {
+    /** Solo la clase: el mensaje puede traer la respuesta del SMTP, con el email del comprador. */
+    private static String rootCauseType(Throwable cause) {
         Throwable root = cause;
         while (root.getCause() != null) {
             root = root.getCause();
         }
-        return root.getClass().getSimpleName() + ": " + root.getMessage();
+        return root.getClass().getSimpleName();
     }
 }

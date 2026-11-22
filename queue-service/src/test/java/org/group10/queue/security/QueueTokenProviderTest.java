@@ -38,8 +38,9 @@ class QueueTokenProviderTest {
                 provider.issue(10L, 7L, "7:1", ENABLED_AT, ENABLED_UNTIL));
 
         assertThat(jwt.getSubject()).isEqualTo("7");
-        assertThat(jwt.getClaim("eventId")).isEqualTo(10L);
-        assertThat(jwt.getClaim("enabledUntil")).isEqualTo(ENABLED_UNTIL.getEpochSecond());
+        assertThat(String.valueOf(jwt.getClaims().get("eventId"))).isEqualTo("10");
+        assertThat(String.valueOf(jwt.getClaims().get("enabledUntil")))
+                .isEqualTo(Long.toString(ENABLED_UNTIL.getEpochSecond()));
         assertThat(jwt.getClaimAsString("iss")).isEqualTo("ticketya-queue");
         assertThat(jwt.getAudience()).containsExactly("ticket-service");
         assertThat(jwt.getIssuedAt()).isEqualTo(ENABLED_AT);
@@ -52,8 +53,8 @@ class QueueTokenProviderTest {
         Jwt jwt = decoderAt(ENABLED_AT).decode(
                 provider.issue(10L, 7L, "7:1", ENABLED_AT, ENABLED_UNTIL));
 
-        assertThat(jwt.getHeaders().get("alg")).isEqualTo("RS256");
-        assertThat(jwt.getHeaders().get("kid")).isNotBlank();
+        assertThat(jwt.getHeaders().get("alg").toString()).isEqualTo("RS256");
+        assertThat(jwt.getHeaders().get("kid").toString()).isNotBlank();
     }
 
     private static NimbusJwtDecoder decoderAt(Instant instant) {
@@ -67,7 +68,7 @@ class QueueTokenProviderTest {
     private static NimbusJwtEncoder encoderFor(KeyPair keys) {
         RSAKey key = new RSAKey.Builder((RSAPublicKey) keys.getPublic())
                 .privateKey((RSAPrivateKey) keys.getPrivate())
-                .keyIDFromThumbprint()
+                .keyID("test-kid")
                 .build();
         return new NimbusJwtEncoder(new ImmutableJWKSet<>(new JWKSet(key)));
     }

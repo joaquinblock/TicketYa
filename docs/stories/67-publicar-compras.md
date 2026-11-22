@@ -1,7 +1,7 @@
 # 67: US-TKT-24: Publicar compras y cancelaciones
 
 **Tipo:** Story
-**Estado:** borrador
+**Estado:** compras hechas (#67 sigue abierta por las cancelaciones de US-NOT-02)
 **Funcionalidad:** Épica 8: Preferencias, recomendaciones, notificaciones y reportes (#8)
 
 Servicio: ticket-service · Involucra: notification-service, recommendation-service · Consigna: 10, 11 · Entrega 2
@@ -45,6 +45,6 @@ Cuando se paga una orden, las entradas quedan `ISSUED` con su QR, pero ningún o
 Se publica con `@TransactionalEventListener(phase = AFTER_COMMIT)`, así nunca se avisa de una compra que no se confirmó. El mensaje lleva solo ids: los datos de la orden y del usuario los pide quien consume. Depende del enabler RabbitMQ base (#151).
 
 ## Definition of Done
-- [ ] Cada criterio tiene un test que pasa
-- [ ] Review aprobada
-- [ ] Documentación afectada actualizada (`ticket-service.md`, `communication.md`)
+- [x] Cada criterio tiene un test que pasa
+- [x] Review aprobada
+- [x] Documentación afectada actualizada (`ticket-service.md`, `communication.md`)

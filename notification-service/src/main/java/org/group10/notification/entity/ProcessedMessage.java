@@ -20,7 +20,8 @@ import java.util.UUID;
  * insertarse y así no sale otro mail.
  * <p>
  * Implementa {@link Persistable} para que {@code saveAndFlush} haga un INSERT directo. Con un id asignado, Spring Data
- * haría un {@code merge} (SELECT y después INSERT), y dos entregas a la vez podrían pasar las dos el SELECT.
+ * haría un {@code merge}: una entrega repetida después del commit encontraría la fila, la actualizaría sin error y
+ * saldría otro mail.
  */
 @Entity
 @Table(name = "processed_message")

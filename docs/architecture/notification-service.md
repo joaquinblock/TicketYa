@@ -22,7 +22,9 @@ ticket-service publica en el exchange topic `ticketya.events` con la clave `purc
 - **El envío falla:** el rollback borra la fila, así que el reintento no lo ve como procesado.
 - **Riesgo aceptado:** si el mail sale y el commit falla, el reintento lo manda otra vez.
 
-`ProcessedMessage` implementa `Persistable`: con un id asignado, `saveAndFlush` haría un `merge` (SELECT y después INSERT) y dos entregas a la vez podrían pasar las dos el SELECT.
+`ProcessedMessage` implementa `Persistable`: con un id asignado, `saveAndFlush` haría un `merge`, y una entrega repetida después del commit encontraría la fila, la actualizaría sin error y saldría otro mail.
+
+`processed_message` usa `ddl-auto: update`, a diferencia de los demás servicios (`create`): si se recreara al arrancar, un mensaje que se reentrega después de una caída (mail enviado, sin ack) volvería a mandar el mail.
 
 ## Cómo se arma el mail
 
@@ -49,7 +51,7 @@ Los dos clientes mandan el secreto interno solos (`common`, US-PAY-14) y tienen 
 | La orden no existe (404) o no está pagada (409) | No envía, deja un `WARN` y el mensaje queda procesado | No hay compra que avisar: reintentar no cambia nada |
 | El usuario no existe o está dado de baja (404) | Igual: no envía, deja un `WARN` y queda procesado | No hay a quién avisar |
 | Un servicio responde 5xx o no responde a tiempo | Se reintenta | Es momentáneo |
-| Falla el envío por SMTP (`MailException`) | Se reintenta | Igual que el anterior |
+| Falla el envío por SMTP (`MailException`) o el SMTP no contesta | Se reintenta. El envío tiene límites de 2 s para conectar y 5 s para leer y escribir (`spring.mail.properties.mail.smtp.*`) | Igual que el anterior. Sin límite, el listener quedaría colgado con la transacción abierta |
 | JSON inválido, o sin `messageId`, `orderId` o `userId` | Va directo a la DLQ, sin reintentos | Nunca va a poder procesarse |
 
 **Reintento:** 3 intentos en total, con 1 s y 2 s de espera (`spring.rabbitmq.listener.simple.retry`). En Boot 4, `max-retries: 2` cuenta los reintentos, no los intentos. `RabbitConfig` saca del reintento lo que Spring AMQP considera fatal (`DefaultExceptionStrategy`: conversión fallida, entre otros) y el `AmqpRejectAndDontRequeueException` del listener. Al agotar los intentos, el recoverer deja un `ERROR` con el `messageId` y el id de la orden, y rechaza el mensaje sin requeue, así que pasa a la DLQ.
@@ -66,7 +68,6 @@ En el log van el id de la orden y el del usuario, nunca el email ni el QR.
 | `ticketya.mail.from` | `MAIL_FROM` | `no-reply@ticketya.com` |
 | `spring.http.serviceclient.ticket-service.base-url` | `TICKET_SERVICE_URL` | `http://localhost:8083` |
 | `spring.http.serviceclient.auth-service.base-url` | `AUTH_SERVICE_URL` | `http://localhost:8081` |
-
 | `spring.rabbitmq.host` / `spring.rabbitmq.port` | `RABBITMQ_HOST` / `RABBITMQ_PORT` | `localhost` / `5672` |
 
 En desarrollo, el `compose.yaml` del servicio levanta MySQL (puerto `3311`) y **Mailpit**, que recibe los mails sin enviarlos a nadie y los muestra en `http://localhost:8025`. El broker es el de `rabbitmq.compose.yaml`, en la raíz.

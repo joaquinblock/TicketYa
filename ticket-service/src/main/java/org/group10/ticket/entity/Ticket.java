@@ -67,6 +67,12 @@ public class Ticket {
 
     private Long validatedBy;
 
+    /**
+     * Cuándo payment-service aceptó el reintegro de una entrada que no llegó a venderse porque la compra falló
+     * después de cobrar (US-TKT-22). La entrada sigue {@code VOIDED}: no es una devolución.
+     */
+    private LocalDateTime compensatedAt;
+
     @Version
     private Long version;
 

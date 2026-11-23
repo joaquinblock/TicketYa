@@ -112,6 +112,15 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
 
     @Modifying
     @Query("""
+            update Ticket t set t.compensatedAt = :compensatedAt, t.version = t.version + 1
+            where t.id = :id
+              and t.status = org.group10.ticket.entity.TicketStatus.VOIDED
+              and t.compensatedAt is null
+            """)
+    int markCompensated(Long id, LocalDateTime compensatedAt);
+
+    @Modifying
+    @Query("""
             update Ticket t
             set t.status = org.group10.ticket.entity.TicketStatus.VOIDED, t.version = t.version + 1
             where t.order.id = :orderId and t.status = org.group10.ticket.entity.TicketStatus.RESERVED

@@ -214,7 +214,7 @@ class PaymentAttemptResolutionMySqlIntegrationTest {
     void resolve_ordersThatAreNotClosedOrHaveNoAttempt_areLeftAlone() {
         long pendingOrderId = orderWithoutPaymentResult();
         String pendingKey = order(pendingOrderId).getPaymentAttemptKey();
-        long expiredWithoutAttemptId = reserveSeats(2);
+        long expiredWithoutAttemptId = reservePlaces(2);
         orderClosingService.closePendingOrderReleasingItsPlaces(expiredWithoutAttemptId, OrderStatus.EXPIRED);
         paymentWillBe(PaymentResultStatus.APPROVED);
 
@@ -297,6 +297,14 @@ class PaymentAttemptResolutionMySqlIntegrationTest {
         HttpResult reservation = post("/api/orders", """
                 {"eventId": %d, "idempotencyKey": "%s", "seatIds": [%s]}"""
                 .formatted(eventId, UUID.randomUUID(), seats));
+        assertThat(reservation.status()).as(reservation.body().toString()).isEqualTo(201);
+        return reservation.orderId();
+    }
+
+    private long reservePlaces(int quantity) {
+        HttpResult reservation = post("/api/orders", """
+                {"eventId": %d, "idempotencyKey": "%s", "eventSectorId": %d, "quantity": %d}"""
+                .formatted(eventId, UUID.randomUUID(), generalSector, quantity));
         assertThat(reservation.status()).as(reservation.body().toString()).isEqualTo(201);
         return reservation.orderId();
     }

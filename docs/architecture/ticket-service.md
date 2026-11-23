@@ -372,7 +372,7 @@ El `TicketSeeder` usa los IDs, fechas y nombres que generan los seeders del auth
 | 11 Peña folklórica serrana | `PUBLISHED`, Platea agotada | 15 Platea, 16 Pullman | 81–154 |
 | 13 a 42, la cartelera | `PUBLISHED`, venta abierta, hasta 4 por persona | 18 a 47, uno por evento | Platea 81–130, Pullman 131–154 |
 | 43 Noche grande en la Ribera | `PUBLISHED`, Platea alta agotada | 48 Campo, 49 Platea baja, 50 Platea alta, 51 Palco VIP | 240–419 |
-| 44 Clásico platense | `PUBLISHED`, Campo agotado | 52 Campo, 53 Platea baja, 54 Platea alta, 55 Palco VIP | 240–419 |
+| 44 Clásico de la Ribera | `PUBLISHED`, Campo agotado | 52 Campo, 53 Platea baja, 54 Platea alta, 55 Palco VIP | 240–419 |
 | 45 Festival de la Costanera | `PUBLISHED`, queda 1 lugar en Campo | 56 Campo, 57 Platea baja, 58 Platea alta, 59 Palco VIP | 240–419 |
 | 46 Final de la Copa Ribera | `PUBLISHED`, queda 1 asiento | 60 Platea baja, 61 Palco VIP | 240–351, 408–419 |
 

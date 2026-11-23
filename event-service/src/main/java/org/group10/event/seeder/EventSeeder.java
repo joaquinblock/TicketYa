@@ -311,7 +311,7 @@ public class EventSeeder implements ApplicationRunner {
      * Event sectors 48 to 61 and seats 240 to 419 are used by id by the {@code TicketSeeder}.
      */
     private void seedSaleShowcase() {
-        Venue ribera = venueRepository.save(venue("Estadio Ribera", "Av. Costanera 500", "La Plata", -34.9011, -57.9544));
+        Venue ribera = venueRepository.save(venue("Estadio Ribera", "Av. Costanera 500", "Buenos Aires", -34.5800, -58.4000));
         Sector field = sectorRepository.save(generalAdmission(ribera, "Campo", 5000));
         Sector lowerStand = sectorRepository.save(numbered(ribera, "Platea baja"));
         Sector upperStand = sectorRepository.save(numbered(ribera, "Platea alta"));
@@ -323,7 +323,7 @@ public class EventSeeder implements ApplicationRunner {
         // Every category, with the Platea alta sold out (event_sector 48 to 51)
         Event bigNight = eventRepository.save(showcase("Noche grande en la Ribera", EventType.FESTIVAL, ribera, 170));
         // Campo sold out (52 to 55)
-        Event derby = eventRepository.save(showcase("Clásico platense", EventType.SPORTS, ribera, 175));
+        Event derby = eventRepository.save(showcase("Clásico de la Ribera", EventType.SPORTS, ribera, 175));
         // A single place left in Campo (56 to 59)
         Event coastFestival = eventRepository.save(showcase("Festival de la Costanera", EventType.FESTIVAL, ribera, 180));
         // A single free seat in the Platea baja and the Palco VIP sold out (60 and 61)

@@ -95,7 +95,7 @@ public class TicketSeeder implements ApplicationRunner {
     private static final int BILLBOARD_MAX_TICKETS = 4;
 
     /** The EventSeeder's sale showcase: events 43 to 46 at the Estadio Ribera, event_sector 48 to 61. */
-    private static final Venue RIBERA = new Venue("Estadio Ribera", "Av. Costanera 500", "La Plata");
+    private static final Venue RIBERA = new Venue("Estadio Ribera", "Av. Costanera 500", "Buenos Aires");
     private static final SeatBlock RIBERA_LOWER_STAND = new SeatBlock(240L, List.of("A", "B", "C", "D", "E", "F", "G", "H"), 14);
     private static final SeatBlock RIBERA_UPPER_STAND = new SeatBlock(352L, List.of("A", "B", "C", "D"), 14);
     private static final SeatBlock RIBERA_VIP_BOX = new SeatBlock(408L, List.of("A", "B"), 6);
@@ -300,7 +300,7 @@ public class TicketSeeder implements ApplicationRunner {
      */
     private void seedSaleShowcase() {
         showcaseSale(BIG_NIGHT_EVENT_ID, "Noche grande en la Ribera", 170, 48L);
-        showcaseSale(DERBY_EVENT_ID, "Clásico platense", 175, 52L);
+        showcaseSale(DERBY_EVENT_ID, "Clásico de la Ribera", 175, 52L);
         showcaseSale(COAST_FESTIVAL_EVENT_ID, "Festival de la Costanera", 180, 56L);
         sale(CUP_FINAL_EVENT_ID, "Final de la Copa Ribera", RIBERA, EventSaleStatus.PUBLISHED, at(185, 21, 0), null,
                 false, SHOWCASE_MAX_TICKETS,

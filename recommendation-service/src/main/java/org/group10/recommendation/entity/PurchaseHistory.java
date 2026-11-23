@@ -9,11 +9,15 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Eventos para los que el cliente compró entradas, armado con los {@code purchase.confirmed} de ticket-service.
  * Un documento por cliente. Cada evento está una sola vez, aunque haya comprado varias veces o el mensaje se repita.
  * {@code userId} es el id del auth-service y {@code eventIds} son ids del event-service (RFC-004).
+ * <p>
+ * Lo escriben dos listeners independientes: el del historial ({@code eventIds}) y el de los favoritos
+ * ({@code countedEventIds} y {@code counts}), que necesita a event-service. Cada uno toca solo sus campos.
  */
 @Document(collection = "purchase_history")
 @Getter
@@ -26,4 +30,25 @@ public class PurchaseHistory {
     private Long userId;
 
     private List<Long> eventIds;
+
+    /** Eventos ya sumados a {@code counts}: un mensaje repetido no cuenta dos veces. */
+    private List<Long> countedEventIds;
+
+    private FavoriteCounts counts;
+
+    /**
+     * En cuántos eventos comprados aparece cada participante, lugar y organización, por id. Las claves son texto
+     * porque así las guarda MongoDB.
+     */
+    @Getter
+    @NoArgsConstructor(access = AccessLevel.PROTECTED)
+    @AllArgsConstructor
+    public static class FavoriteCounts {
+
+        private Map<String, Integer> participants;
+
+        private Map<String, Integer> venues;
+
+        private Map<String, Integer> organizations;
+    }
 }

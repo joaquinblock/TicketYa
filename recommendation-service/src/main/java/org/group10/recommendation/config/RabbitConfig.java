@@ -26,9 +26,10 @@ import tools.jackson.databind.json.JsonMapper;
  * <ul>
  *   <li>El exchange {@code ticketya.events} es de ticket-service, pero se declara también acá (con los mismos
  *       atributos) para que el binding no dependa de qué servicio arranque primero.</li>
- *   <li>{@code recommendation.purcha
- *   se} recibe {@code purchase.confirmed}. Lo que se rechaza sin requeue pasa, por el
- *       exchange por defecto, a {@code recommendation.purchase.dlq}.</li>
+ *   <li>Dos colas reciben {@code purchase.confirmed}: {@code recommendation.purchase} arma el historial y
+ *       {@code recommendation.favorites} cuenta los favoritos, que necesita a event-service. Así, con event-service
+ *       caído, el historial sigue al día. Lo que cada una rechaza sin requeue pasa, por el exchange por defecto, a su
+ *       {@code .dlq}.</li>
  *   <li>El reintento ({@code spring.rabbitmq.listener.simple.retry.*}) no repite lo que nunca va a andar: un mensaje
  *       ilegible o uno que el listener rechaza.</li>
  * </ul>
@@ -41,6 +42,8 @@ public class RabbitConfig {
     public static final String PURCHASE_CONFIRMED = "purchase.confirmed";
     public static final String PURCHASE_QUEUE = "recommendation.purchase";
     public static final String PURCHASE_DLQ = "recommendation.purchase.dlq";
+    public static final String FAVORITES_QUEUE = "recommendation.favorites";
+    public static final String FAVORITES_DLQ = "recommendation.favorites.dlq";
 
     /** La autoconfiguración lo usa en el RabbitTemplate y en los listeners. */
     @Bean
@@ -71,6 +74,24 @@ public class RabbitConfig {
         return BindingBuilder.bind(purchaseQueue).to(eventsExchange).with(PURCHASE_CONFIRMED);
     }
 
+    @Bean
+    Queue favoritesQueue() {
+        return QueueBuilder.durable(FAVORITES_QUEUE)
+                .deadLetterExchange("")
+                .deadLetterRoutingKey(FAVORITES_DLQ)
+                .build();
+    }
+
+    @Bean
+    Queue favoritesDeadLetterQueue() {
+        return QueueBuilder.durable(FAVORITES_DLQ).build();
+    }
+
+    @Bean
+    Binding favoritesBinding(Queue favoritesQueue, TopicExchange eventsExchange) {
+        return BindingBuilder.bind(favoritesQueue).to(eventsExchange).with(PURCHASE_CONFIRMED);
+    }
+
     /**
      * Lo que Spring AMQP ya considera fatal (JSON inválido, tipo que no se puede convertir) más el rechazo explícito
      * del listener no se reintenta. La excepción llega envuelta en {@code ListenerExecutionFailedException}.
@@ -81,15 +102,19 @@ public class RabbitConfig {
         return settings -> settings.setExceptionPredicate(e -> !fatal.isFatal(e) && !rejectedByListener(e));
     }
 
-    /** Al agotar los intentos (o si no se reintenta), deja el id de la orden en el log y manda el mensaje a la DLQ. */
+    /**
+     * Al agotar los intentos (o si no se reintenta), deja el id de la orden en el log y manda el mensaje a la DLQ de
+     * la cola de la que vino. Es uno solo para los dos listeners.
+     */
     @Bean
     MessageRecoverer purchaseMessageRecoverer(JsonMapper jsonMapper) {
         return new RejectAndDontRequeueRecoverer() {
             @Override
             public void recover(Message message, Throwable cause) {
                 JsonNode body = readBody(jsonMapper, message);
-                log.error("El mensaje {} de la orden {} va a {}: {}", body.path("messageId").asString("desconocido"),
-                        body.path("orderId").asString("desconocida"), PURCHASE_DLQ, rootCauseType(cause));
+                log.error("El mensaje {} de la orden {} va a {}.dlq: {}", body.path("messageId").asString("desconocido"),
+                        body.path("orderId").asString("desconocida"), message.getMessageProperties().getConsumerQueue(),
+                        rootCauseType(cause));
                 super.recover(message, cause);
             }
         };

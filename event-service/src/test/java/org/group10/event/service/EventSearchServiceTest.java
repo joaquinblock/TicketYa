@@ -43,6 +43,8 @@ class EventSearchServiceTest {
     private static final int BILLBOARD_CONCERTS_IN_TANDIL = 2;
     private static final int BILLBOARD_IN_CORDOBA = 7;
     private static final int BILLBOARD_IN_MAR_DEL_PLATA = 5;
+    /** The sale showcase, events 43 to 46 (FESTIVAL and SPORTS, La Plata, from +170 and 52000): only adds to totals. */
+    private static final int SHOWCASE_EVENTS = 4;
 
     @Autowired
     private EventSearchService searchService;
@@ -55,7 +57,7 @@ class EventSearchServiceTest {
         EventPageResponse page = search(null, null, null, null, null, null, null, null);
 
         assertThat(ids(page)).startsWith(6L, 5L, 11L, 2L, 1L, 4L);
-        assertThat(page.totalElements()).isEqualTo(VISIBLE_EVENTS + BILLBOARD_EVENTS);
+        assertThat(page.totalElements()).isEqualTo(VISIBLE_EVENTS + BILLBOARD_EVENTS + SHOWCASE_EVENTS);
     }
 
     @Test
@@ -150,8 +152,8 @@ class EventSearchServiceTest {
                 new EventSearchRequest(null, null, null, null, null, null, null, null, null, 1, 4));
 
         assertThat(ids(second)).containsExactly(1L, 4L, 13L, 14L);
-        assertThat(second.totalElements()).isEqualTo(VISIBLE_EVENTS + BILLBOARD_EVENTS);
-        assertThat(second.totalPages()).isEqualTo(9);
+        assertThat(second.totalElements()).isEqualTo(VISIBLE_EVENTS + BILLBOARD_EVENTS + SHOWCASE_EVENTS);
+        assertThat(second.totalPages()).isEqualTo(10);
     }
 
     @Test

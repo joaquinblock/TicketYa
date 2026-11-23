@@ -45,6 +45,11 @@ ticketya:
   time-zone: America/Argentina/Buenos_Aires
 
 management:
+  tracing:
+    export:
+      zipkin:
+        # Las trazas van a Zipkin solo con observability.compose.yaml (ADR 0010)
+        enabled: false
   endpoints:
     web:
       exposure:

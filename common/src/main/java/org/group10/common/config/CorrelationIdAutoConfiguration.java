@@ -27,7 +27,9 @@ public class CorrelationIdAutoConfiguration {
     @Bean
     FilterRegistrationBean<CorrelationIdFilter> ticketyaCorrelationIdFilter() {
         FilterRegistrationBean<CorrelationIdFilter> registration = new FilterRegistrationBean<>(new CorrelationIdFilter());
-        registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        // Justo después del filtro de observación (HIGHEST_PRECEDENCE + 1), para que el log del request lleve el
+        // traceId de Zipkin; y antes que la seguridad, para que los 401/403 también queden registrados
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 2);
         return registration;
     }
 

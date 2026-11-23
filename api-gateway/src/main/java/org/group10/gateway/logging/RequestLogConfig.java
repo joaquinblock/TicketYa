@@ -22,7 +22,8 @@ public class RequestLogConfig {
     FilterRegistrationBean<CorrelationIdFilter> correlationIdFilter() {
         FilterRegistrationBean<CorrelationIdFilter> registration = new FilterRegistrationBean<>(
                 new CorrelationIdFilter(request -> (String) request.getAttribute(IdentityHeadersFilter.USER_ID_ATTRIBUTE)));
-        registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        // Después del filtro de observación (HIGHEST_PRECEDENCE + 1), para que el log lleve el traceId de Zipkin
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 2);
         return registration;
     }
 
@@ -30,7 +31,7 @@ public class RequestLogConfig {
     FilterRegistrationBean<SingleCorrelationIdFilter> singleCorrelationIdFilter() {
         FilterRegistrationBean<SingleCorrelationIdFilter> registration =
                 new FilterRegistrationBean<>(new SingleCorrelationIdFilter());
-        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 3);
         return registration;
     }
 }

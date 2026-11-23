@@ -23,7 +23,8 @@ spring:
   task:
     scheduling:
       pool:
-        size: 3
+        # Uno por método @Scheduled: con payment colgado, sus tres jobs no le quitan el hilo al vencimiento
+        size: 5
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}

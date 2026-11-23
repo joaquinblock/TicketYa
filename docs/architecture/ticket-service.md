@@ -339,6 +339,10 @@ Si se agotan los intentos, el cliente recibe 503 `service_unavailable`, la orden
 
 Limpiar la clave es un `UPDATE` condicional por orden y clave, que nunca toca una orden `PENDING`.
 
+Si el job anula el intento mientras el cobro sigue en curso, payment le responde al cobro un 2xx con el pago `CANCELLED`. Por eso solo un pago `APPROVED` marca el cobro y emite: con otro estado no hay nada cobrado ni para reintegrar, y se responde según el estado de la orden.
+
+**Hilos de los jobs.** El scheduler tiene un hilo por método `@Scheduled` (`spring.task.scheduling.pool.size: 5`). Tres jobs llaman a payment de a una orden o entrada por vez, hasta 13 s cada llamada; con menos hilos, payment colgado podía dejar sin correr el vencimiento de reservas. Al agregar un job, se sube el pool.
+
 ### Abandonar una reserva
 
 El cliente puede abandonar su orden `PENDING`. La confirmación ("¿Estás seguro?") es del front; el back recibe una sola llamada, `POST /api/orders/{id}/cancel`. En una transacción, la orden pasa a `CANCELLED`, las entradas a `VOIDED` y los lugares se liberan sin esperar al job. No se llama al payment-service, porque una orden `PENDING` sin intento en curso no tiene nada cobrado.

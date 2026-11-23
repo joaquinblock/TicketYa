@@ -37,7 +37,8 @@ Reglas que aplican a todos los servicios:
 - **Implementado (#67):** ticket-service publica `purchase.confirmed` después del commit que deja la orden `PAID`. Si el broker falla, el pago responde igual y el aviso queda en el log (ver `ticket-service.md`).
 - **Implementado (#152):** notification-service consume `purchase.confirmed` en `notification.purchase`, descarta los `messageId` repetidos, intenta hasta 3 veces en total los errores momentáneos y manda a `notification.purchase.dlq` lo que no puede procesar (ver [`notification-service.md`](../architecture/notification-service.md)).
 - **Implementado (US-NOT-02, MVP):** event-service publica `event.cancelled`, `event.suspended` y `event.rescheduled` después del commit. notification-service los consume en `notification.event` (DLQ `notification.event.dlq`), pide los compradores al ticket-service y manda un mail por comprador, sin repetir los ya enviados si el mensaje se reintenta (ver [`notification-service.md`](../architecture/notification-service.md)).
-- **Pendiente (Entrega 2):** los demás avisos: artistas favoritos y fila virtual.
+- **Implementado (US-NOT-03, MVP):** notification-service consume `event.published` en su propia cola, `notification.favorites` (DLQ `notification.favorites.dlq`), pide los fans al recommendation-service (`GET /internal/fans`) y manda un mail por fan. event-service lo publica después del commit que deja el evento `PUBLISHED`.
+- **Pendiente (Entrega 2):** los avisos de la fila virtual.
 - **A resolver en el compose general (#11):** sin broker, `/actuator/health` de event-service, ticket-service y notification-service da `DOWN` 503 aunque el servicio atienda. Si ese health se usa en un `healthcheck` o en `depends_on: service_healthy`, un RabbitMQ caído deja al servicio por muerto. Evaluar sacar `rabbit` del grupo de readiness.
 
 ## Dónde verlo

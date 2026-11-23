@@ -1,8 +1,10 @@
-# notification-service: mails de la compra y de los cambios de un evento
+# notification-service: mails de la compra, de los cambios de un evento y de los artistas favoritos
 
 > US-NOT-01. El servicio escucha `purchase.confirmed` en RabbitMQ (lo publica ticket-service, US-TKT-24), arma el mail de la compra con el QR de cada entrada y lo envía una sola vez por mensaje.
 >
 > US-NOT-02 (MVP). Escucha los cambios de un evento que publica event-service y avisa a cada comprador una sola vez por cambio. Ver [Avisos de cambios de un evento](#avisos-de-cambios-de-un-evento-us-not-02).
+>
+> US-NOT-03 (MVP). Escucha las publicaciones de eventos y avisa a los clientes que tienen como favorito a uno de sus participantes y viven en la ciudad del lugar. Ver [Avisos de artistas favoritos](#avisos-de-artistas-favoritos-us-not-03).
 
 ## Cómo llega el aviso
 
@@ -91,6 +93,31 @@ event-service publica en `ticketya.events` cuando un evento se cancela, se suspe
 
 El texto depende del cambio: una cancelación dice que las entradas pasan a reintegro (lo hace `CancelledEventRefundsJob` del ticket-service, sin que el cliente haga nada); una suspensión, que el evento quedó suspendido; una reprogramación, la fecha nueva. Avisar cuando se acredita el reintegro sería otro mail, fuera del MVP.
 
+Una publicación (`event.published`, ver abajo) también entra a `notification.event` por `event.*`. Su `change` es `PUBLISHED` y `EventChangedListener` la da por procesada sin avisar a los compradores: un evento recién publicado no tiene compradores.
+
+## Avisos de artistas favoritos (US-NOT-03)
+
+Cuando un evento se publica, event-service manda `event.published` con el mismo contrato que los cambios (`change: "PUBLISHED"`). `RabbitConfig` declara la cola `notification.favorites`, con binding `event.published` y DLQ `notification.favorites.dlq`. Va aparte de `notification.event` para que, si recommendation-service se cae, no se frenen los avisos de cambios. `EventPublishedListener` lo recibe como su propio `EventPublishedMessage` (sin el `change`).
+
+`FavoriteEventNotificationService.notifyFans`:
+
+1. Pide el evento a `GET /api/events/{id}` del event-service (nombre, fecha, lugar, estado y participantes).
+2. Pide los fans a `GET /internal/fans?participantIds=..&city=..` del recommendation-service: los clientes que tienen como favorito a alguno de los participantes, elegido en sus preferencias o inferido de sus compras, y guardaron la ciudad del lugar (sin distinguir mayúsculas ni acentos).
+3. Por cada fan, `FanNotifier.notifyFan` pide el contacto al auth-service, arma el mail con `FavoriteEventMailComposer` (texto plano, con los participantes, la fecha y el lugar) y lo envía.
+
+**Un aviso por fan.** Igual que con los compradores: una transacción por fan y la clave `BuyerNotifier.keyOf(messageId, userId)` en `processed_message` antes de enviar.
+
+| Caso | Qué hace |
+|---|---|
+| El evento no existe (404) | No envía nada, deja un `WARN` y el mensaje queda procesado |
+| El evento ya no está a la venta (se canceló, suspendió o terminó antes de procesar el mensaje) | No envía nada y queda procesado. Un evento agotado sí se avisa |
+| El evento no tiene participantes o su lugar no tiene ciudad | No pide fans ni envía nada |
+| Nadie lo tiene de favorito en esa ciudad | No envía nada |
+| Un fan se dio de baja (404 del auth-service) | Se saltea con un `WARN` y queda procesado |
+| Falla el mail o el contacto de un fan (5xx, SMTP) | Se sigue con los demás y se reintenta el mensaje: solo salen los que faltan |
+| event-service o recommendation-service no responden | Se reintenta el mensaje entero |
+| JSON inválido, o sin `messageId` o `eventId` | Va directo a la DLQ, sin reintentos |
+
 ## Configuración
 
 | Propiedad | Variable | Por defecto |
@@ -100,6 +127,7 @@ El texto depende del cambio: una cancelación dice que las entradas pasan a rein
 | `spring.http.serviceclient.ticket-service.base-url` | `TICKET_SERVICE_URL` | `http://localhost:8083` |
 | `spring.http.serviceclient.auth-service.base-url` | `AUTH_SERVICE_URL` | `http://localhost:8081` |
 | `spring.http.serviceclient.event-service.base-url` | `EVENT_SERVICE_URL` | `http://localhost:8082` |
+| `spring.http.serviceclient.recommendation-service.base-url` | `RECOMMENDATION_SERVICE_URL` | `http://localhost:8087` |
 | `spring.rabbitmq.host` / `spring.rabbitmq.port` | `RABBITMQ_HOST` / `RABBITMQ_PORT` | `localhost` / `5672` |
 
 En desarrollo, el `compose.yaml` del servicio levanta MySQL (puerto `3311`) y **Mailpit**, que recibe los mails sin enviarlos a nadie y los muestra en `http://localhost:8025`. El broker es el de `rabbitmq.compose.yaml`, en la raíz.
@@ -112,8 +140,13 @@ En desarrollo, el `compose.yaml` del servicio levanta MySQL (puerto `3311`) y **
 - `EventChangedListenerTest`: validación del mensaje de un cambio de evento.
 - `EventChangeNotificationMySqlIntegrationTest`: un mail por comprador, el mismo mensaje dos veces, el reintento que manda solo los que faltan y el texto de cada cambio, contra MySQL.
 - `EventChangedRabbitIntegrationTest`: `__TypeId__` de event-service, DLQ sin reintentos para lo ilegible y el `ERROR` con el id del evento. Mismo cuidado que el de la compra: no correrlo con el servicio levantado.
+- `EventChangedListenerPublicationTest`: una publicación que entra por `event.*` no avisa a los compradores.
+- `EventPublishedListenerTest` y `FavoriteEventNotificationServiceTest`: validación del mensaje y cada caso de la tabla de US-NOT-03.
+- `FavoriteEventNotificationMySqlIntegrationTest`: el mismo mensaje dos veces y el reintento que manda solo los que faltan, contra MySQL.
+- `EventPublishedRabbitIntegrationTest`: `event.published` llega a los fans, `notification.event` lo descarta sin ir a su DLQ, y uno sin `eventId` va a la DLQ. Mismo cuidado: no correrlo con el servicio levantado.
+
+Si una cola tiene mensajes viejos de otras corridas, el listener los toma antes del purge del test y los reintenta con mocks que devuelven `null`, lo que atrasa todo. Se vacían desde la consola de RabbitMQ.
 
 ## Pendiente
 
-- Los avisos de artistas favoritos (US-NOT-03).
 - Avisar por otros canales que no sean el mail, o cuando se acredita el reintegro de un evento cancelado.

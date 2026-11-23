@@ -873,7 +873,7 @@ class EventLifecycleServiceTest {
 
     private static EventCreateRequest request(Long venueId, boolean highDemand, LocalDateTime saleStart) {
         return new EventCreateRequest("  Nombre nuevo  ", "Descripción", EventType.CONFERENCE, venueId, DATE,
-                highDemand, saleStart, 4);
+                highDemand, saleStart, 4, null);
     }
 
     private static Venue venue(Long id, String name) {

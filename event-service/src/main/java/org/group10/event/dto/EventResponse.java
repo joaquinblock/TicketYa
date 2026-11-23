@@ -19,5 +19,6 @@ public record EventResponse(
         @Schema(example = "DRAFT") EventStatus status,
         @Schema(example = "true") boolean highDemand,
         @Schema(example = "2026-11-20T10:00:00") LocalDateTime saleStart,
-        @Schema(example = "4") Integer maxTicketsPerCustomer
+        @Schema(example = "4") Integer maxTicketsPerCustomer,
+        @Schema(example = "https://images.unsplash.com/photo-1501281668745-f7f57925c3b4") String photoUrl
 ) {}

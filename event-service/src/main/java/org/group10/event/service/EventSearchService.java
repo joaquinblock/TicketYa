@@ -130,7 +130,7 @@ public class EventSearchService {
         return events.stream()
                 .map(e -> new EventSummaryResponse(e.getId(), e.getName(), e.getType(), e.getStatus(), e.getDateTime(),
                         e.isHighDemand(), e.getSaleStart(), e.getOrganizationId(), VenueMapper.toSummary(e.getVenue()), prices.get(e.getId()),
-                        participants.getOrDefault(e.getId(), List.of())))
+                        participants.getOrDefault(e.getId(), List.of()), e.getPhotoUrl()))
                 .toList();
     }
 

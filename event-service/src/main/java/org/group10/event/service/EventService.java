@@ -7,6 +7,8 @@ import org.group10.common.security.Caller;
 import org.group10.common.security.Permission;
 import org.group10.event.client.TicketClient;
 import org.group10.event.client.dto.EventSaleRequest;
+import org.group10.event.config.CatalogCaches;
+import org.group10.event.config.CatalogCaches.EvictsEvent;
 import org.group10.event.dto.EventCreateRequest;
 import org.group10.event.dto.EventDetailResponse;
 import org.group10.event.dto.EventParticipantsRequest;
@@ -35,6 +37,7 @@ import org.group10.event.repository.SectorRepository;
 import org.group10.event.repository.SectorSeatCount;
 import org.group10.event.repository.VenueRepository;
 import org.group10.event.statemachine.EventStatusMachine;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -78,11 +81,15 @@ public class EventService {
      * <p>
      * A draft is private: only an organizer of its organization sees it. For anyone else it doesn't exist, with the
      * same 404 as a missing id, so its id doesn't reveal that the event is being prepared.
+     * <p>
+     * Cached unless it's a draft: every other status looks the same to everyone, so the cached detail doesn't depend
+     * on who asked. Without {@code sync}, because Spring doesn't allow it together with {@code unless} (ADR 0009).
      *
      * @param caller who is asking, if anyone; only needed to see a draft
      * @throws TicketYaException {@code EVENT_NOT_FOUND}
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @Cacheable(cacheNames = CatalogCaches.EVENT, key = "#id", unless = "#result.status() == T(org.group10.event.entity.EventStatus).DRAFT")
     public EventDetailResponse findById(Long id, Optional<Caller> caller) {
         Event event = getEvent(id);
         boolean ownDraft = caller.filter(c -> organizesFor(c, event.getOrganizationId())).isPresent();
@@ -223,6 +230,7 @@ public class EventService {
      *                           failed precondition in {@code detail.problems}
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @EvictsEvent
     public EventDetailResponse publish(Long id, Caller caller) {
         Event event = getEvent(id);
         ensureStatus(event, EventStatus.DRAFT, "Solo se publica un borrador");
@@ -259,6 +267,7 @@ public class EventService {
      *                           event
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @EvictsEvent
     public EventDetailResponse cancel(Long id, Caller caller) {
         Event event = getEvent(id);
         ensureCanSuspendOrCancel(event, caller, "cancelarlo");
@@ -298,11 +307,13 @@ public class EventService {
     }
 
     @Transactional
+    @EvictsEvent
     public void markSoldOut(Long id) {
         getEvent(id).changeAvailabilityTo(EventStatus.SOLD_OUT, statusMachine);
     }
 
     @Transactional
+    @EvictsEvent
     public void markBackOnSale(Long id) {
         getEvent(id).changeAvailabilityTo(EventStatus.PUBLISHED, statusMachine);
     }
@@ -316,6 +327,7 @@ public class EventService {
      *                           or {@code INVALID_STATUS_TRANSITION} if it isn't published or sold out
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @EvictsEvent
     public EventDetailResponse suspend(Long id, Caller caller) {
         Event event = getEvent(id);
         ensureCanSuspendOrCancel(event, caller, "suspenderlo");
@@ -348,6 +360,7 @@ public class EventService {
      *                           {@code INVALID_EVENT_CONFIGURATION} if the new date isn't after {@code saleStart}
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @EvictsEvent
     public EventDetailResponse resume(Long id, Caller caller, EventResumeRequest request) {
         Event event = getEvent(id);
         ensureCanSuspendOrCancel(event, caller, "reanudarlo");

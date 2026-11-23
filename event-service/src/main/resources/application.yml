@@ -18,6 +18,13 @@ spring:
     username: ${RABBITMQ_USER:ticketya}
     password: ${RABBITMQ_PASSWORD:ticketya}
     connection-timeout: 2s
+  data:
+    redis:
+      # La cache del catálogo (ADR 0009). Corto: si Redis no responde se lee de la base, no se espera.
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6380}
+      connect-timeout: 500ms
+      timeout: 500ms
   docker:
     compose:
       file: compose.yaml
@@ -31,6 +38,12 @@ ticketya:
   time-zone: America/Argentina/Buenos_Aires
   events:
     finish-check: PT1M
+  # Tiempo máximo que una entrada vive en la cache. Los cambios la borran antes (ADR 0009).
+  cache:
+    event: 5m
+    events-upcoming: 60s
+    venue: 1h
+    participant: 10m
   http:
     retry:
       max-attempts: 2   # el intento original + 1 reintento, solo GET y solo si no hubo respuesta
@@ -52,6 +65,10 @@ management:
       zipkin:
         # Las trazas van a Zipkin solo con observability.compose.yaml (ADR 0010)
         enabled: false
+  health:
+    redis:
+      # Sin Redis el catálogo sigue respondiendo desde la base: no es motivo para marcar el servicio caído
+      enabled: false
   endpoints:
     web:
       exposure:

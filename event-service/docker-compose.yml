@@ -1,4 +1,4 @@
-# event-service con su base, para el sistema completo (lo incluye el docker-compose.yml de la raíz).
+# event-service con su base y su Redis de cache, para el sistema completo (lo incluye el docker-compose.yml de la raíz).
 # No es el compose.yaml de al lado: ese levanta solo la base para spring-boot:run.
 services:
   event-service:
@@ -13,9 +13,13 @@ services:
       INTERNAL_SECRET: ${INTERNAL_SECRET:-dev-internal-secret}
       TICKET_SERVICE_URL: http://ticket-service:8083
       RABBITMQ_HOST: rabbitmq
+      REDIS_HOST: event-redis
+      REDIS_PORT: 6379
     # Sin ports: solo lo alcanzan el api-gateway y los otros servicios por la red de Docker (ADR-003)
     depends_on:
       event-db:
+        condition: service_healthy
+      event-redis:
         condition: service_healthy
     mem_limit: 384m
     healthcheck:
@@ -42,6 +46,18 @@ services:
     mem_limit: 256m
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Cache del catálogo (ADR 0009). Aparte del Redis de la fila virtual: lo que se puede perder no comparte memoria
+  # con lo que no. Sin volumen: al arrancar, el event-service la vacía igual.
+  event-redis:
+    image: redis:7.4
+    command: ["redis-server", "--maxmemory", "48mb", "--maxmemory-policy", "allkeys-lru", "--save", "", "--appendonly", "no"]
+    mem_limit: 64m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 20

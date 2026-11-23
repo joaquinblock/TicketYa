@@ -104,7 +104,7 @@ Además:
 
 La capacidad del evento es la cantidad máxima de entradas que se pueden vender para ese evento. Puede ser menor que la del lugar si el evento no habilita todos los sectores.
 
-Ninguna de las dos es una columna: son datos derivados. Si se guardaran, cada alta o baja de un `sector` o `seat` obligaría a actualizarlas, y si alguien se olvida quedan dos números distintos sin saber cuál es el correcto. Se calculan con una query o un método de la entidad; si alguna vez pesa, se cachea (los lugares casi no cambian).
+Ninguna de las dos es una columna: son datos derivados. Si se guardaran, cada alta o baja de un `sector` o `seat` obligaría a actualizarlas, y si alguien se olvida quedan dos números distintos sin saber cuál es el correcto. Se calculan con una query o un método de la entidad; el detalle del lugar se cachea una hora ([ADR 0009](../adr/0009-cache-del-catalogo-con-redis.md)).
 
 **No se modela** la capacidad habilitada por el municipio, que sí sería un dato propio del lugar (hay estadios habilitados para menos gente que butacas). El enunciado no la pide; si se agrega, va como `venue.licensed_capacity` y funciona como tope de la suma de los sectores.
 
@@ -147,7 +147,7 @@ Cuando un evento se cancela, se suspende, se reprograma o se publica, el event-s
 
 ## Lo que no vive acá
 
-La **disponibilidad** no es parte del catálogo: vive en el **ticket-service**, porque necesita consistencia fuerte y no puede cachearse. El event-service solo dice qué se vende y a qué precio.
+La **disponibilidad** no es parte del catálogo: vive en el **ticket-service**, porque necesita consistencia fuerte y no puede cachearse. El event-service solo dice qué se vende y a qué precio. Lo que sí se cachea, en un Redis propio, es la vista pública del catálogo ([ADR 0009](../adr/0009-cache-del-catalogo-con-redis.md)).
 
 | Tipo de sector | Dónde está la disponibilidad |
 |---|---|

@@ -1,6 +1,8 @@
 package org.group10.event.repository;
 
+import org.group10.event.config.CatalogCaches;
 import org.group10.event.entity.Event;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -39,7 +41,12 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     @Query(value = "select id from event where id = :id for update", nativeQuery = true)
     Optional<Long> lockById(Long id);
 
+    /**
+     * Evicts the event's detail. It runs inside the job's transaction, so the eviction comes a moment before the
+     * commit: a read in between would keep the old status until the TTL, on an event that already happened.
+     */
     @Modifying
+    @CacheEvict(cacheNames = CatalogCaches.EVENT, key = "#id")
     @Query("""
             update Event e set e.status = org.group10.event.entity.EventStatus.FINISHED
             where e.id = :id

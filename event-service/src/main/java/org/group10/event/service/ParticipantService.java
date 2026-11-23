@@ -10,6 +10,10 @@ import org.group10.event.exception.EventErrorCode;
 import org.group10.event.mapper.ParticipantMapper;
 import org.group10.event.repository.EventRepository;
 import org.group10.event.repository.ParticipantRepository;
+import org.group10.event.config.CatalogCaches;
+import org.group10.event.config.CatalogCaches.EvictsAllEvents;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +38,7 @@ public class ParticipantService {
         return participantRepository.search(type, nameFilter).stream().map(ParticipantMapper::toResponse).toList();
     }
 
+    @Cacheable(cacheNames = CatalogCaches.PARTICIPANT, key = "#id", sync = true)
     public ParticipantResponse findById(Long id) {
         return ParticipantMapper.toResponse(getParticipant(id));
     }
@@ -53,6 +58,8 @@ public class ParticipantService {
      * @throws TicketYaException {@code PARTICIPANT_NOT_FOUND} or {@code PARTICIPANT_DUPLICATED}
      */
     @Transactional
+    @CacheEvict(cacheNames = CatalogCaches.PARTICIPANT, key = "#id")
+    @EvictsAllEvents
     public ParticipantResponse update(Long id, ParticipantRequest request) {
         Participant participant = getParticipant(id);
         ensureNameIsFree(request, id);
@@ -66,6 +73,7 @@ public class ParticipantService {
      * @throws TicketYaException {@code PARTICIPANT_IN_USE} if any event, in any status, has it
      */
     @Transactional
+    @CacheEvict(cacheNames = CatalogCaches.PARTICIPANT, key = "#id")
     public void delete(Long id) {
         Participant participant = getParticipant(id);
         if (eventRepository.existsByParticipantsId(id)) {

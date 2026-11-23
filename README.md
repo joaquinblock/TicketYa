@@ -75,7 +75,7 @@ docker compose down             # apagar
 
 - **Solo publica el gateway (8080)**, más la consola de RabbitMQ (15672) y Mailpit (8025). Los servicios y las bases solo se ven por la red de Docker, donde se encuentran por nombre (`http://event-service:8082`).
 - **Las imágenes copian el jar compilado:** después de cambiar código hay que volver a correr `./mvnw package` y `docker compose up --build`.
-- **Necesita unos 4 GB para Docker** (17 contenedores). Con WSL 2 se configura en `%UserProfile%\.wslconfig`, `[wsl2]` y `memory=4GB`.
+- **Necesita unos 4 GB para Docker** (18 contenedores). Con WSL 2 se configura en `%UserProfile%\.wslconfig`, `[wsl2]` y `memory=4GB`.
 - **Las variables** (credenciales y `INTERNAL_SECRET`) son opcionales: sin `.env` se usan los valores de desarrollo. Están en `.env.example`.
 - **El sistema completo y el desarrollo no van a la vez:** RabbitMQ usa el mismo puerto en los dos.
 - **Nada guarda datos entre corridas:** las bases se recrean con el seeder (`ddl-auto: create`), y en el sistema completo RabbitMQ va sin volumen (`rabbitmq.no-data.compose.yaml`), así no hereda uno viejo de otra corrida.

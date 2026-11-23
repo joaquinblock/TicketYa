@@ -1,0 +1,7 @@
+# Solo para el docker-compose.yml de la raíz: RabbitMQ sin volumen en el sistema completo.
+# Arranca limpio en cada corrida, igual que las bases (ddl-auto: create), y no hereda un volumen viejo
+# (con uno de otra corrida falló con EACCES en .erlang.cookie). El exchange y las colas se declaran solos al arrancar.
+# El desarrollo (docker compose -f rabbitmq.compose.yaml up -d) sigue con su volumen.
+services:
+  rabbitmq:
+    volumes: !reset []

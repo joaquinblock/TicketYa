@@ -1,0 +1,43 @@
+# payment-service con su base, para el sistema completo (lo incluye el docker-compose.yml de la raíz).
+# No es el compose.yaml de al lado: ese levanta solo la base para spring-boot:run.
+services:
+  payment-service:
+    build: .
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_DATASOURCE_URL: jdbc:mysql://payment-db:3306/payment_db
+      SPRING_DATASOURCE_USERNAME: ${DB_USER:-group10}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-group10}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-dev-internal-secret}
+    # Sin ports: solo lo alcanzan los otros servicios por la red de Docker (US-PAY-14, ADR-003)
+    depends_on:
+      payment-db:
+        condition: service_healthy
+    mem_limit: 384m
+    healthcheck:
+      # La imagen no trae curl ni wget: bash pide /actuator/health por /dev/tcp
+      test:
+        - CMD
+        - bash
+        - -c
+        - exec 3<>/dev/tcp/localhost/8084 && printf 'GET /actuator/health HTTP/1.0\r\n\r\n' >&3 && grep -q '"status":"UP"' <&3
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  payment-db:
+    image: mysql:8.4
+    # Buffer chico y sin performance_schema: la base de prueba no necesita más y así entran todas en la máquina
+    command: ["--innodb-buffer-pool-size=32M", "--performance-schema=OFF"]
+    environment:
+      MYSQL_DATABASE: payment_db
+      MYSQL_USER: ${DB_USER:-group10}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-group10}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-group10}
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20

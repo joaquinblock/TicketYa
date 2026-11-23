@@ -147,9 +147,32 @@ Heredar trae la configuración y las dependencias comunes. Depender trae el cód
 |---|---|---|---|
 | api-gateway | 8080 | — | — |
 | auth-service | 8081 | MySQL | 3307 |
-| event-service | 8082 | MySQL (Entrega 1) → candidato a MongoDB | 3308 |
+| event-service | 8082 | MySQL | 3308 |
 | ticket-service | 8083 | MySQL | 3309 |
 | payment-service | 8084 | MySQL | 3310 |
 | queue-service | 8085 | Redis | 6379 |
 | notification-service | 8086 | MySQL | 3311 |
 | recommendation-service | 8087 | MongoDB | 27017 |
+
+Los puertos locales de las bases son los del desarrollo, con el `compose.yaml` de cada servicio.
+
+## Despliegue con Docker
+
+El sistema completo se levanta con el `docker-compose.yml` de la raíz, que incluye el `docker-compose.yml` de cada servicio y `rabbitmq.compose.yaml` ([ADR 0008](../adr/0008-despliegue-con-docker-compose.md)). Cómo correrlo: *Levantar el sistema completo en contenedores* en el README.
+
+| Contenedor | Nombre en la red de Docker | Almacenamiento | Puerto publicado |
+|---|---|---|---|
+| api-gateway | `api-gateway:8080` | — | **8080**, el único de la API |
+| auth-service | `auth-service:8081` | `auth-db` (MySQL) | — |
+| event-service | `event-service:8082` | `event-db` (MySQL) | — |
+| ticket-service | `ticket-service:8083` | `ticket-db` (MySQL) | — |
+| payment-service | `payment-service:8084` | `payment-db` (MySQL) | — |
+| queue-service | `queue-service:8085` | `queue-redis` (Redis) | — |
+| notification-service | `notification-service:8086` | `notification-db` (MySQL) y `mailpit` | 8025 (Mailpit) |
+| recommendation-service | `recommendation-service:8087` | `recommendation-mongo` (MongoDB) | — |
+| rabbitmq | `rabbitmq:5672` | — | 15672 (consola) y 5672 |
+
+- **Service Discovery sin Eureka:** cada servicio encuentra a los demás por el nombre del contenedor, con el DNS interno de Docker. Las URLs salen de las mismas variables que en desarrollo (`EVENT_SERVICE_URL`, …), con otro valor.
+- **Solo el gateway entra:** los servicios no publican puerto, así que `/internal/**` solo se alcanza desde otro contenedor y con el secreto entre servicios (US-PAY-14).
+- **Arranque:** cada servicio espera a que su base esté sana. El gateway no espera: mientras un servicio no levanta, sus rutas responden 503.
+- **Memoria:** unos 4 GB para Docker con los límites de cada contenedor.

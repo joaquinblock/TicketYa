@@ -1,0 +1,38 @@
+# queue-service con su Redis, para el sistema completo (lo incluye el docker-compose.yml de la raíz).
+# No es el compose.yaml de al lado: ese levanta solo Redis para spring-boot:run.
+services:
+  queue-service:
+    build: .
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_DATA_REDIS_HOST: queue-redis
+      SPRING_DATA_REDIS_PORT: 6379
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-dev-internal-secret}
+      EVENT_SERVICE_URL: http://event-service:8082
+      # Sin QUEUE_JWT_PRIVATE_KEY_LOCATION la clave del token de turno es efímera: al reiniciar queue-service,
+      # los turnos ya emitidos dejan de valer en ticket-service. Pendiente, igual que la clave del JWT de auth.
+    # Sin ports: solo lo alcanzan el api-gateway y los otros servicios por la red de Docker (ADR-003)
+    depends_on:
+      queue-redis:
+        condition: service_healthy
+    mem_limit: 384m
+    healthcheck:
+      # La imagen no trae curl ni wget: bash pide /actuator/health por /dev/tcp
+      test:
+        - CMD
+        - bash
+        - -c
+        - exec 3<>/dev/tcp/localhost/8085 && printf 'GET /actuator/health HTTP/1.0\r\n\r\n' >&3 && grep -q '"status":"UP"' <&3
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  queue-redis:
+    image: redis:7.4
+    mem_limit: 64m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20

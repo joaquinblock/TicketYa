@@ -1,0 +1,20 @@
+# Sistema completo en contenedores (Épica 11). Cada servicio trae su docker-compose.yml con su base.
+#   1. ./mvnw package -DskipTests        (Windows: mvnw.cmd package -DskipTests)
+#   2. docker compose up --build         todo, o solo lo nombrado: docker compose up --build payment-service
+# Para programar un servicio no hace falta: spring-boot:run usa el compose.yaml de cada servicio.
+# El único puerto de la API es el 8080 del api-gateway. Además: consola de RabbitMQ (15672) y Mailpit (8025).
+# Todo junto necesita unos 4 GB libres para Docker (con WSL 2: memory= en %UserProfile%\.wslconfig).
+name: ticketya
+
+include:
+  - path:
+      - rabbitmq.compose.yaml
+      - rabbitmq.no-data.compose.yaml
+  - api-gateway/docker-compose.yml
+  - auth-service/docker-compose.yml
+  - event-service/docker-compose.yml
+  - ticket-service/docker-compose.yml
+  - payment-service/docker-compose.yml
+  - queue-service/docker-compose.yml
+  - notification-service/docker-compose.yml
+  - recommendation-service/docker-compose.yml

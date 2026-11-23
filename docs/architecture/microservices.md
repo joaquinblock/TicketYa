@@ -70,13 +70,13 @@ Alternativas descartadas: **OpenFeign** (en mantenimiento), **WebClient** (react
 | payment-service | — | Solo habla con la pasarela externa, que va como adaptador mock y no como client de otro servicio nuestro |
 | queue-service | `EventClient` | Saber si el evento es de alta demanda y cuándo abre la venta |
 | notification-service | `AuthClient`, `TicketClient`, `EventClient` | Email y nombre del destinatario; la orden pagada con el evento y el QR de cada entrada; datos del evento para los avisos de cambios |
-| recommendation-service | `EventClient`, `TicketClient` | Datos de eventos; historial de compras |
+| recommendation-service | `EventClient`, `TicketClient` | Validar participantes de las preferencias; datos de eventos. El historial de compras no se pide: se arma con `purchase.confirmed` |
 
 Cada client es una interfaz `@HttpExchange` en el paquete `client`, registrada en `config/HttpClientsConfig` con `@ImportHttpServices`. La URL base va en `spring.http.serviceclient.<servicio>.base-url` del `application.yml`, con variable de entorno para Docker (p. ej. `EVENT_SERVICE_URL`).
 
 ### Mensajería asíncrona
 
-Según el [ADR 0004](../adr/0004-rabbitmq-para-avisos-entre-servicios.md): un exchange topic `ticketya.events` y una clave por tipo de aviso. Hoy la usan ticket-service (declara el exchange) y notification-service, cada uno con su `config/RabbitConfig`; la mensajería no va en `common`.
+Según el [ADR 0004](../adr/0004-rabbitmq-para-avisos-entre-servicios.md): un exchange topic `ticketya.events` y una clave por tipo de aviso. Hoy la usan ticket-service (declara el exchange), notification-service y recommendation-service, cada uno con su `config/RabbitConfig`; la mensajería no va en `common`. recommendation-service no guarda los `messageId`: sumar el mismo evento al historial con `$addToSet` ya es idempotente.
 
 - **Broker:** uno solo para todos, en `rabbitmq.compose.yaml` de la raíz. Se levanta antes que los servicios.
 - **Conexión:** `spring.rabbitmq.*` desde `RABBITMQ_HOST`, `RABBITMQ_PORT`, `RABBITMQ_USER` y `RABBITMQ_PASSWORD` (por defecto `localhost:5672`, `ticketya` / `ticketya`), con `connection-timeout: 2s`.

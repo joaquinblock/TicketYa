@@ -26,12 +26,12 @@
 | `ticket-service` | 8083 | MySQL (3309) | 1 |
 | `payment-service` | 8084 | MySQL (3310) | 1 |
 | `queue-service` | 8085 | Redis (6379) | 2 (esqueleto) |
-| `notification-service` | 8086 | MySQL (3311) | 2 (esqueleto) |
-| `recommendation-service` | 8087 | MongoDB (27017) | 2 (esqueleto) |
+| `notification-service` | 8086 | MySQL (3311) | 2 |
+| `recommendation-service` | 8087 | MongoDB (27017) | 2 |
 
 **Para la Entrega 1 alcanza con el gateway y los cuatro primeros servicios.** Cada servicio arranca su base con Docker la primera vez (`spring.docker.compose`). No hace falta levantarlas a mano.
 
-**RabbitMQ** (AMQP en 5672, consola en http://localhost:15672, usuario `ticketya` / `ticketya`) lleva los avisos entre servicios ([ADR 0004](docs/adr/0004-rabbitmq-para-avisos-entre-servicios.md)). Es uno solo para todos, así que no lo levanta ningún servicio: va antes que ellos (ver *Levantarlo*). Lo usan ticket-service, event-service y notification-service; sin él arrancan igual, pero no se mandan los avisos.
+**RabbitMQ** (AMQP en 5672, consola en http://localhost:15672, usuario `ticketya` / `ticketya`) lleva los avisos entre servicios ([ADR 0004](docs/adr/0004-rabbitmq-para-avisos-entre-servicios.md)). Es uno solo para todos, así que no lo levanta ningún servicio: va antes que ellos (ver *Levantarlo*). Lo usan ticket-service, event-service, notification-service y recommendation-service; sin él arrancan igual, pero no se mandan los avisos.
 
 ### Levantarlo
 

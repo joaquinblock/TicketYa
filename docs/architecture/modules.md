@@ -93,6 +93,7 @@ flowchart LR
     rabbit --> recommendation
     notification --> email
     recommendation -->|"datos de eventos"| event
+    notification -->|"fans de un artista en una ciudad"| recommendation
     queue --- redis
     recommendation --- mongo
     notification --- notifdb

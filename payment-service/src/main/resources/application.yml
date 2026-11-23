@@ -19,6 +19,16 @@ spring:
       enum:
         fail-on-numbers-for-enums: true
 
+ticketya:
+  logging:
+      correlation:
+        enabled: true
+
+logging:
+  structured:
+      format:
+        console: logstash
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html

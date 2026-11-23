@@ -375,12 +375,12 @@ El `TicketSeeder` usa los IDs, fechas y nombres que generan los seeders del auth
 | 7 Los Serranos en Rosario | `SUSPENDED` | 11 Popular, 12 Platea | 200–239 |
 | 8 Recital acústico | `CANCELLED` | 13 Platea Baja | 155–199 |
 | 9 Jornada de arquitectura | `FINISHED` | 14 Sala | — |
-| 11 Peña folklórica serrana | `PUBLISHED` | 15 Platea, 16 Pullman | 81–154 |
+| 11 Peña folklórica serrana | `PUBLISHED`, Platea agotada | 15 Platea, 16 Pullman | 81–154 |
 | 13 a 42, la cartelera | `PUBLISHED`, venta abierta, hasta 4 por persona | 18 a 47, uno por evento | Platea 81–130, Pullman 131–154 |
 
 Los eventos en `DRAFT` (3, 10 y 12) no tienen venta. Si se cambia el orden de los datos en el `EventSeeder`, hay que actualizar el `TicketSeeder`.
 
-Además carga, a nombre del cliente `user` 1, una compra pagada en el Campo del recital, una pagada con asientos en la obra (con una devolución pendiente) y una reserva en curso en la Platea del recital.
+Además carga, a nombre del cliente `user` 1, una compra pagada en el Campo del recital, una pagada con asientos en la obra (con una devolución pendiente) y una reserva en curso en la Platea del recital. En la peña (evento 11) vende todos los asientos de la Platea y deja libre la Pullman: es el evento a la venta con el primer sector agotado.
 
 ## User stories
 

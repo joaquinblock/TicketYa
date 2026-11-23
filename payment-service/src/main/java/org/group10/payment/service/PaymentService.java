@@ -4,7 +4,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.group10.common.exception.CommonErrorCode;
 import org.group10.common.exception.TicketYaException;
-import org.group10.common.tracing.CorrelationHeaders;
 import org.group10.payment.dto.OrderPaymentResponse;
 import org.group10.payment.dto.PaymentRequest;
 import org.group10.payment.dto.PaymentResponse;
@@ -32,9 +31,20 @@ public class PaymentService {
     private final PaymentGateway paymentGateway;
 
     public PaymentResponse charge(PaymentRequest request) {
-        return paymentRepository.findByIdempotencyKey(request.idempotencyKey())
-                .map(storedPayment -> answerWithTheStoredResult(storedPayment, request))
-                .orElseGet(() -> chargeNewAttempt(request));
+        try {
+            PaymentResponse response = paymentRepository.findByIdempotencyKey(request.idempotencyKey())
+                    .map(storedPayment -> answerWithTheStoredResult(storedPayment, request))
+                    .orElseGet(() -> chargeNewAttempt(request));
+            logChargeResult(request, response.id(), response.status().name());
+            return response;
+        } catch (TicketYaException failure) {
+            String result = failure.getErrorCode() == PaymentErrorCode.PAYMENT_REJECTED ? "REJECTED" : "FAILED";
+            logChargeResult(request, null, result);
+            throw failure;
+        } catch (RuntimeException failure) {
+            logChargeResult(request, null, "FAILED");
+            throw failure;
+        }
     }
 
     public List<OrderPaymentResponse> findPaymentsOfOrder(Long orderId) {
@@ -85,9 +95,6 @@ public class PaymentService {
         ChargeResult chargeResult = askTheGatewayToCharge(pendingPayment);
         Payment chargedPayment = commitChargeResult(pendingPayment, chargeResult);
 
-        log.info("operation=payment status={} paymentId={} orderId={} paymentMethod={} correlationId={}",
-                chargedPayment.getStatus(), chargedPayment.getId(), chargedPayment.getOrderId(),
-                chargedPayment.getPaymentMethod(), CorrelationHeaders.currentOrCreate());
         return answerWithTheFinalResult(chargedPayment);
     }
 
@@ -95,10 +102,29 @@ public class PaymentService {
         try {
             return paymentGateway.charge(pendingPayment);
         } catch (RuntimeException gatewayFailure) {
-            log.error("La pasarela falló al cobrar el pago {}", pendingPayment.getId(), gatewayFailure);
+            log.atError()
+                    .addKeyValue("operation", "charge")
+                    .addKeyValue("orderId", pendingPayment.getOrderId())
+                    .addKeyValue("paymentId", pendingPayment.getId())
+                    .addKeyValue("result", "FAILED")
+                    .addKeyValue("paymentMethod", pendingPayment.getPaymentMethod().name())
+                    .addKeyValue("errorType", gatewayFailure.getClass().getSimpleName())
+                    .log("Payment gateway charge failed");
             throw new TicketYaException(PaymentErrorCode.PAYMENT_GATEWAY_UNAVAILABLE,
                     "La pasarela no respondió, se puede reintentar con la misma clave");
         }
+    }
+
+    private void logChargeResult(PaymentRequest request, Long paymentId, String result) {
+        var event = "APPROVED".equals(result) ? log.atInfo() : log.atWarn();
+        event.addKeyValue("operation", "charge")
+                .addKeyValue("orderId", request.orderId())
+                .addKeyValue("result", result)
+                .addKeyValue("paymentMethod", request.paymentMethod().name());
+        if (paymentId != null) {
+            event.addKeyValue("paymentId", paymentId);
+        }
+        event.log("Payment charge result");
     }
 
     private void ensureRequestRepeatsTheDataOfTheStoredPayment(Payment storedPayment, PaymentRequest request) {

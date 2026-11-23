@@ -9,6 +9,7 @@ import io.github.resilience4j.timelimiter.TimeLimiter;
 import io.github.resilience4j.timelimiter.TimeLimiterConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.group10.payment.entity.Payment;
+import org.group10.payment.entity.PaymentStatus;
 import org.group10.payment.entity.Refund;
 
 import java.time.Clock;
@@ -22,7 +23,7 @@ import java.util.function.Supplier;
  * Cada intento tiene timeout y se reintenta con la misma clave de idempotencia,
  * así la pasarela nunca cobra dos veces. El circuit breaker cuenta cada intento:
  * ante fallas recurrentes se abre y responde al instante, sin esperar los reintentos.
- * Los reintegros pasan directo: sus reintentos son de la US-PAY-13.
+ * Los reintegros y las anulaciones pasan directo; se reintentan desde el servicio que las solicita.
  */
 @Slf4j
 public class ResilientPaymentGateway implements PaymentGateway, AutoCloseable {
@@ -71,6 +72,11 @@ public class ResilientPaymentGateway implements PaymentGateway, AutoCloseable {
         } catch (CallNotPermittedException openCircuit) {
             throw new PaymentGatewayUnavailableException("La pasarela viene fallando: el circuito está abierto");
         }
+    }
+
+    @Override
+    public PaymentStatus cancel(Payment payment) {
+        return delegate.cancel(payment);
     }
 
     @Override

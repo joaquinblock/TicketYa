@@ -1,6 +1,7 @@
 package org.group10.payment.gateway;
 
 import org.group10.payment.entity.Payment;
+import org.group10.payment.entity.PaymentStatus;
 import org.group10.payment.entity.Refund;
 
 /**
@@ -9,6 +10,8 @@ import org.group10.payment.entity.Refund;
 public interface PaymentGateway {
 
     ChargeResult charge(Payment payment);
+
+    PaymentStatus cancel(Payment payment);
 
     RefundResult refund(Refund refund);
 }

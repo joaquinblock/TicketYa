@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import org.group10.common.dto.ErrorDto;
 import org.group10.payment.dto.OrderPaymentResponse;
+import org.group10.payment.dto.PaymentCancelRequest;
 import org.group10.payment.dto.PaymentRequest;
 import org.group10.payment.dto.PaymentResponse;
 import org.group10.payment.service.PaymentService;
@@ -46,6 +47,18 @@ public class PaymentController {
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     public PaymentResponse charge(@Valid @RequestBody PaymentRequest request) {
         return paymentService.charge(request);
+    }
+
+    @PostMapping("/cancel")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(summary = "Anular un intento de pago", description = "Lo llama ticket-service para resolver una reserva vencida.")
+    @ApiResponse(responseCode = "200", description = "Estado final del pago, o PENDING si la pasarela no respondió")
+    @ApiResponse(responseCode = "400", description = "validation_error: falta la clave de idempotencia",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "404", description = "payment_not_found: no existe un pago con esa clave",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    public PaymentResponse cancel(@Valid @RequestBody PaymentCancelRequest request) {
+        return paymentService.cancel(request.idempotencyKey());
     }
 
     @GetMapping

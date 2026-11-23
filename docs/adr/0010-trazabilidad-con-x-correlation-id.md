@@ -51,3 +51,7 @@ La consigna pide registrar las operaciones críticas "en un log centralizado". H
 - **El punto central es la salida del compose.** Con todos los servicios en JSON, `docker compose logs` junta los logs de todo el sistema, y una operación se sigue filtrando por su id ([README](../../README.md), *Seguir una operación*).
   - No se agregó un colector (Loki, Elasticsearch) porque son 2 o 3 contenedores más y el sistema ya llega al límite de memoria de las máquinas del equipo.
   - Si hace falta para la defensa, se puede sumar como un perfil de compose que no arranque por defecto.
+- **Lo crítico se ve.** Una `TicketYaException` se registra con el nivel de su `ErrorCode`: `ERROR` si es 5xx, `WARN` si es 4xx. Antes todas quedaban en `WARN`, y un evento inexistente se veía igual que la pasarela caída.
+  - El nivel sale del status (`ErrorCode.getLevel()`), y un código que sea crítico aunque responda 4xx lo sobrescribe.
+  - Se usa `org.slf4j.event.Level` y no un enum propio, porque es lo que ya entiende el logger.
+  - Así, `docker compose logs | grep '"level":"ERROR"'` muestra lo crítico de todo el sistema con su `correlationId` ([`error-handling.md`](../architecture/error-handling.md)).

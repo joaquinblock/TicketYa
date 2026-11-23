@@ -57,14 +57,15 @@ public class GlobalExceptionHandler {
 
     /**
      * Excepciones de negocio (evento no encontrado, asiento no disponible, etc.).
-     * Se loguea como warn y sin stack trace porque es una respuesta esperada, no una falla.
+     * Se loguea sin stack trace porque es una respuesta prevista, con el nivel de su código: {@code ERROR} si es un
+     * 5xx, {@code WARN} si es un error del cliente (ver {@link ErrorCode#getLevel()}).
      *
      * @return el status del {@link ErrorCode} que trae la excepción, con su mensaje y su detail
      */
     @ExceptionHandler(TicketYaException.class)
     public ResponseEntity<ErrorDto> handleTicketYaException(TicketYaException ex) {
-        log.warn(ex.getMessage());
         ErrorCode code = ex.getErrorCode();
+        log.atLevel(code.getLevel()).log(ex.getMessage());
         return ResponseEntity.status(code.getStatus()).body(code.toErrorDto(ex.getMessage(), ex.getDetail()));
     }
 

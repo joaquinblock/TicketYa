@@ -3,6 +3,7 @@ package org.group10.ticket.controller;
 import org.group10.ticket.service.AvailabilityService;
 import org.group10.ticket.service.EventSaleService;
 import org.group10.ticket.service.OrderClosingService;
+import org.group10.ticket.dto.ReservationRequest;
 import org.group10.ticket.service.OrderPaymentService;
 import org.group10.ticket.service.OrderQueryService;
 import org.group10.ticket.service.ReservationService;
@@ -15,6 +16,9 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -75,6 +79,18 @@ class ReservationControllersTest {
                                 {"eventId": 1, "idempotencyKey": "%s", "seatIds": [1]}""".formatted("k".repeat(256))))
                 .andExpect(status().isBadRequest());
         verifyNoInteractions(reservationService);
+    }
+
+    @Test
+    void reserve_queueTokenHeader_isForwardedToTheService() throws Exception {
+        mockMvc.perform(post("/api/orders").header(USER_HEADER, 7).header("X-User-Permissions", "TICKET_PURCHASE")
+                        .header("X-Queue-Token", "queue-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"eventId": 1, "idempotencyKey": "k", "seatIds": [1]}"""))
+                .andExpect(status().isCreated());
+
+        verify(reservationService).reserve(eq(7L), any(ReservationRequest.class), eq("queue-token"));
     }
 
     @Test

@@ -27,6 +27,8 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
@@ -65,6 +67,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "ticketya.reservation.expiration-check=PT1H")
@@ -85,6 +88,8 @@ class OrderPaymentMySqlIntegrationTest {
 
     @MockitoBean
     private PaymentClient paymentClient;
+    @MockitoBean(name = "queueTokenJwtDecoder")
+    private JwtDecoder queueTokenDecoder;
 
     @MockitoSpyBean
     private Clock clock;
@@ -170,6 +175,21 @@ class OrderPaymentMySqlIntegrationTest {
         verify(paymentClient).charge(charge.capture());
         assertThat(charge.getValue().amount()).isEqualByComparingTo(new BigDecimal("2000"));
         assertThat(charge.getValue().orderId()).isEqualTo(orderId);
+    }
+
+    @Test
+    void pay_afterQueueWindowEnds_doesNotRequireAnotherQueueToken() {
+        markAsHighDemand();
+        Instant enabledUntil = Instant.now(clock).plusSeconds(60);
+        String queueToken = queueToken(CUSTOMER, eventId, enabledUntil);
+        long orderId = reserveSeats(CUSTOMER, queueToken, 1);
+        doReturn(enabledUntil.plusSeconds(1)).when(clock).instant();
+
+        HttpResult paid = pay(CUSTOMER, orderId, newKey());
+
+        assertThat(paid.status()).isEqualTo(200);
+        assertThat(paid.body().get("status")).isEqualTo("PAID");
+        verify(paymentClient).charge(any());
     }
 
     @Test
@@ -493,9 +513,16 @@ class OrderPaymentMySqlIntegrationTest {
     }
 
     private long reserveSeats(long customer, long... seatIds) {
+        return reserveSeats(customer, null, seatIds);
+    }
+
+    private long reserveSeats(long customer, String queueToken, long... seatIds) {
         String seats = String.join(", ", java.util.Arrays.stream(seatIds).mapToObj(Long::toString).toList());
-        return post("/api/orders", customer, """
-                {"eventId": %d, "idempotencyKey": "%s", "seatIds": [%s]}""".formatted(eventId, newKey(), seats)).orderId();
+        HttpResult reservation = post("/api/orders", customer, """
+                {"eventId": %d, "idempotencyKey": "%s", "seatIds": [%s]}""".formatted(eventId, newKey(), seats),
+                queueToken);
+        assertThat(reservation.status()).as(reservation.body().toString()).isEqualTo(201);
+        return reservation.orderId();
     }
 
     private long reservePlaces(long customer, int quantity) {
@@ -510,12 +537,46 @@ class OrderPaymentMySqlIntegrationTest {
     }
 
     private HttpResult post(String path, long customer, String body) {
+        return post(path, customer, body, null);
+    }
+
+    private HttpResult post(String path, long customer, String body, String queueToken) {
         return client.post().uri(path)
-                .header("X-User-Id", Long.toString(customer)).header("X-User-Permissions", permissionsOf(customer))
+                .headers(headers -> {
+                    headers.set("X-User-Id", Long.toString(customer));
+                    headers.set("X-User-Permissions", permissionsOf(customer));
+                    if (queueToken != null) {
+                        headers.set("X-Queue-Token", queueToken);
+                    }
+                })
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .exchange((request, response) ->
                         new HttpResult(response.getStatusCode().value(), response.bodyTo(JSON_OBJECT)));
+    }
+
+    private void markAsHighDemand() {
+        transaction.executeWithoutResult(status ->
+                eventSaleRepository.findById(eventId).orElseThrow().setHighDemand(true));
+    }
+
+    private String queueToken(long customer, long tokenEventId, Instant enabledUntil) {
+        String token = "queue-token-" + UUID.randomUUID();
+        Instant issuedAt = Instant.now(clock).minusSeconds(1);
+        Instant expiresAt = Instant.ofEpochSecond(enabledUntil.getEpochSecond());
+        Jwt decoded = Jwt.withTokenValue(token)
+                .header("alg", "RS256")
+                .issuer("ticketya-queue")
+                .audience(List.of("ticket-service"))
+                .issuedAt(issuedAt)
+                .expiresAt(expiresAt)
+                .claim("jti", "queue-entry")
+                .subject(Long.toString(customer))
+                .claim("eventId", tokenEventId)
+                .claim("enabledUntil", expiresAt.getEpochSecond())
+                .build();
+        when(queueTokenDecoder.decode(token)).thenReturn(decoded);
+        return token;
     }
 
     private List<HttpResult> runAtTheSameTime(IntFunction<HttpResult> attempt) throws Exception {

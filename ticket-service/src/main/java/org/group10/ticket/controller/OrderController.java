@@ -1,6 +1,7 @@
 package org.group10.ticket.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -48,16 +50,25 @@ public class OrderController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @RequiresPermission(Permission.TICKET_PURCHASE)
-    @Operation(summary = "Reservar lugares", description = "Crea una orden PENDING que retiene los lugares durante 10 minutos.")
+    @Operation(summary = "Reservar lugares", description = "Crea una orden PENDING que retiene los lugares durante 10 minutos. En eventos de alta demanda requiere un turno vigente.")
     @ApiResponse(responseCode = "201", description = "Reserva creada, o la orden ya creada por ese mismo intento")
     @ApiResponse(responseCode = "400", description = "validation_error",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "404", description = "resource_not_found: el evento, sector o asiento no existe",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "403", description = "invalid_queue_token: falta un turno vigente o no corresponde al cliente/evento",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "409", description = "seat_unavailable, sector_sold_out, ticket_limit_exceeded, event_not_on_sale, sale_not_started o data_conflict",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    public OrderResponse reserve(Caller caller, @Valid @RequestBody ReservationRequest request) {
-        return reservationService.reserve(caller.userId(), request);
+    @ApiResponse(responseCode = "503", description = "service_unavailable: no se pudo validar el JWKS del queue-service",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    public OrderResponse reserve(Caller caller,
+                                 @Parameter(description = "JWT de turno para eventos de alta demanda")
+                                 @RequestHeader(name = "X-Queue-Token", required = false) String queueToken,
+                                 @Valid @RequestBody ReservationRequest request) {
+        return queueToken == null
+                ? reservationService.reserve(caller.userId(), request)
+                : reservationService.reserve(caller.userId(), request, queueToken);
     }
 
     @PostMapping("/{id}/pay")
@@ -68,7 +79,7 @@ public class OrderController {
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "404", description = "order_not_found: no existe o es de otro cliente",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    @ApiResponse(responseCode = "409", description = "reservation_expired, payment_window_closed, order_not_payable o payment_in_progress",
+    @ApiResponse(responseCode = "409", description = "reservation_expired, payment_window_closed, order_not_payable, payment_in_progress o purchase_failed (se cobró, falló la emisión y el pago se reintegra)",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "422", description = "payment_rejected, con reason y rejectedAttempts en detail",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))

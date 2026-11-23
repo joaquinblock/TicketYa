@@ -1,0 +1,157 @@
+{
+  "info": {
+    "name": "TicketYa - Fila virtual",
+    "description": "US-QUE-01 (#147). Configurar eventId con un evento de alta demanda cuya venta ya abrio. Ejecutar primero el login de desarrollo; necesita auth-service con el perfil dev. Los endpoints /api/** pasan por el api-gateway (8080); JWKS se consulta directo en queue-service (8085).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "queueServiceUrl",
+      "value": "http://localhost:8085"
+    },
+    {
+      "key": "customerId",
+      "value": "1"
+    },
+    {
+      "key": "eventId",
+      "value": "1"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "US-QUE-01",
+      "item": [
+        {
+          "name": "Login de desarrollo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"userId\": {{customerId}}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/auth/dev-login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('accessToken', pm.response.json().accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Entrar a la fila → 201",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/queue/{{eventId}}/join"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('Estado reconocido', () => pm.expect(['WAITING', 'ENABLED']).to.include(body.status));",
+                  "if (body.status === 'WAITING') {",
+                  "    pm.test('Posicion positiva', () => pm.expect(body.position).to.be.above(0));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consultar estado → 200",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/queue/{{eventId}}/me"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Estado reconocido', () => pm.expect(['WAITING', 'ENABLED', 'EXPIRED']).to.include(body.status));",
+                  "if (body.status === 'WAITING') {",
+                  "    pm.test('Posicion positiva', () => pm.expect(body.position).to.be.above(0));",
+                  "    pm.test('Sin turno antes de habilitar', () => pm.expect(body.queueToken).to.be.null);",
+                  "} else if (body.status === 'ENABLED') {",
+                  "    pm.test('Tiene turno y vencimiento', () => {",
+                  "        pm.expect(body.queueToken).to.be.a('string').and.not.empty;",
+                  "        pm.expect(body.enabledUntil).to.be.a('string').and.not.empty;",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Expirado sin turno', () => pm.expect(body.queueToken).to.be.null);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Obtener JWKS para ticket-service",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{queueServiceUrl}}/.well-known/jwks.json"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const key = pm.response.json().keys[0];",
+                  "pm.test('Clave RSA publica con kid', () => {",
+                  "    pm.expect(key.kty).to.eql('RSA');",
+                  "    pm.expect(key.kid).to.be.a('string').and.not.empty;",
+                  "    pm.expect(key).to.not.have.property('d');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -129,7 +129,7 @@ public class EventSearchService {
                 .collect(Collectors.toMap(EventPriceFrom::eventId, EventPriceFrom::price));
         return events.stream()
                 .map(e -> new EventSummaryResponse(e.getId(), e.getName(), e.getType(), e.getStatus(), e.getDateTime(),
-                        e.isHighDemand(), e.getOrganizationId(), VenueMapper.toSummary(e.getVenue()), prices.get(e.getId()),
+                        e.isHighDemand(), e.getSaleStart(), e.getOrganizationId(), VenueMapper.toSummary(e.getVenue()), prices.get(e.getId()),
                         participants.getOrDefault(e.getId(), List.of())))
                 .toList();
     }

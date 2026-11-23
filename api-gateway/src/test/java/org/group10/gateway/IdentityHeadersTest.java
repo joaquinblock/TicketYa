@@ -90,6 +90,15 @@ class IdentityHeadersTest {
     }
 
     @Test
+    void withQueueToken_forwardsItUnchanged() {
+        get(Map.of("X-Queue-Token", "queue-token"));
+
+        assertThat(HEADERS_RECEIVED_BY_EVENT_SERVICE).hasSize(1);
+        assertThat(HEADERS_RECEIVED_BY_EVENT_SERVICE.getFirst().getFirst("X-Queue-Token"))
+                .isEqualTo("queue-token");
+    }
+
+    @Test
     void withValidToken_forgedHeadersOfTheClientNeverReachTheService() {
         get(Map.of("Authorization", "Bearer " + TestTokens.client(),
                 "X-User-Id", "3", "X-User-Permissions", "EVENT_ADMIN,USER_MANAGE", "X-Organization-Id", "2"));

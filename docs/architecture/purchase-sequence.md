@@ -74,6 +74,16 @@ sequenceDiagram
         T->>TDB: orden EXPIRED, asientos → AVAILABLE
         T->>P: POST /internal/refunds por cada entrada<br/>(motivo PURCHASE_COMPENSATION)
         T-->>C: 409 reservation_expired (el dinero se reintegra)
+
+    else La emisión falla después de cobrar
+        PG-->>P: aprobado
+        P-->>T: 201 APPROVED
+        T->>TDB: guarda charge_approved_at
+        T->>TDB: falla la emisión: no queda ninguna entrada emitida
+        T->>TDB: orden FAILED, asientos → AVAILABLE
+        T->>P: POST /internal/refunds por cada entrada<br/>(motivo PURCHASE_COMPENSATION)
+        T-->>C: 409 purchase_failed (el dinero se reintegra)
+        Note over T,P: Si un reintegro falla, PurchaseCompensationJob<br/>lo reintenta cada 30 s hasta tener respuesta
     end
 ```
 
@@ -124,6 +134,7 @@ sequenceDiagram
 | Pagar | `409 payment_in_progress` | Hay otro intento de pago en curso para esa orden |
 | Pagar | `409 payment_window_closed` | Falta menos de 1 minuto para que venza la reserva |
 | Pagar | `409 reservation_expired` | La reserva venció |
+| Pagar | `409 purchase_failed` | Se cobró y falló la emisión: la orden queda `FAILED` y el pago se reintegra |
 | Pagar | `503 service_unavailable` | El payment-service no respondió: solo se puede repetir ese mismo intento |
 
 Todos los códigos están en [`error-handling.md`](error-handling.md).

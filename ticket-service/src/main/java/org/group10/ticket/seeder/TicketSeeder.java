@@ -71,6 +71,24 @@ public class TicketSeeder implements ApplicationRunner {
     private static final SeatBlock ARENA_LOWER_STAND = new SeatBlock(155L, List.of("A", "B", "C"), 15);
     private static final SeatBlock LITORAL_STAND = new SeatBlock(200L, List.of("A", "B"), 20);
 
+    private static final BillboardSector STADIUM_FIELD = BillboardSector.generalAdmission(STADIUM, "Campo", 5000);
+    private static final BillboardSector LITORAL_TERRACE = BillboardSector.generalAdmission(LITORAL, "Popular", 12000);
+    private static final BillboardSector ARENA_FIELD = BillboardSector.generalAdmission(ARENA, "Campo", 8000);
+    private static final BillboardSector HARBOR_ROOM = BillboardSector.generalAdmission(HARBOR_HALL, "Sala", 300);
+    private static final BillboardSector THEATER_STALLS_SECTOR =
+            BillboardSector.numbered(THEATER, "Platea", THEATER_STALLS);
+    private static final BillboardSector THEATER_BALCONY_SECTOR =
+            BillboardSector.numbered(THEATER, "Pullman", THEATER_BALCONY);
+
+    /** The EventSeeder's billboard: events 13 to 42, each with a single sector (event_sector 18 to 47). */
+    private static final long BILLBOARD_FIRST_EVENT_ID = 13L;
+    private static final long BILLBOARD_FIRST_EVENT_SECTOR_ID = 18L;
+    private static final int BILLBOARD_FIRST_DAY = 75;
+    private static final int BILLBOARD_DAYS_APART = 3;
+    private static final int BILLBOARD_BASE_PRICE = 50000;
+    private static final int BILLBOARD_PRICE_STEP = 1500;
+    private static final int BILLBOARD_MAX_TICKETS = 4;
+
     private final EventSaleService eventSaleService;
     private final OrderRepository orderRepository;
     private final TicketRepository ticketRepository;
@@ -81,6 +99,26 @@ public class TicketSeeder implements ApplicationRunner {
     private final Clock clock;
 
     private record Venue(String name, String address, String city) {
+    }
+
+    /** A venue's sector as the billboard sells it: a capacity for general admission, seats when numbered. */
+    private record BillboardSector(Venue venue, String name, Integer capacity, SeatBlock seats) {
+
+        static BillboardSector generalAdmission(Venue venue, String name, int capacity) {
+            return new BillboardSector(venue, name, capacity, null);
+        }
+
+        static BillboardSector numbered(Venue venue, String name, SeatBlock seats) {
+            return new BillboardSector(venue, name, null, seats);
+        }
+
+        SectorSale sale(Long eventSectorId, String price) {
+            return new SectorSale(eventSectorId, name, new BigDecimal(price), capacity,
+                    seats == null ? null : seats.seats());
+        }
+    }
+
+    private record BillboardEvent(String name, BillboardSector sector) {
     }
 
     private record SeatBlock(long firstSeatId, List<String> rows, int seatsPerRow) {
@@ -103,6 +141,7 @@ public class TicketSeeder implements ApplicationRunner {
         }
 
         seedEventSalesWithTheSameDataAsTheEventSeeder();
+        seedBillboardSales();
         sellOutTheJazzRoom();
         seedPaidFieldOrder();
         seedPaidSeatOrder();
@@ -139,6 +178,52 @@ public class TicketSeeder implements ApplicationRunner {
         sale(11L, "Peña folklórica serrana", THEATER, EventSaleStatus.PUBLISHED, at(18, 21, 0), null, false, 8,
                 numbered(15L, "Platea", "9000", THEATER_STALLS),
                 numbered(16L, "Pullman", "7000", THEATER_BALCONY));
+    }
+
+    /**
+     * Same order, names, sectors, dates and prices as the EventSeeder's billboard, so every published event the
+     * front lists has its availability.
+     */
+    private void seedBillboardSales() {
+        List<BillboardEvent> billboard = List.of(
+                new BillboardEvent("Noche de tango", STADIUM_FIELD),
+                new BillboardEvent("Rock del Litoral", LITORAL_TERRACE),
+                new BillboardEvent("Cuarteto en la Arena", ARENA_FIELD),
+                new BillboardEvent("Jazz de medianoche", HARBOR_ROOM),
+                new BillboardEvent("Coro de cámara", THEATER_STALLS_SECTOR),
+                new BillboardEvent("Orquesta sinfónica juvenil", THEATER_STALLS_SECTOR),
+                new BillboardEvent("Pop nacional en vivo", STADIUM_FIELD),
+                new BillboardEvent("Festival de cerveza artesanal", ARENA_FIELD),
+                new BillboardEvent("Festival del Río", LITORAL_TERRACE),
+                new BillboardEvent("Festival de jazz costero", HARBOR_ROOM),
+                new BillboardEvent("Festival de rock del Sur", STADIUM_FIELD),
+                new BillboardEvent("Encuentro de murgas", ARENA_FIELD),
+                new BillboardEvent("Hamlet", THEATER_STALLS_SECTOR),
+                new BillboardEvent("Bodas de sangre", THEATER_BALCONY_SECTOR),
+                new BillboardEvent("La nona", THEATER_STALLS_SECTOR),
+                new BillboardEvent("Comedia de enredos", HARBOR_ROOM),
+                new BillboardEvent("El método Grönholm", THEATER_BALCONY_SECTOR),
+                new BillboardEvent("Improvisación en vivo", HARBOR_ROOM),
+                new BillboardEvent("Final de vóley", ARENA_FIELD),
+                new BillboardEvent("Torneo de básquet", ARENA_FIELD),
+                new BillboardEvent("Litoral vs. Paraná", LITORAL_TERRACE),
+                new BillboardEvent("Copa de rugby del Sur", STADIUM_FIELD),
+                new BillboardEvent("Maratón nocturna", STADIUM_FIELD),
+                new BillboardEvent("Clásico de handball", LITORAL_TERRACE),
+                new BillboardEvent("Congreso de desarrollo web", ARENA_FIELD),
+                new BillboardEvent("Jornada de datos abiertos", HARBOR_ROOM),
+                new BillboardEvent("Charla de diseño de producto", THEATER_STALLS_SECTOR),
+                new BillboardEvent("Encuentro de emprendedores", LITORAL_TERRACE),
+                new BillboardEvent("Seminario de ciberseguridad", ARENA_FIELD),
+                new BillboardEvent("Foro de energías renovables", STADIUM_FIELD)
+        );
+        for (int index = 0; index < billboard.size(); index++) {
+            BillboardEvent item = billboard.get(index);
+            String price = String.valueOf(BILLBOARD_BASE_PRICE + index * BILLBOARD_PRICE_STEP);
+            sale(BILLBOARD_FIRST_EVENT_ID + index, item.name(), item.sector().venue(), EventSaleStatus.PUBLISHED,
+                    at(BILLBOARD_FIRST_DAY + index * BILLBOARD_DAYS_APART, 21, 0), null, false,
+                    BILLBOARD_MAX_TICKETS, item.sector().sale(BILLBOARD_FIRST_EVENT_SECTOR_ID + index, price));
+        }
     }
 
     private void sale(Long eventId, String eventName, Venue venue, EventSaleStatus status, LocalDateTime dateTime,

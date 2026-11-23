@@ -5,7 +5,7 @@
 ## Convenciones
 
 - **Todo entra por el gateway** (`http://localhost:8080`). Las rutas `/internal/**` son llamadas entre servicios: el gateway no las enruta y se usan contra el puerto de cada servicio.
-- **Identidad:** en la Entrega 1 va en el header `X-User-Id` (sin JWT). En el event-service, los endpoints con permiso lo verifican contra el auth-service antes de entrar (ver [`permissions.md`](permissions.md)): si falta, `400`; si el usuario no tiene el permiso, `403 forbidden`; si no existe, `404 user_not_found`.
+- **Identidad:** en la Entrega 1 va en el header `X-User-Id` (sin JWT). En la Entrega 2, el api-gateway valida el JWT y reenvía la identidad y los permisos en `X-User-*` (ADR-003). El event-service de la Entrega 1 verifica los permisos contra auth-service (ver [`permissions.md`](permissions.md)).
 - **Errores:** todos responden con el mismo `ErrorDto` (`error`, `message`, `status` y, a veces, `detail`). Los códigos de cada servicio están en [`error-handling.md`](error-handling.md).
 - **Validación:** un body o un parámetro inválido responde `400 validation_error` con cada campo en `detail`, aunque la tabla no lo repita en cada fila. Un servicio del que se depende y no responde da `503 service_unavailable`.
 - **Fechas:** ISO-8601 sin zona (`2026-12-12T21:00:00`). **Montos:** decimales con dos posiciones, en pesos.
@@ -18,6 +18,7 @@
 | [event-service](#event-service) | 8082 | 31 | Lugares, sectores, asientos, participantes y eventos (alta, configuración, estados y búsqueda). |
 | [ticket-service](#ticket-service) | 8083 | 13 | Disponibilidad, reservas, pago y emisión de entradas, compras, devoluciones, ingreso con QR y reportes. |
 | [payment-service](#payment-service) | 8084 | 4 | Cobros y reintegros contra la pasarela simulada. |
+| [queue-service](#queue-service) | 8085 | 3 | Fila virtual, turnos de compra y publicación de la clave pública para verificarlos. |
 
 ## auth-service
 
@@ -94,8 +95,8 @@ Disponibilidad, reservas, pago y emisión de entradas, compras, devoluciones e i
 |---|---|---|---|---|---|
 | `GET` | `/api/availability` | Consultar la disponibilidad de un evento | `?eventId` | Público | **200** Disponibilidad por sector<br>**404** resource_not_found: el evento no tiene lugares a la venta |
 | `GET` | `/api/events/{eventId}/report` | Consultar el reporte de un evento | `{eventId}` | `REPORT_VIEW`, organizador de la organización del evento | **200** Reporte por sector y total del evento<br>**400** validation_error<br>**401** unauthorized<br>**403** forbidden<br>**404** event_not_found<br>**503** service_unavailable: el event-service no responde |
-| `POST` | `/api/orders` | Reservar lugares | header `X-User-Id`<br>body `ReservationRequest` | `X-User-Id`, sin validar rol | **201** Reserva creada, o la orden ya creada por ese mismo intento<br>**400** validation_error<br>**404** resource_not_found: el evento, sector o asiento no existe<br>**409** seat_unavailable, sector_sold_out, ticket_limit_exceeded, event_not_on_sale, sale_not_started o data_conflict |
-| `POST` | `/api/orders/{id}/pay` | Pagar una orden | header `X-User-Id`<br>`{id}`<br>body `PayOrderRequest` | `X-User-Id`, sin validar rol | **200** Orden pagada, con sus entradas y QR<br>**400** validation_error<br>**404** order_not_found: no existe o es de otro cliente<br>**409** reservation_expired, payment_window_closed, order_not_payable o payment_in_progress<br>**422** payment_rejected, con reason y rejectedAttempts en detail<br>**503** service_unavailable: el pago quedó sin resultado y solo se puede repetir ese intento |
+| `POST` | `/api/orders` | Reservar lugares | header `X-User-Id`<br>header opcional `X-Queue-Token`<br>body `ReservationRequest` | `X-User-Id`, sin validar rol | **201** Reserva creada, o la orden ya creada por ese mismo intento<br>**400** validation_error<br>**403** invalid_queue_token: turno faltante o no válido para cliente/evento de alta demanda<br>**404** resource_not_found: el evento, sector o asiento no existe<br>**409** seat_unavailable, sector_sold_out, ticket_limit_exceeded, event_not_on_sale, sale_not_started o data_conflict<br>**503** service_unavailable: no se pudo consultar el JWKS |
+| `POST` | `/api/orders/{id}/pay` | Pagar una orden | header `X-User-Id`<br>`{id}`<br>body `PayOrderRequest` | `X-User-Id`, sin validar rol | **200** Orden pagada, con sus entradas y QR<br>**400** validation_error<br>**404** order_not_found: no existe o es de otro cliente<br>**409** reservation_expired, payment_window_closed, order_not_payable, payment_in_progress o purchase_failed: se cobró, falló la emisión y el pago se reintegra<br>**422** payment_rejected, con reason y rejectedAttempts en detail<br>**503** service_unavailable: el pago quedó sin resultado y solo se puede repetir ese intento |
 | `GET` | `/api/orders` | Ver mis compras | header `X-User-Id` | `X-User-Id`, sin validar rol | **200** Órdenes del cliente, de la más nueva a la más vieja |
 | `GET` | `/api/orders/{id}` | Ver una compra | header `X-User-Id`<br>`{id}` | `X-User-Id`, sin validar rol | **200** Orden con sus entradas<br>**404** order_not_found: no existe o es de otro cliente |
 | `POST` | `/api/orders/{id}/cancel` | Abandonar una reserva | header `X-User-Id`<br>`{id}` | `X-User-Id`, sin validar rol | **200** Orden abandonada<br>**404** order_not_found: no existe o es de otro cliente<br>**409** payment_in_progress, reservation_expired u order_not_cancellable |
@@ -213,11 +214,11 @@ GET /api/events?q=serran&sort=RELEVANCE&size=2
 {
   "content": [
     { "id": 11, "name": "Peña folklórica serrana", "type": "CONCERT", "status": "PUBLISHED",
-      "dateTime": "2026-11-28T21:00:00", "highDemand": false, "organizationId": 2,
+      "dateTime": "2026-11-28T21:00:00", "highDemand": false, "saleStart": null, "organizationId": 2,
       "venue": { "id": 2, "name": "Teatro de la Sierra", "city": "Tandil", "...": "..." },
       "priceFrom": 7000.00, "participants": ["Ballet Folklórico Serrano"] },
     { "id": 1, "name": "Los Serranos en vivo", "type": "CONCERT", "status": "PUBLISHED",
-      "dateTime": "2026-12-13T21:00:00", "highDemand": true, "organizationId": 1,
+      "dateTime": "2026-12-13T21:00:00", "highDemand": true, "saleStart": "2026-11-20T10:00:00", "organizationId": 1,
       "venue": { "id": 1, "name": "Estadio del Sur", "city": "Buenos Aires", "...": "..." },
       "priceFrom": 45000.00, "participants": ["Los Serranos"] }
   ],
@@ -230,6 +231,7 @@ GET /api/events?q=serran&sort=RELEVANCE&size=2
 ```http
 POST /api/orders
 X-User-Id: 1
+X-Queue-Token: <JWT de turno; solo para eventos de alta demanda>
 Content-Type: application/json
 
 { "eventId": 2, "idempotencyKey": "e3b0c442-98fc-4b1d-8f3a-7c5d1a2b3c4d", "seatIds": [90, 91] }
@@ -260,6 +262,31 @@ Content-Type: application/json
 ```
 
 El flujo completo, con el rechazo y el vencimiento de la reserva, está en [`purchase-sequence.md`](purchase-sequence.md).
+
+### Entrar y consultar la fila (queue-service)
+
+```http
+POST /api/queue/1/join
+Authorization: Bearer <JWT de auth-service con TICKET_PURCHASE>
+```
+```json
+201 Created
+{ "status": "WAITING", "position": 1, "queueToken": null, "enabledUntil": null }
+```
+```http
+GET /api/queue/1/me
+Authorization: Bearer <JWT de auth-service con TICKET_PURCHASE>
+```
+```json
+200 OK
+{
+  "status": "ENABLED",
+  "position": null,
+  "queueToken": "<JWT RS256 emitido por queue-service>",
+  "enabledUntil": "2026-11-22T13:10:30Z"
+}
+```
+El token de turno vence exactamente en `enabledUntil`; consultas posteriores no renuevan la ventana.
 
 ### Un error de permisos (event-service)
 

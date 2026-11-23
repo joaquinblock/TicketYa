@@ -67,6 +67,18 @@ public class Ticket {
 
     private Long validatedBy;
 
+    /**
+     * Cuándo payment-service aceptó el reintegro de una entrada que no llegó a venderse porque la compra falló
+     * después de cobrar (US-TKT-22). La entrada sigue {@code VOIDED}: no es una devolución.
+     */
+    private LocalDateTime compensatedAt;
+
+    /**
+     * Por qué payment-service rechazó el reintegro de compensación con un 4xx. Reintentar no lo arregla, así que el
+     * job deja de pedirlo y queda para resolver a mano.
+     */
+    private String refundError;
+
     @Version
     private Long version;
 

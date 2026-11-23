@@ -1,0 +1,47 @@
+# ticket-service con su base, para el sistema completo (lo incluye el docker-compose.yml de la raíz).
+# No es el compose.yaml de al lado: ese levanta solo la base para spring-boot:run.
+services:
+  ticket-service:
+    build: .
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_DATASOURCE_URL: jdbc:mysql://ticket-db:3306/ticket_db
+      SPRING_DATASOURCE_USERNAME: ${DB_USER:-group10}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-group10}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-dev-internal-secret}
+      AUTH_SERVICE_URL: http://auth-service:8081
+      EVENT_SERVICE_URL: http://event-service:8082
+      PAYMENT_SERVICE_URL: http://payment-service:8084
+      RABBITMQ_HOST: rabbitmq
+    # Sin ports: solo lo alcanzan el api-gateway y los otros servicios por la red de Docker (ADR-003)
+    depends_on:
+      ticket-db:
+        condition: service_healthy
+    mem_limit: 384m
+    healthcheck:
+      # La imagen no trae curl ni wget: bash pide /actuator/health por /dev/tcp
+      test:
+        - CMD
+        - bash
+        - -c
+        - exec 3<>/dev/tcp/localhost/8083 && printf 'GET /actuator/health HTTP/1.0\r\n\r\n' >&3 && grep -q '"status":"UP"' <&3
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  ticket-db:
+    image: mysql:8.4
+    # Buffer chico y sin performance_schema: la base de prueba no necesita más y así entran todas en la máquina
+    command: ["--innodb-buffer-pool-size=32M", "--performance-schema=OFF"]
+    environment:
+      MYSQL_DATABASE: ticket_db
+      MYSQL_USER: ${DB_USER:-group10}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-group10}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-group10}
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20

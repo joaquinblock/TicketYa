@@ -1,0 +1,27 @@
+# api-gateway, el único punto de entrada del sistema completo (lo incluye el docker-compose.yml de la raíz).
+services:
+  api-gateway:
+    build: .
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      AUTH_SERVICE_URL: http://auth-service:8081
+      EVENT_SERVICE_URL: http://event-service:8082
+      TICKET_SERVICE_URL: http://ticket-service:8083
+      PAYMENT_SERVICE_URL: http://payment-service:8084
+      QUEUE_SERVICE_URL: http://queue-service:8085
+      NOTIFICATION_SERVICE_URL: http://notification-service:8086
+      RECOMMENDATION_SERVICE_URL: http://recommendation-service:8087
+    # El único puerto publicado (ADR-003). No espera a los servicios: si uno no levantó, sus rutas dan 503
+    ports:
+      - "8080:8080"
+    mem_limit: 384m
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - exec 3<>/dev/tcp/localhost/8080 && printf 'GET /actuator/health HTTP/1.0\r\n\r\n' >&3 && grep -q '"status":"UP"' <&3
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s

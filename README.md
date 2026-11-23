@@ -61,7 +61,23 @@ En IntelliJ es lo mismo: se corre la clase `*Application` de cada módulo (las c
 
 El perfil `dev` del auth-service habilita `POST /api/auth/dev-login {"userId": 2}`, que devuelve el JWT de cualquier usuario del seeder sin pasar por Google. Cómo y cuándo usarlo: [ADR-002](docs/adr/ADR-002-dev-login.md).
 
-Hay que usar `spring-boot:run`: con `java -jar` el servicio no arranca, porque `spring-boot-docker-compose` es una dependencia de desarrollo, no se empaqueta en el jar y sin ella no hay datasource. El despliegue con contenedores y un único `docker-compose.yml` es de la Entrega 2.
+Hay que usar `spring-boot:run`: con `java -jar` el servicio no arranca, porque `spring-boot-docker-compose` es una dependencia de desarrollo, no se empaqueta en el jar y sin ella no hay datasource. Para levantarlo con `java -jar`, como en los contenedores, el datasource se pasa por variables de entorno (ver abajo).
+
+### Levantar el sistema completo en contenedores
+
+Cada servicio tiene un `Dockerfile` y un `docker-compose.yml` con su base. El `docker-compose.yml` de la raíz los incluye a todos, junto con RabbitMQ y Mailpit, y los corre con el perfil `dev` ([ADR-001](docs/adr/ADR-001-docker-dev-profile.md)):
+
+```bash
+./mvnw package -DskipTests      # Windows: mvnw.cmd package -DskipTests
+docker compose up --build       # todo; o solo lo nombrado: docker compose up --build ticket-service
+docker compose down             # apagar
+```
+
+- **Solo publica el gateway (8080)**, más la consola de RabbitMQ (15672) y Mailpit (8025). Los servicios y las bases solo se ven por la red de Docker, donde se encuentran por nombre (`http://event-service:8082`).
+- **Las imágenes copian el jar compilado:** después de cambiar código hay que volver a correr `./mvnw package` y `docker compose up --build`.
+- **Necesita unos 4 GB para Docker** (17 contenedores). Con WSL 2 se configura en `%UserProfile%\.wslconfig`, `[wsl2]` y `memory=4GB`.
+- **Las variables** (credenciales y `INTERNAL_SECRET`) son opcionales: sin `.env` se usan los valores de desarrollo. Están en `.env.example`.
+- **El sistema completo y el desarrollo no van a la vez:** RabbitMQ usa el mismo puerto en los dos.
 
 - **Todo entra por el gateway (`http://localhost:8080`).** Las rutas `/internal/**` (llamadas entre servicios) no pasan por el gateway: se usan directo contra el puerto de cada servicio.
 - **Swagger de todo el sistema:** http://localhost:8080/swagger-ui.html. Arriba a la derecha se elige el servicio. Los endpoints con candado piden token: *Authorize* y pegar el `accessToken` de `dev-login` (ver *Swagger* en [`permissions.md`](docs/architecture/permissions.md)).

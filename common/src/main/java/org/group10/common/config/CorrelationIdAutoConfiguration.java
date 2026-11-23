@@ -1,0 +1,39 @@
+package org.group10.common.config;
+
+import org.group10.common.logging.CorrelationIdFilter;
+import org.group10.common.logging.CorrelationIdRequestInterceptor;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.client.support.RestClientHttpServiceGroupConfigurer;
+
+@AutoConfiguration
+@ConditionalOnProperty(name = "ticketya.logging.correlation.enabled", havingValue = "true")
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+@ConditionalOnMissingClass("org.springframework.cloud.gateway.server.mvc.handler.GatewayRouterFunctions")
+public class CorrelationIdAutoConfiguration {
+
+    @Bean
+    CorrelationIdFilter ticketyaCorrelationIdFilter() {
+        return new CorrelationIdFilter();
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(RestClientHttpServiceGroupConfigurer.class)
+    static class PropagateCorrelationId {
+
+        @Bean
+        RestClientHttpServiceGroupConfigurer ticketyaCorrelationIdConfigurer() {
+            CorrelationIdRequestInterceptor interceptor = new CorrelationIdRequestInterceptor();
+            return groups -> groups.forEachClient((group, builder) -> {
+                if ("payment-service".equals(group)) {
+                    builder.requestInterceptor(interceptor);
+                }
+            });
+        }
+    }
+}

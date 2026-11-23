@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.group10.common.exception.CommonErrorCode;
 import org.group10.common.exception.TicketYaException;
+import org.group10.common.tracing.CorrelationHeaders;
 import org.group10.payment.dto.RefundOutcome;
 import org.group10.payment.dto.RefundRequest;
 import org.group10.payment.entity.Payment;
@@ -118,6 +119,9 @@ public class RefundService {
         RefundResult result = askTheGatewayToCredit(requestedRefund);
         Refund refund = transaction.execute(status -> commitGatewayAnswer(requestedRefund.getId(), result));
 
+        log.info(
+                "operation=refund status={} refundId={} ticketId={} correlationId={}",
+                refund.getStatus(), refund.getId(), refund.getTicketId(), CorrelationHeaders.currentOrCreate());
         ensureRefundWasCredited(refund);
         return refund;
     }

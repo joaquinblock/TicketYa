@@ -14,6 +14,10 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.slf4j.MDC;
+import org.group10.common.tracing.CorrelationHeaders;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -30,7 +34,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class CheckInServiceTest {
 
     private static final Long STAFF_ID = 4L;
@@ -59,6 +63,21 @@ class CheckInServiceTest {
 
         assertThat(response).isEqualTo(new CheckInResponse(10L, "Platea", "A", 15, NOW));
         verify(ticketRepository).markIssuedTicketAsUsed(10L, NOW, STAFF_ID);
+    }
+
+    @Test
+    void checkIn_success_logsCriticalOperationWithoutQr(CapturedOutput output) {
+        MDC.put(CorrelationHeaders.MDC_KEY, "operation-123");
+        when(ticketRepository.findWithOrderByQrCode(QR)).thenReturn(Optional.of(ticket(EVENT_ID, TicketStatus.ISSUED)));
+        when(ticketRepository.markIssuedTicketAsUsed(10L, NOW, STAFF_ID)).thenReturn(1);
+
+        service.checkIn(STAFF_ID, EVENT_ID, QR);
+
+        assertThat(output).contains("operation=check_in")
+                .contains("status=success")
+                .contains("correlationId=operation-123")
+                .doesNotContain(QR);
+        MDC.clear();
     }
 
     @Test

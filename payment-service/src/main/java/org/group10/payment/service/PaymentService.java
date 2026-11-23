@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.group10.common.exception.CommonErrorCode;
 import org.group10.common.exception.TicketYaException;
+import org.group10.common.tracing.CorrelationHeaders;
 import org.group10.payment.dto.OrderPaymentResponse;
 import org.group10.payment.dto.PaymentRequest;
 import org.group10.payment.dto.PaymentResponse;
@@ -84,6 +85,9 @@ public class PaymentService {
         ChargeResult chargeResult = askTheGatewayToCharge(pendingPayment);
         Payment chargedPayment = commitChargeResult(pendingPayment, chargeResult);
 
+        log.info("operation=payment status={} paymentId={} orderId={} paymentMethod={} correlationId={}",
+                chargedPayment.getStatus(), chargedPayment.getId(), chargedPayment.getOrderId(),
+                chargedPayment.getPaymentMethod(), CorrelationHeaders.currentOrCreate());
         return answerWithTheFinalResult(chargedPayment);
     }
 

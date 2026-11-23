@@ -2,8 +2,10 @@ package org.group10.event.messaging;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.group10.common.tracing.CorrelationHeaders;
 import org.group10.event.config.RabbitConfig;
 import org.springframework.amqp.AmqpException;
+import org.springframework.amqp.core.MessagePostProcessor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
@@ -27,10 +29,19 @@ public class EventChangedPublisher {
         EventChangedMessage message = new EventChangedMessage(UUID.randomUUID(), changed.occurredAt(),
                 changed.eventId(), changed.change());
         try {
-            rabbitTemplate.convertAndSend(RabbitConfig.EVENTS_EXCHANGE, changed.change().routingKey(), message);
+            rabbitTemplate.convertAndSend(RabbitConfig.EVENTS_EXCHANGE, changed.change().routingKey(), message,
+                    correlationPostProcessor());
         } catch (AmqpException e) {
             // Spring atraparía la excepción igual, pero la loguearía sin decir de qué evento era el aviso.
             log.warn("No se pudo avisar el cambio {} del evento {}", changed.change(), changed.eventId(), e);
         }
+    }
+
+    private static MessagePostProcessor correlationPostProcessor() {
+        return amqpMessage -> {
+            amqpMessage.getMessageProperties().setHeader(CorrelationHeaders.HEADER,
+                    CorrelationHeaders.currentOrCreate());
+            return amqpMessage;
+        };
     }
 }

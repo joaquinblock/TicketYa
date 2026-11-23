@@ -2,8 +2,11 @@ package org.group10.notification.messaging;
 
 import org.group10.notification.config.RabbitConfig;
 import org.group10.notification.service.EventChangeNotificationService;
+import org.group10.common.tracing.CorrelationHeaders;
+import org.slf4j.MDC;
 import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
 /**
@@ -25,14 +28,25 @@ public class EventChangedListener {
         this.notificationService = notificationService;
     }
 
-    @RabbitListener(queues = RabbitConfig.EVENT_QUEUE)
     public void onEventChanged(EventChangedMessage message) {
-        if (message.messageId() == null || message.eventId() == null || message.change() == null) {
-            throw new AmqpRejectAndDontRequeueException("Cambio de evento sin messageId, eventId o change: " + message);
+        onEventChanged(message, null);
+    }
+
+    @RabbitListener(queues = RabbitConfig.EVENT_QUEUE)
+    public void onEventChanged(EventChangedMessage message,
+                               @Header(name = CorrelationHeaders.HEADER, required = false) String correlationId) {
+        MDC.put(CorrelationHeaders.MDC_KEY, CorrelationHeaders.normalize(correlationId));
+        try {
+            if (message.messageId() == null || message.eventId() == null || message.change() == null) {
+                throw new AmqpRejectAndDontRequeueException(
+                        "Cambio de evento sin messageId, eventId o change: " + message);
+            }
+            if (message.change() == EventChangedMessage.Change.PUBLISHED) {
+                return;
+            }
+            notificationService.notifyChange(message.messageId(), message.eventId(), message.change());
+        } finally {
+            MDC.remove(CorrelationHeaders.MDC_KEY);
         }
-        if (message.change() == EventChangedMessage.Change.PUBLISHED) {
-            return;
-        }
-        notificationService.notifyChange(message.messageId(), message.eventId(), message.change());
     }
 }

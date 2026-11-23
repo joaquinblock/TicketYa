@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.amqp.AmqpConnectException;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.amqp.core.MessagePostProcessor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -131,7 +132,8 @@ class PurchaseConfirmedPublishingMySqlIntegrationTest {
 
         assertThat(pay(orderId, newKey()).status()).isEqualTo(422);
 
-        verify(rabbitTemplate, never()).convertAndSend(anyString(), anyString(), any(Object.class));
+        verify(rabbitTemplate, never()).convertAndSend(anyString(), anyString(), any(Object.class),
+                any(MessagePostProcessor.class));
     }
 
     @Test
@@ -145,14 +147,16 @@ class PurchaseConfirmedPublishingMySqlIntegrationTest {
         assertThat(pay(orderId, newKey()).status()).isEqualTo(409);
 
         verify(paymentClient).refund(any());
-        verify(rabbitTemplate, never()).convertAndSend(anyString(), anyString(), any(Object.class));
+        verify(rabbitTemplate, never()).convertAndSend(anyString(), anyString(), any(Object.class),
+                any(MessagePostProcessor.class));
     }
 
     @Test
     void pay_brokerDown_stillAnswersPaidWithIssuedTickets() {
         long orderId = reservePlaces(2);
         doThrow(new AmqpConnectException(new ConnectException("Connection refused")))
-                .when(rabbitTemplate).convertAndSend(anyString(), anyString(), any(Object.class));
+                .when(rabbitTemplate).convertAndSend(anyString(), anyString(), any(Object.class),
+                        any(MessagePostProcessor.class));
 
         HttpResult paid = pay(orderId, newKey());
 
@@ -185,7 +189,8 @@ class PurchaseConfirmedPublishingMySqlIntegrationTest {
 
     private PurchaseConfirmedMessage theOnlyPublishedMessage() {
         ArgumentCaptor<PurchaseConfirmedMessage> message = ArgumentCaptor.forClass(PurchaseConfirmedMessage.class);
-        verify(rabbitTemplate).convertAndSend(eq("ticketya.events"), eq("purchase.confirmed"), message.capture());
+        verify(rabbitTemplate).convertAndSend(eq("ticketya.events"), eq("purchase.confirmed"), message.capture(),
+                any(MessagePostProcessor.class));
         return message.getValue();
     }
 

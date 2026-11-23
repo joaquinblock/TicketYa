@@ -115,6 +115,12 @@ Todas van por ID, sin FK física, porque cada servicio tiene su propia base.
 | `event_sector_price.sector_name`, `ticket.sector_name` | `sector.name` | Lo mismo para el sector de la entrada y de la disponibilidad |
 | `event_seat.seat_row`, `event_seat.number`, `ticket.seat_row`, `ticket.number` | `seat.row`, `seat.number` | Lo mismo para la fila y el número del asiento |
 
+## Trazabilidad
+
+Todos los microservicios reciben `X-Correlation-ID` mediante la autoconfiguración de `common`. Si falta, generan un UUID, lo devuelven en la respuesta y lo guardan en SLF4J/MDC durante el request. Los clientes HTTP propagan el header; los publishers RabbitMQ lo agregan a las propiedades del mensaje y los listeners lo restauran en MDC.
+
+Cada request registra método, endpoint, usuario, status HTTP y duración. Las operaciones críticas usan logs estructurados con `operation`, `status`, identificadores del recurso y `correlationId`. No se registran códigos QR, cuerpos de request ni datos de la pasarela; el medio de pago puede aparecer solo como tipo.
+
 ## Decisiones
 
 ### No doble venta en sectores numerados: `event_seat` con `version`

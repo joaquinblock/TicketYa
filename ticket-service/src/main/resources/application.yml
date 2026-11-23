@@ -50,6 +50,10 @@ spring:
 
 ticketya:
   time-zone: America/Argentina/Buenos_Aires
+  queue:
+    jwk-set-uri: ${QUEUE_SERVICE_URL:http://localhost:8085}/.well-known/jwks.json
+    issuer: ${QUEUE_JWT_ISSUER:ticketya-queue}
+    audience: ${QUEUE_JWT_AUDIENCE:ticket-service}
   reservation:
     hold: 10m
     payment-margin: 1m

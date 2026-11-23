@@ -9,3 +9,8 @@ services:
       - 'MYSQL_ROOT_PASSWORD=group10'
     ports:
       - '3308:3306'
+  event-redis:
+    image: 'redis:7.4'
+    ports:
+      # 6379 es del Redis de queue-service
+      - '6380:6379'

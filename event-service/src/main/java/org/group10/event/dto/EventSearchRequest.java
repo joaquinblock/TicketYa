@@ -72,4 +72,16 @@ public record EventSearchRequest(
     public EventSort sortOrDefault() {
         return sort == null ? EventSort.DATE : sort;
     }
+
+    /**
+     * What any visitor sees first: no filters, the first page, the default size and order. The only search that's
+     * cached.
+     */
+    public boolean isInitialList() {
+        return (q == null || q.isBlank()) && (type == null || type.isEmpty()) && (city == null || city.isBlank())
+                && (participant == null || participant.isBlank())
+                && (participantId == null || participantId.isEmpty()) && organizationId == null
+                && from == null && to == null
+                && pageOrDefault() == 0 && sizeOrDefault() == DEFAULT_SIZE && sortOrDefault() == EventSort.DATE;
+    }
 }

@@ -10,6 +10,10 @@ import org.group10.event.exception.EventErrorCode;
 import org.group10.event.mapper.VenueMapper;
 import org.group10.event.repository.EventRepository;
 import org.group10.event.repository.VenueRepository;
+import org.group10.event.config.CatalogCaches;
+import org.group10.event.config.CatalogCaches.EvictsAllEvents;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +38,7 @@ public class VenueService {
         return venues.stream().map(VenueMapper::toSummary).toList();
     }
 
+    @Cacheable(cacheNames = CatalogCaches.VENUE, key = "#id", sync = true)
     public VenueDetailResponse findById(Long id) {
         return VenueMapper.toDetail(getVenue(id), sectorService.findAll(id));
     }
@@ -44,6 +49,8 @@ public class VenueService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CatalogCaches.VENUE, key = "#id")
+    @EvictsAllEvents
     public VenueSummaryResponse update(Long id, VenueRequest request) {
         Venue venue = getVenue(id);
         VenueMapper.update(venue, request);
@@ -56,6 +63,7 @@ public class VenueService {
      * @throws TicketYaException {@code VENUE_IN_USE} if any event, in any status, takes place there
      */
     @Transactional
+    @CacheEvict(cacheNames = CatalogCaches.VENUE, key = "#id")
     public void delete(Long id) {
         Venue venue = getVenue(id);
         if (eventRepository.existsByVenueId(id)) {

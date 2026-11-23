@@ -13,6 +13,7 @@ import jakarta.persistence.criteria.Subquery;
 import lombok.RequiredArgsConstructor;
 import org.group10.common.exception.CommonErrorCode;
 import org.group10.common.exception.TicketYaException;
+import org.group10.event.config.CatalogCaches;
 import org.group10.event.dto.EventPageResponse;
 import org.group10.event.dto.EventSearchRequest;
 import org.group10.event.dto.EventSort;
@@ -25,6 +26,7 @@ import org.group10.event.mapper.VenueMapper;
 import org.group10.event.repository.EventPriceFrom;
 import org.group10.event.repository.EventRepository;
 import org.group10.event.repository.EventSectorRepository;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -61,8 +63,12 @@ public class EventSearchService {
     private final Clock clock;
 
     /**
+     * Only the initial list is cached: any other combination of filters hardly ever repeats (ADR 0009).
+     *
      * @throws TicketYaException {@code INVALID_PARAMETER} if {@code from} is after {@code to}
      */
+    @Cacheable(cacheNames = CatalogCaches.EVENTS_UPCOMING, key = "'" + CatalogCaches.FIRST_PAGE + "'",
+            condition = "#request.isInitialList()", sync = true)
     public EventPageResponse search(EventSearchRequest request) {
         if (request.from() != null && request.to() != null && request.from().isAfter(request.to())) {
             throw new TicketYaException(CommonErrorCode.INVALID_PARAMETER,

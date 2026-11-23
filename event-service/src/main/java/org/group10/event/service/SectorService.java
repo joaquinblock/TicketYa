@@ -19,6 +19,9 @@ import org.group10.event.repository.SeatRepository;
 import org.group10.event.repository.SectorRepository;
 import org.group10.event.repository.SectorSeatCount;
 import org.group10.event.repository.VenueRepository;
+import org.group10.event.config.CatalogCaches;
+import org.group10.event.config.CatalogCaches.EvictsAllEvents;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -66,6 +69,8 @@ public class SectorService {
      *                           {@code SECTOR_NAME_DUPLICATED} or {@code SEAT_ROW_DUPLICATED}
      */
     @Transactional
+    @CacheEvict(cacheNames = CatalogCaches.VENUE, key = "#venueId")
+    @EvictsAllEvents
     public SectorResponse create(Long venueId, SectorCreateRequest request) {
         Venue venue = venueRepository.findById(venueId).orElseThrow(() -> venueNotFound(venueId));
         boolean numbered = request.numbered();
@@ -89,6 +94,8 @@ public class SectorService {
      *                           {@code DRAFT} sells the sector
      */
     @Transactional
+    @CacheEvict(cacheNames = CatalogCaches.VENUE, key = "#venueId")
+    @EvictsAllEvents
     public SectorResponse update(Long venueId, Long sectorId, SectorUpdateRequest request) {
         Sector sector = getSector(venueId, sectorId);
         validateConfiguration(sector.isNumbered(), request.capacity());
@@ -109,6 +116,8 @@ public class SectorService {
      * @throws TicketYaException {@code SECTOR_IN_USE} if any event, in any status, sells it
      */
     @Transactional
+    @CacheEvict(cacheNames = CatalogCaches.VENUE, key = "#venueId")
+    @EvictsAllEvents
     public void delete(Long venueId, Long sectorId) {
         Sector sector = getSector(venueId, sectorId);
         if (eventSectorRepository.existsBySectorId(sectorId)) {
@@ -133,6 +142,8 @@ public class SectorService {
      * @throws TicketYaException {@code SECTOR_NOT_NUMBERED}, {@code SECTOR_IN_USE} or {@code SEAT_ROW_DUPLICATED}
      */
     @Transactional
+    @CacheEvict(cacheNames = CatalogCaches.VENUE, key = "#venueId")
+    @EvictsAllEvents
     public List<SeatResponse> addSeatRows(Long venueId, Long sectorId, SeatBatchRequest request) {
         Sector sector = getSector(venueId, sectorId);
         if (!sector.isNumbered()) {
@@ -144,6 +155,8 @@ public class SectorService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CatalogCaches.VENUE, key = "#venueId")
+    @EvictsAllEvents
     public void deleteSeat(Long venueId, Long sectorId, Long seatId) {
         Sector sector = getSector(venueId, sectorId);
         Seat seat = seatRepository.findByIdAndSectorId(seatId, sectorId)

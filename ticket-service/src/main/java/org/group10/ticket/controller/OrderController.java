@@ -68,7 +68,7 @@ public class OrderController {
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "404", description = "order_not_found: no existe o es de otro cliente",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
-    @ApiResponse(responseCode = "409", description = "reservation_expired, payment_window_closed, order_not_payable o payment_in_progress",
+    @ApiResponse(responseCode = "409", description = "reservation_expired, payment_window_closed, order_not_payable, payment_in_progress o purchase_failed (se cobró, falló la emisión y el pago se reintegra)",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     @ApiResponse(responseCode = "422", description = "payment_rejected, con reason y rejectedAttempts en detail",
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))

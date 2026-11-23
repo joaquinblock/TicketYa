@@ -28,6 +28,17 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             """)
     int takeOrderForPaymentAttempt(Long id, String attemptKey);
 
+    /**
+     * Marca el cobro aprobado sin mirar el estado: si la orden venció o se canceló mientras se cobraba, el
+     * reintegro igual hay que hacerlo, y el job de compensación la encuentra por esta marca.
+     */
+    @Modifying
+    @Query("""
+            update Order o set o.chargeApprovedAt = :approvedAt
+            where o.id = :id and o.chargeApprovedAt is null
+            """)
+    int markChargeApproved(Long id, LocalDateTime approvedAt);
+
     @Modifying
     @Query("""
             update Order o set o.paymentAttemptKey = null

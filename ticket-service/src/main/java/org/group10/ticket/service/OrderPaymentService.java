@@ -6,7 +6,6 @@ import org.group10.common.dto.ErrorDto;
 import org.group10.common.exception.TicketYaException;
 import org.group10.ticket.client.PaymentClient;
 import org.group10.ticket.client.dto.ChargeRequest;
-import org.group10.ticket.client.dto.RefundRequest;
 import org.group10.ticket.config.ReservationProperties;
 import org.group10.ticket.dto.OrderResponse;
 import org.group10.ticket.dto.PayOrderRequest;
@@ -36,7 +35,6 @@ import java.util.List;
 @Slf4j
 public class OrderPaymentService {
 
-    private static final String PURCHASE_COMPENSATION = "PURCHASE_COMPENSATION";
     private static final String REJECTED_ATTEMPTS = "rejectedAttempts";
 
     private final OrderRepository orderRepository;
@@ -45,6 +43,7 @@ public class OrderPaymentService {
     private final OrderQueryService orderQueryService;
     private final OrderClosingService orderClosingService;
     private final SoldOutService soldOutService;
+    private final PurchaseCompensationService purchaseCompensationService;
     private final PaymentClient paymentClient;
     private final TransactionOperations transactions;
     private final ReservationProperties reservationProperties;
@@ -65,6 +64,7 @@ public class OrderPaymentService {
         }
 
         chargeRegisteringAnyRejection(order, request);
+        recordTheApprovedCharge(orderId);
         return issueTicketsOrCompensate(order, request.paymentMethod());
     }
 
@@ -103,6 +103,11 @@ public class OrderPaymentService {
         }
     }
 
+    private void recordTheApprovedCharge(Long orderId) {
+        transactions.executeWithoutResult(transaction ->
+                orderRepository.markChargeApproved(orderId, LocalDateTime.now(clock)));
+    }
+
     private void registerRejection(Long orderId, String attemptKey, int rejectedAttempts) {
         if (rejectedAttempts >= reservationProperties.maxRejectedPayments()) {
             orderClosingService.closePendingOrderReleasingItsPlaces(orderId, OrderStatus.REJECTED);
@@ -118,17 +123,33 @@ public class OrderPaymentService {
     }
 
     private OrderResponse issueTicketsOrCompensate(Order order, PaymentMethod paymentMethod) {
-        if (issueTicketsIfThePlacesAreStillHeld(order, paymentMethod)) {
+        boolean issued;
+        try {
+            issued = issueTicketsIfThePlacesAreStillHeld(order, paymentMethod);
+        } catch (RuntimeException issuingFailure) {
+            log.error("Se cobró la orden {} y falló la emisión de sus entradas: se reintegra", order.getId(),
+                    issuingFailure);
+            return closeAndCompensate(order, OrderStatus.FAILED);
+        }
+        if (issued) {
             soldOutService.markEventSoldOutIfNothingIsLeft(order.getEventId());
             return orderQueryService.toResponse(findOrder(order.getId()));
         }
+        return closeAndCompensate(order, OrderStatus.EXPIRED);
+    }
 
-        orderClosingService.closePendingOrderReleasingItsPlaces(order.getId(), OrderStatus.EXPIRED);
+    private OrderResponse closeAndCompensate(Order order, OrderStatus closingStatus) {
+        orderClosingService.closePendingOrderReleasingItsPlaces(order.getId(), closingStatus);
         Order current = findOrder(order.getId());
         if (current.getStatus() == OrderStatus.PAID) {
             return orderQueryService.toResponse(current);
         }
-        refundTicketsOfOrder(current);
+        purchaseCompensationService.refundTicketsOf(current);
+        if (current.getStatus() == OrderStatus.FAILED) {
+            throw new TicketYaException(TicketErrorCode.PURCHASE_FAILED,
+                    "La compra de la orden %d falló después de cobrar: no se emitieron entradas y el pago se reintegra"
+                            .formatted(current.getId()));
+        }
         throw rejectionOf(current);
     }
 
@@ -153,19 +174,6 @@ public class OrderPaymentService {
     private boolean sellsEverySeatOfTheOrder(Order order, List<Ticket> tickets) {
         long ticketsWithSeat = tickets.stream().filter(ticket -> ticket.getSeatId() != null).count();
         return eventSeatRepository.sellSeatsHeldByOrder(order.getId()) == ticketsWithSeat;
-    }
-
-    private void refundTicketsOfOrder(Order order) {
-        ticketRepository.findByOrderIdOrderById(order.getId()).forEach(ticket -> refundLoggingAnyFailure(order, ticket));
-    }
-
-    private void refundLoggingAnyFailure(Order order, Ticket ticket) {
-        try {
-            paymentClient.refund(new RefundRequest(ticket.getId(), order.getId(), ticket.getPrice(),
-                    PURCHASE_COMPENSATION, null));
-        } catch (RuntimeException failure) {
-            log.error("No se pudo reintegrar la entrada {} de la orden {}", ticket.getId(), order.getId(), failure);
-        }
     }
 
     private Order findOrder(Long orderId) {

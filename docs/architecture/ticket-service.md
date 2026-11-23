@@ -22,6 +22,7 @@ erDiagram
         decimal total
         varchar idempotency_key UK
         varchar payment_attempt_key "attempt without result; NULL if none"
+        datetime charge_approved_at "payment approved the charge; refund it if not PAID"
         datetime created_at
     }
     event_seat {
@@ -72,6 +73,8 @@ erDiagram
         enum status "RESERVED | ISSUED | USED | VOIDED | REFUNDED"
         datetime used_at
         bigint validated_by "auth-service, by ID"
+        datetime compensated_at "refund of a failed purchase accepted"
+        varchar refund_error "4xx of that refund, solved by hand"
         bigint version "optimistic locking"
     }
     return_request {
@@ -246,6 +249,25 @@ Una orden en `PENDING` puede terminar por varios caminos a la vez: se confirma e
 
 Si el pago se aprobó y la orden ya no puede pasar a `PAID`, no se emiten entradas y se pide el reintegro de cada `ticket` con motivo `PURCHASE_COMPENSATION`.
 
+### Compensar una compra que falla después de cobrar (US-TKT-22)
+
+Apenas payment-service aprueba el cobro, `orders.charge_approved_at` se guarda en una transacción corta, antes de emitir. Es la marca de que hay dinero cobrado: si la orden no termina `PAID`, hay que devolverlo.
+
+| Qué pasa después del cobro | Orden | Respuesta al cliente |
+|---|---|---|
+| Se emiten las entradas | `PAID` | 200 con las entradas |
+| La reserva venció o se perdió un asiento mientras se cobraba | `EXPIRED` | 409 `reservation_expired` |
+| El evento se canceló mientras se cobraba | Sigue `CANCELLED` | 409 `order_not_payable` |
+| La emisión falla por cualquier otro motivo (una excepción, la base) | `FAILED` | 409 `purchase_failed` |
+
+En los tres últimos casos los lugares se liberan, las entradas quedan `VOIDED` y se pide en el momento un reintegro por entrada con motivo `PURCHASE_COMPENSATION` (`PurchaseCompensationService`). Pagar de nuevo una orden `FAILED` responde 409 `order_not_payable`, sin cobrar.
+
+- **Reintentos hasta tener respuesta.** `PurchaseCompensationJob` corre cada 30 segundos (`ticketya.compensation.refund-check`). Busca entradas `VOIDED` sin `compensated_at` ni `refund_error` de órdenes con `charge_approved_at`, y vuelve a pedir su reintegro. Pedirlo dos veces es seguro, porque payment-service reintegra una sola vez por `ticket_id`.
+- **La entrada sigue `VOIDED`,** con `ticket.compensated_at` cuando payment acepta el reintegro. No pasa a `REFUNDED`, porque el reporte de organizadores cuenta las `REFUNDED` como devoluciones y estas entradas nunca se vendieron.
+- **Un 4xx de payment no se reintenta:** reintentar no lo arregla. Se guarda en `ticket.refund_error` y queda en el log como `ERROR`, con la orden y la entrada, para resolverlo a mano. Los timeouts, los 5xx y el 502 `refund_failed` se reintentan en la siguiente corrida.
+- **Si el servicio se cae entre cobrar y emitir,** la orden queda `PENDING` con la marca. El job de vencimiento la pasa a `EXPIRED` y el de compensación la reintegra.
+- **Lo que no cubre:** si se pierde la respuesta de payment, no hay marca. Eso lo resuelve la anulación del intento (US-TKT-23), descrita en *Manda la reserva*.
+
 ### Aviso de compra confirmada (`purchase.confirmed`)
 
 Cuando la transacción que deja la orden `PAID` se confirma, el ticket-service publica en el exchange `ticketya.events`, con la clave `purchase.confirmed` (ADR 0004):
@@ -367,8 +389,10 @@ Las historias y sus criterios de aceptación están en [`user-stories.md`](../us
 | Abandono voluntario de una reserva | La orden también pasa a `CANCELLED`, salvo con un pago en curso | Para el cliente es lo mismo que una cancelación, y la causa queda en el log de operaciones |
 | Entradas `USED` al cancelar | También se reintegran | La consigna 7 dice "todas sus entradas vendidas" |
 | Aprobar una devolución si el payment-service no responde | La solicitud sigue `PENDING` y el administrador reintenta | La entrada no se marca como devuelta hasta que payment acepte el reintegro |
-| Compra que falla después de cobrar | La orden termina en `FAILED` | El pago sí se aprobó, así que el cliente no debe ver "rechazado" |
+| Compra que falla después de cobrar | La orden termina en `FAILED` y el cliente recibe 409 `purchase_failed` | El pago sí se aprobó, así que el cliente no debe ver "rechazado" |
 | Compensación por vencimiento durante el pago | Va en la Entrega 1, en su forma simple | El caso puede ocurrir desde la primera entrega y la llamada de reintegro ya existe. La US-TKT-22 agrega los reintentos y los demás fallos |
+| Entradas de una compra compensada | Quedan `VOIDED`, con `compensated_at` | Nunca se vendieron: como `REFUNDED`, el reporte las contaría como devoluciones |
+| Reintegro de compensación rechazado con un 4xx | Se guarda el error y no se reintenta | Reintentar no lo arregla; queda en el log para resolverlo a mano. Lo que no tuvo respuesta sí se reintenta |
 
 ### Pendientes para la implementación
 

@@ -57,6 +57,8 @@ ticketya:
     expiration-check: PT30S
   cancellation:
     refund-check: PT30S
+  compensation:
+    refund-check: PT30S
 
 springdoc:
   swagger-ui:

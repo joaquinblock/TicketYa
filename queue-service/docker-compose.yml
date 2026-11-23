@@ -9,6 +9,8 @@ services:
       SPRING_DATA_REDIS_PORT: 6379
       INTERNAL_SECRET: ${INTERNAL_SECRET:-dev-internal-secret}
       EVENT_SERVICE_URL: http://event-service:8082
+      # Sin QUEUE_JWT_PRIVATE_KEY_LOCATION la clave del token de turno es efímera: al reiniciar queue-service,
+      # los turnos ya emitidos dejan de valer en ticket-service. Pendiente, igual que la clave del JWT de auth.
     # Sin ports: solo lo alcanzan el api-gateway y los otros servicios por la red de Docker (ADR-003)
     depends_on:
       queue-redis:

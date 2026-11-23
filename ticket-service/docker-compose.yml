@@ -12,6 +12,8 @@ services:
       AUTH_SERVICE_URL: http://auth-service:8081
       EVENT_SERVICE_URL: http://event-service:8082
       PAYMENT_SERVICE_URL: http://payment-service:8084
+      # De acá saca la clave pública del token de turno de la fila virtual (US-TKT-21)
+      QUEUE_SERVICE_URL: http://queue-service:8085
       RABBITMQ_HOST: rabbitmq
     # Sin ports: solo lo alcanzan el api-gateway y los otros servicios por la red de Docker (ADR-003)
     depends_on:

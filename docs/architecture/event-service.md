@@ -193,14 +193,14 @@ Organización `1` (*Del Sur Producciones*, organizador `2`), salvo los dos últi
 | 11 | Peña folklórica serrana | `CONCERT` | Tandil | `PUBLISHED` | +18 días | Organización `2` |
 | 12 | Cultura y territorio | `CONFERENCE` | Tandil | `DRAFT` | +70 días | Organización `2` |
 | 13–42 | Cartelera (*Noche de tango*, *Hamlet*, *Final de vóley*…) | Los cinco | Las cinco | `PUBLISHED` | +75 días, uno cada 3 | Que la cartelera del front tenga varias páginas |
-| 43 | Noche grande en la Ribera | `FESTIVAL` | Buenos Aires | `PUBLISHED` | +170 días | Las cuatro categorías; el ticket-service agota la Platea alta |
-| 44 | Clásico de la Ribera | `SPORTS` | Buenos Aires | `PUBLISHED` | +175 días | Campo agotado |
-| 45 | Festival de la Costanera | `FESTIVAL` | Buenos Aires | `PUBLISHED` | +180 días | Queda una sola entrada en Campo |
-| 46 | Final de la Copa Ribera | `SPORTS` | Buenos Aires | `PUBLISHED` | +185 días | Queda un solo asiento (D7 de la Platea baja) |
+| 43 | Noche grande en la Ribera | `FESTIVAL` | Buenos Aires | `PUBLISHED` | +4 días | Las cuatro categorías; el ticket-service agota la Platea alta |
+| 44 | Clásico de la Ribera | `SPORTS` | Buenos Aires | `PUBLISHED` | +5 días | Campo agotado |
+| 45 | Festival de la Costanera | `FESTIVAL` | Buenos Aires | `PUBLISHED` | +6 días | Queda una sola entrada en Campo |
+| 46 | Final de la Copa Ribera | `SPORTS` | Buenos Aires | `PUBLISHED` | +7 días | Queda un solo asiento (D7 de la Platea baja) |
 
 **La cartelera (13 a 42)** son 30 eventos publicados, de un solo sector, sin participantes y sin "serr" en el nombre. Van después de todos los demás en fecha (desde +75) y en precio (desde $50.000, con $1.500 más cada uno), así que por fecha y por precio los seis visibles de arriba siguen primeros. Por tipo: 7 recitales, 5 festivales, 6 obras, 6 partidos y 6 conferencias.
 
-**Los casos de venta (43 a 46)** sirven para ver en el front el paso de disponible a agotado. Están en el Estadio Ribera, van después de la cartelera en fecha (desde +170) y en precio (desde $52.000), y no tienen "serr" en el nombre. Usan los `event_sector` 48 a 61 (cuatro por evento, salvo el 46, que tiene solo Platea baja y Palco VIP). Lo que está vendido lo carga el `TicketSeeder`.
+**Los casos de venta (43 a 46)** sirven para ver en el front el paso de disponible a agotado. Están en el Estadio Ribera, van primeros en fecha (de +4 a +7 días, para que la cartelera los muestre en la primera página) y después de la cartelera en precio (desde $52.000), y no tienen "serr" en el nombre. Usan los `event_sector` 48 a 61 (cuatro por evento, salvo el 46, que tiene solo Platea baja y Palco VIP). Lo que está vendido lo carga el `TicketSeeder`.
 
 **Para el ABM de participantes:** *Sofía Lanza* (`SPEAKER`) no está en ningún evento y se puede borrar. El Festival (evento 4) es el evento de referencia con todos los campos completos, y `EventSeederTest` verifica que siga así.
 

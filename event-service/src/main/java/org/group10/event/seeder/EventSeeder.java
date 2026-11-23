@@ -314,8 +314,8 @@ public class EventSeeder implements ApplicationRunner {
     }
 
     /**
-     * Events 43 to 46, after the billboard in date and with prices from 52000, so the searches still see the
-     * original six first. They exist to see the purchase screens go from available to sold out: the ticket-service
+     * Events 43 to 46, the nearest in date (+4 to +7 days, so the front's billboard shows them on its first page)
+     * and after the billboard in price (from 52000). They exist to see the purchase screens go from available to sold out: the ticket-service
      * sells part of them (see "Datos de prueba" in {@code ticket-service.md}).
      * <p>
      * Event sectors 48 to 61 and seats 240 to 419 are used by id by the {@code TicketSeeder}.
@@ -331,13 +331,13 @@ public class EventSeeder implements ApplicationRunner {
         seedSeats(vipBox, List.of("A", "B"), 6);                                      // seats 408-419
 
         // Every category, with the Platea alta sold out (event_sector 48 to 51)
-        Event bigNight = eventRepository.save(showcase("Noche grande en la Ribera", EventType.FESTIVAL, ribera, 170));
+        Event bigNight = eventRepository.save(showcase("Noche grande en la Ribera", EventType.FESTIVAL, ribera, 4));
         // Campo sold out (52 to 55)
-        Event derby = eventRepository.save(showcase("Clásico de la Ribera", EventType.SPORTS, ribera, 175));
+        Event derby = eventRepository.save(showcase("Clásico de la Ribera", EventType.SPORTS, ribera, 5));
         // A single place left in Campo (56 to 59)
-        Event coastFestival = eventRepository.save(showcase("Festival de la Costanera", EventType.FESTIVAL, ribera, 180));
+        Event coastFestival = eventRepository.save(showcase("Festival de la Costanera", EventType.FESTIVAL, ribera, 6));
         // A single free seat in the Platea baja and the Palco VIP sold out (60 and 61)
-        Event cupFinal = eventRepository.save(showcase("Final de la Copa Ribera", EventType.SPORTS, ribera, 185));
+        Event cupFinal = eventRepository.save(showcase("Final de la Copa Ribera", EventType.SPORTS, ribera, 7));
 
         for (Event event : List.of(bigNight, derby, coastFestival)) {
             eventSectorRepository.saveAll(List.of(

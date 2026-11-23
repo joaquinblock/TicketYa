@@ -299,10 +299,10 @@ public class TicketSeeder implements ApplicationRunner {
      * places are taken without orders, like the folk night's stalls.
      */
     private void seedSaleShowcase() {
-        showcaseSale(BIG_NIGHT_EVENT_ID, "Noche grande en la Ribera", 170, 48L);
-        showcaseSale(DERBY_EVENT_ID, "Clásico de la Ribera", 175, 52L);
-        showcaseSale(COAST_FESTIVAL_EVENT_ID, "Festival de la Costanera", 180, 56L);
-        sale(CUP_FINAL_EVENT_ID, "Final de la Copa Ribera", RIBERA, EventSaleStatus.PUBLISHED, at(185, 21, 0), null,
+        showcaseSale(BIG_NIGHT_EVENT_ID, "Noche grande en la Ribera", 4, 48L);
+        showcaseSale(DERBY_EVENT_ID, "Clásico de la Ribera", 5, 52L);
+        showcaseSale(COAST_FESTIVAL_EVENT_ID, "Festival de la Costanera", 6, 56L);
+        sale(CUP_FINAL_EVENT_ID, "Final de la Copa Ribera", RIBERA, EventSaleStatus.PUBLISHED, at(7, 21, 0), null,
                 false, SHOWCASE_MAX_TICKETS,
                 numbered(CUP_FINAL_LOWER_STAND_SECTOR_ID, "Platea baja", "68000", RIBERA_LOWER_STAND),
                 numbered(CUP_FINAL_VIP_BOX_SECTOR_ID, "Palco VIP", "120000", RIBERA_VIP_BOX));

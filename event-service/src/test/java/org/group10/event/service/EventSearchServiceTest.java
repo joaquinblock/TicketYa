@@ -29,7 +29,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * suspended 7 (with Los Serranos), the cancelled 8 and the finished 9.
  * <p>
  * After them come the 30 billboard events (ids 13 to 42), from +75 on and from 50000 on, so the six above are
- * always first by date and by price. That's why the lists check {@code startsWith} plus the total: the total is what
+ * first by price and, after the sale showcase (43 to 46, +4 to +7), by date. That's why the lists check {@code startsWith} plus the total: the total is what
  * catches a draft, suspended or cancelled event that leaks in.
  */
 @SpringBootTest
@@ -43,7 +43,7 @@ class EventSearchServiceTest {
     private static final int BILLBOARD_CONCERTS_IN_TANDIL = 2;
     private static final int BILLBOARD_IN_CORDOBA = 7;
     private static final int BILLBOARD_IN_MAR_DEL_PLATA = 5;
-    /** The sale showcase, events 43 to 46 (FESTIVAL and SPORTS, La Plata, from +170 and 52000): only adds to totals. */
+    /** The sale showcase, events 43 to 46 (FESTIVAL and SPORTS, Buenos Aires, +4 to +7, from 52000): the nearest by date. */
     private static final int SHOWCASE_EVENTS = 4;
 
     @Autowired
@@ -56,7 +56,7 @@ class EventSearchServiceTest {
     void withoutFilters_showsOnlyPublishedAndSoldOutFromTheNearest() {
         EventPageResponse page = search(null, null, null, null, null, null, null, null);
 
-        assertThat(ids(page)).startsWith(6L, 5L, 11L, 2L, 1L, 4L);
+        assertThat(ids(page)).startsWith(43L, 44L, 45L, 46L, 6L, 5L, 11L, 2L, 1L, 4L);
         assertThat(page.totalElements()).isEqualTo(VISIBLE_EVENTS + BILLBOARD_EVENTS + SHOWCASE_EVENTS);
     }
 
@@ -130,7 +130,7 @@ class EventSearchServiceTest {
 
     @Test
     void summary_bringsVenueParticipantsAndPriceFrom() {
-        EventSummaryResponse festival = search(null, EventType.FESTIVAL, null, null, null, null, null, null).content().getFirst();
+        EventSummaryResponse festival = search(null, EventType.FESTIVAL, "cordoba", null, null, null, null, null).content().getFirst();
 
         assertThat(festival.venue().city()).isEqualTo("Córdoba");
         assertThat(festival.participants()).containsExactly("DJ Marea", "Las Voces del Sur", "Los Serranos");
@@ -139,7 +139,7 @@ class EventSearchServiceTest {
 
     @Test
     void summary_bringsTheSaleStart_orNullWhenTheSaleHasNoStart() {
-        EventSummaryResponse festival = search(null, EventType.FESTIVAL, null, null, null, null, null, null).content().getFirst();
+        EventSummaryResponse festival = search(null, EventType.FESTIVAL, "cordoba", null, null, null, null, null).content().getFirst();
         EventSummaryResponse play = search(null, EventType.THEATER, null, null, null, null, null, null).content().getFirst();
 
         assertThat(festival.saleStart()).isEqualTo(LocalDate.now().plusDays(20).atTime(12, 0));
@@ -151,7 +151,7 @@ class EventSearchServiceTest {
         EventPageResponse second = searchService.search(
                 new EventSearchRequest(null, null, null, null, null, null, null, null, null, 1, 4));
 
-        assertThat(ids(second)).containsExactly(1L, 4L, 13L, 14L);
+        assertThat(ids(second)).containsExactly(6L, 5L, 11L, 2L);
         assertThat(second.totalElements()).isEqualTo(VISIBLE_EVENTS + BILLBOARD_EVENTS + SHOWCASE_EVENTS);
         assertThat(second.totalPages()).isEqualTo(10);
     }

@@ -65,6 +65,7 @@ public class OrderPaymentService {
         }
 
         chargeRegisteringAnyRejection(order, request);
+        recordTheApprovedCharge(orderId);
         return issueTicketsOrCompensate(order, request.paymentMethod());
     }
 
@@ -101,6 +102,11 @@ public class OrderPaymentService {
             }
             throw failure;
         }
+    }
+
+    private void recordTheApprovedCharge(Long orderId) {
+        transactions.executeWithoutResult(transaction ->
+                orderRepository.markChargeApproved(orderId, LocalDateTime.now(clock)));
     }
 
     private void registerRejection(Long orderId, String attemptKey, int rejectedAttempts) {

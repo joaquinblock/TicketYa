@@ -56,6 +56,12 @@ public class Order {
 
     private String paymentAttemptKey;
 
+    /**
+     * Cuándo payment-service aprobó el cobro. Si la orden no termina {@code PAID}, marca que hay que reintegrar
+     * sus entradas (US-TKT-22). Se carga antes de emitir, así sobrevive a una caída entre cobrar y emitir.
+     */
+    private LocalDateTime chargeApprovedAt;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

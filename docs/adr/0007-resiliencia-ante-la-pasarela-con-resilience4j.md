@@ -13,7 +13,7 @@ Restricciones:
 - **Llamada síncrona.** `PaymentGateway.charge` es bloqueante, igual que lo sería un cliente HTTP a una pasarela real.
 
 ## Decisión
-`ResilientPaymentGateway` envuelve a la pasarela con Resilience4j (2.3.0, la versión del BOM de Spring Cloud), armado a mano sin el starter ni anotaciones. Solo cubre los cobros: los reintegros pasan directo hasta la US-PAY-13.
+`ResilientPaymentGateway` envuelve a la pasarela con Resilience4j (2.3.0, la versión del BOM de Spring Cloud), armado a mano sin el starter ni anotaciones. Cubre cobros y reintegros. Para los reintegros, los reintentos también usan la clave derivada del `ticketId`, de modo que la pasarela no acredita dos veces ante timeout o duplicación.
 
 Los decoradores van así: `Retry( CircuitBreaker( TimeLimiter( charge ) ) )`.
 
@@ -36,7 +36,7 @@ Los decoradores van así: `Retry( CircuitBreaker( TimeLimiter( charge ) ) )`.
 - **Solo reintentos, sin circuit breaker:** con la pasarela caída, cada cliente esperaría los 10 s completos y se acumularían hilos ocupados.
 
 ## Consecuencias
-- `PaymentService` no cambia: ya convertía la excepción de la pasarela en 503 y dejaba el pago `PENDING`. La resiliencia queda en el borde, detrás de la interfaz `PaymentGateway`, y una pasarela real recibe lo mismo sin tocar las reglas.
+- `PaymentService` no cambia para cobros: ya convertía la excepción de la pasarela en 503 y dejaba el pago `PENDING`. `RefundService` convierte el agotamiento de reintentos en `502 refund_failed` y conserva el reintegro `FAILED`. La resiliencia queda en el borde, detrás de la interfaz `PaymentGateway`, y una pasarela real recibe lo mismo sin tocar las reglas.
 - Una pasarela real tiene que traducir sus fallas de red a `PaymentGatewayUnavailableException`. Si tira otra excepción, no se reintenta ni cuenta para el circuit breaker.
 - Una llamada cortada por timeout puede haber llegado a la pasarela. Es seguro por la `idempotency_key`, pero el resultado de esa llamada se descarta.
 - El estado del circuit breaker es por instancia. Con varias réplicas, cada una abre su circuito por su cuenta.

@@ -22,7 +22,7 @@ import java.util.function.Supplier;
  * Cada intento tiene timeout y se reintenta con la misma clave de idempotencia,
  * así la pasarela nunca cobra dos veces. El circuit breaker cuenta cada intento:
  * ante fallas recurrentes se abre y responde al instante, sin esperar los reintentos.
- * Los reintegros pasan directo: sus reintentos son de la US-PAY-13.
+ * Los reintegros usan los mismos límites y la misma clave derivada del ticket.
  */
 @Slf4j
 public class ResilientPaymentGateway implements PaymentGateway, AutoCloseable {
@@ -75,7 +75,14 @@ public class ResilientPaymentGateway implements PaymentGateway, AutoCloseable {
 
     @Override
     public RefundResult refund(Refund refund) {
-        return delegate.refund(refund);
+        Supplier<RefundResult> attempt = () -> callWithTimeout(() -> delegate.refund(refund));
+        Supplier<RefundResult> guarded = CircuitBreaker.decorateSupplier(circuitBreaker, attempt);
+        Supplier<RefundResult> retried = Retry.decorateSupplier(retry, guarded);
+        try {
+            return retried.get();
+        } catch (CallNotPermittedException openCircuit) {
+            throw new PaymentGatewayUnavailableException("La pasarela viene fallando: el circuito está abierto");
+        }
     }
 
     @Override
@@ -83,7 +90,7 @@ public class ResilientPaymentGateway implements PaymentGateway, AutoCloseable {
         executor.close();
     }
 
-    private ChargeResult callWithTimeout(Supplier<ChargeResult> call) {
+    private <T> T callWithTimeout(Supplier<T> call) {
         try {
             return timeLimiter.executeFutureSupplier(() -> executor.submit(call::get));
         } catch (TimeoutException timeout) {

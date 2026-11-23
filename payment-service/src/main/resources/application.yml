@@ -37,3 +37,5 @@ management:
 payment:
   mock:
     rejected-method: DEBIT_CARD
+    delay-ms: 0
+    down: false

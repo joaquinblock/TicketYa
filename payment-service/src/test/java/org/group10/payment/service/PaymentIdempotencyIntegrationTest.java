@@ -199,6 +199,41 @@ class PaymentIdempotencyIntegrationTest {
     }
 
     @Test
+    void cancel_pendingPayment_persistsCancellationAndReleasesTheOrder() {
+        Long orderId = uniqueOrderId();
+        String key = uniqueKey();
+        paymentRepository.saveAndFlush(pendingPayment(orderId, key));
+
+        HttpAnswer answer = postCancel(key);
+
+        assertThat(answer.status()).isEqualTo(200);
+        assertThat(answer.body()).contains("\"status\":\"CANCELLED\"");
+        assertThat(paymentRepository.findByIdempotencyKey(key))
+                .hasValueSatisfying(payment -> assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CANCELLED));
+        assertThat(paymentRepository.findByActiveOrderId(orderId)).isEmpty();
+        verify(paymentGateway, times(1)).cancel(any());
+    }
+
+    @Test
+    void cancel_gatewayUnavailable_answersPendingAndCanBeRetried() {
+        Long orderId = uniqueOrderId();
+        String key = uniqueKey();
+        paymentRepository.saveAndFlush(pendingPayment(orderId, key));
+        doThrow(new IllegalStateException("gateway down")).doCallRealMethod().when(paymentGateway).cancel(any());
+
+        HttpAnswer unavailable = postCancel(key);
+        HttpAnswer recovered = postCancel(key);
+
+        assertThat(unavailable.status()).isEqualTo(200);
+        assertThat(unavailable.body()).contains("\"status\":\"PENDING\"");
+        assertThat(recovered.status()).isEqualTo(200);
+        assertThat(recovered.body()).contains("\"status\":\"CANCELLED\"");
+        assertThat(paymentsOfTheOrder(orderId)).singleElement()
+                .satisfies(payment -> assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CANCELLED));
+        verify(paymentGateway, times(2)).cancel(any());
+    }
+
+    @Test
     void charge_gatewayFailsAndThenRecovers_answers503AndTheRetryWithTheSameKeyCharges() {
         Long orderId = uniqueOrderId();
         String body = paymentBody(orderId, "25000.00", "CREDIT_CARD", uniqueKey());
@@ -282,6 +317,15 @@ class PaymentIdempotencyIntegrationTest {
                 .uri("/internal/payments").header("X-Internal-Secret", "dev-internal-secret")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
+                .exchange((request, response) ->
+                        new HttpAnswer(response.getStatusCode().value(), response.bodyTo(String.class)));
+    }
+
+    private HttpAnswer postCancel(String key) {
+        return RestClient.create("http://localhost:" + port).post()
+                .uri("/internal/payments/cancel").header("X-Internal-Secret", "dev-internal-secret")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"idempotencyKey\":\"%s\"}".formatted(key))
                 .exchange((request, response) ->
                         new HttpAnswer(response.getStatusCode().value(), response.bodyTo(String.class)));
     }

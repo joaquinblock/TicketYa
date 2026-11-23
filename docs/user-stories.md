@@ -68,6 +68,7 @@ Las decisiones de diseño y las dependencias entre servicios están en la docume
 | [US-AUTH-02](#us-auth-02-verificar-los-permisos-de-cada-request) | Verificar los permisos de cada request (técnica) | F20. Identidad y permisos | auth-service | event-service | 1 | #9 |
 | [US-AUTH-03](#us-auth-03-iniciar-sesión-y-operar-con-un-token) | Iniciar sesión y operar con un token | F20. Identidad y permisos | auth-service | api-gateway, todos los servicios | 2 | #9 |
 | [US-AUTH-04](#us-auth-04-asignar-personal-de-acceso-a-un-evento) | Asignar personal de acceso a un evento | F20. Identidad y permisos | auth-service | event-service | 2 | #7 |
+| [US-AUTH-06](#us-auth-06-consultar-mis-datos-con-el-token) | Consultar mis datos con el token | F20. Identidad y permisos | auth-service | api-gateway | 2 | #9 |
 | [US-QUE-01](#us-que-01-hacer-la-fila-virtual-en-un-evento-de-alta-demanda) | Hacer la fila virtual en un evento de alta demanda | F21. Fila virtual | queue-service | event-service, ticket-service | 2 | #7 |
 | [US-NOT-01](#us-not-01-recibir-la-confirmación-de-la-compra) | Recibir la confirmación de la compra | F22. Notificaciones | notification-service | ticket-service, auth-service | 2 | #8 |
 | [US-NOT-02](#us-not-02-enterarme-si-un-evento-se-cancela-o-cambia) | Enterarme si un evento se cancela o cambia | F22. Notificaciones | notification-service | event-service, ticket-service | 2 | #8 |
@@ -830,6 +831,10 @@ Servicio: auth-service · Involucra: api-gateway, todos los servicios · Consign
 ### US-AUTH-04: Asignar personal de acceso a un evento
 
 Historia y criterios de aceptación: [`stories/148-asignar-personal-acceso.md`](stories/148-asignar-personal-acceso.md).
+
+### US-AUTH-06: Consultar mis datos con el token
+
+Historia y criterios de aceptación: [`stories/192-consultar-mis-datos.md`](stories/192-consultar-mis-datos.md).
 
 ## F21. Fila virtual
 

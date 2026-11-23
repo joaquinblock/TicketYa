@@ -1,7 +1,7 @@
 # 192: US-AUTH-06: Consultar mis datos con el token
 
 **Tipo:** Story
-**Estado:** aprobado
+**Estado:** terminado
 **Funcionalidad:** Épica 9 (#9)
 
 Servicio: auth-service · Involucra: api-gateway · Sirve a: joaquinblock/TicketYa-UI#8 · Consigna: NF · Entrega 2

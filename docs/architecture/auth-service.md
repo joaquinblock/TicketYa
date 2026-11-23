@@ -78,6 +78,7 @@ Los consume el event-service con `AuthClient`. Swagger: `/swagger-ui.html` en el
 |---|---|---|---|
 | `GET` | `/api/organizations/{id}` | Una organización **activa** | 200 |
 | `GET` | `/api/organizers/{userId}` | Un organizador **activo** con el id de su organización | 200 |
+| `GET` | `/api/users/me` | Email y nombre del usuario del token, de **cualquier rol** (US-AUTH-06). Lo usa el front para mostrar quién está logueado. Dado de baja: `404 user_not_found` | 200 |
 | `GET` | `/api/users/{id}/permissions` | Rol y permisos de un usuario **activo**. **Solo el admin** (`USER_MANAGE`): los servicios ya no lo usan para autorizar | 200 |
 | `POST` | `/api/organizations/{id}/organizers` | **Solo el admin.** Hace organizador de la organización a un **cliente**: su rol pasa a `ORGANIZER` desde su próximo token. 409 si ya organiza o no es cliente | 201 |
 | `DELETE` | `/api/organizations/{id}/organizers/{userId}` | **Solo el admin.** Deja de organizar para esa organización y vuelve a ser cliente. Sus eventos siguen siendo de la organización | 204 |

@@ -69,6 +69,8 @@ ticketya:
     refund-check: PT30S
   compensation:
     refund-check: PT30S
+  payment-attempt:
+    resolution-check: PT30S
 
 springdoc:
   swagger-ui:

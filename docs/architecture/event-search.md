@@ -101,7 +101,7 @@ La página es un record propio (`EventPageResponse`), y no el `Page` de Spring D
 
 - **Un borrador solo lo ve un organizador de su organización,** con `X-User-Id`. Lo necesita el front para cargar la pantalla de edición.
 - **Para cualquier otro, un borrador da `404 event_not_found`,** igual que un id que no existe. Así el id no revela que el evento se está preparando.
-- **Solo se consulta al auth-service cuando el evento es un borrador.** Los demás se responden sin llamar a nadie.
+- **No se le consulta a nadie.** La organización del organizador viene en los headers del api-gateway.
 
 ## Implementación
 
@@ -115,10 +115,13 @@ La página es un record propio (`EventPageResponse`), y no el `Page` de Spring D
   Cargarlos por evento sería una consulta por cada resultado.
 - **Tests:** `EventSearchServiceTest` corre contra MySQL sobre los datos de `EventSeeder`, y cubre cada filtro, cada orden, la paginación y los comodines.
 
+## Cache
+
+La primera página de la búsqueda sin filtros se guarda en Redis por 60 s, y el detalle de un evento que no es borrador, por 5 min. Las búsquedas con filtros no se cachean. Cuando cambia el estado de un evento se borran su detalle y la lista inicial ([ADR 0009](../adr/0009-cache-del-catalogo-con-redis.md)).
+
 ## Pendiente
 
 | Tema | Detalle |
 |---|---|
 | Nombre de la organización | La respuesta trae `organizationId`, no `publicName`. Para mostrarlo hace falta composición o snapshot (RFC-004, opciones B o D) |
 | Ordenar por distancia | El lugar tiene latitud y longitud, pero la consigna no lo pide. Se agrega si el front lo necesita |
-| Caché | El catálogo se lee mucho y se escribe poco (ver `microservices.md`). La caché es de la Entrega 2 |

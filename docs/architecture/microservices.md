@@ -147,7 +147,7 @@ Heredar trae la configuración y las dependencias comunes. Depender trae el cód
 |---|---|---|---|
 | api-gateway | 8080 | — | — |
 | auth-service | 8081 | MySQL | 3307 |
-| event-service | 8082 | MySQL | 3308 |
+| event-service | 8082 | MySQL y Redis (cache) | 3308 y 6380 |
 | ticket-service | 8083 | MySQL | 3309 |
 | payment-service | 8084 | MySQL | 3310 |
 | queue-service | 8085 | Redis | 6379 |
@@ -164,7 +164,7 @@ El sistema completo se levanta con el `docker-compose.yml` de la raíz, que incl
 |---|---|---|---|
 | api-gateway | `api-gateway:8080` | — | **8080**, el único de la API |
 | auth-service | `auth-service:8081` | `auth-db` (MySQL) | — |
-| event-service | `event-service:8082` | `event-db` (MySQL) | — |
+| event-service | `event-service:8082` | `event-db` (MySQL) y `event-redis` (cache, [ADR 0009](../adr/0009-cache-del-catalogo-con-redis.md)) | — |
 | ticket-service | `ticket-service:8083` | `ticket-db` (MySQL) | — |
 | payment-service | `payment-service:8084` | `payment-db` (MySQL) | — |
 | queue-service | `queue-service:8085` | `queue-redis` (Redis) | — |

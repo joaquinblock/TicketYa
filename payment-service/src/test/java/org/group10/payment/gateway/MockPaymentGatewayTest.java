@@ -58,6 +58,21 @@ class MockPaymentGatewayTest {
     }
 
     @Test
+    void cancel_gatewayUp_confirmsTheCancellation() {
+        MockPaymentGateway gateway = gatewayWith(NO_DELAY, false);
+
+        assertThat(gateway.cancel(payment)).isEqualTo(PaymentStatus.CANCELLED);
+    }
+
+    @Test
+    void cancel_gatewayDown_throwsGatewayUnavailable() {
+        MockPaymentGateway gateway = gatewayWith(NO_DELAY, true);
+
+        assertThatThrownBy(() -> gateway.cancel(payment))
+                .isInstanceOf(PaymentGatewayUnavailableException.class);
+    }
+
+    @Test
     void refund_gatewayDown_throwsGatewayUnavailable() {
         MockPaymentGateway gateway = gatewayWith(NO_DELAY, true);
 

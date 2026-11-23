@@ -167,6 +167,8 @@ Si la reserva vence y un intento sigue sin resultado, el ticket-service pide anu
 
 El reintegro lo pide el ticket-service porque es por entrada y porque el payment-service nunca lo llama.
 
+La anulación puede cruzarse con un reintento del cobro con la misma clave: los dos leen el pago `PENDING` y van a la pasarela. `payment.version` (`@Version`) hace que gane el primero que guarda. El otro recibe el conflicto, relee el pago y responde con el estado guardado, sin pisarlo. La pasarela no se llama con el lock tomado, que es el motivo para no usar un bloqueo pesimista acá.
+
 ### `failure_reason`
 
 Guarda el motivo que devuelve la pasarela ("fondos insuficientes", "tarjeta vencida"). Sirve para mostrárselo al cliente y para depurar.

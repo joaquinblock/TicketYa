@@ -2,6 +2,7 @@ package org.group10.payment.gateway;
 
 import org.group10.payment.entity.Payment;
 import org.group10.payment.entity.PaymentMethod;
+import org.group10.payment.entity.PaymentStatus;
 import org.group10.payment.entity.Refund;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -38,6 +39,12 @@ public class MockPaymentGateway implements PaymentGateway {
         return payment.getPaymentMethod() == rejectedMethod
                 ? ChargeResult.rejected(gatewayId, REJECTION_REASON)
                 : ChargeResult.approved(gatewayId);
+    }
+
+    @Override
+    public PaymentStatus cancel(Payment payment) {
+        simulateTheNetwork();
+        return PaymentStatus.CANCELLED;
     }
 
     @Override

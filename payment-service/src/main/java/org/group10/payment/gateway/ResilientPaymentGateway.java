@@ -9,6 +9,7 @@ import io.github.resilience4j.timelimiter.TimeLimiter;
 import io.github.resilience4j.timelimiter.TimeLimiterConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.group10.payment.entity.Payment;
+import org.group10.payment.entity.PaymentStatus;
 import org.group10.payment.entity.Refund;
 
 import java.time.Clock;
@@ -71,6 +72,11 @@ public class ResilientPaymentGateway implements PaymentGateway, AutoCloseable {
         } catch (CallNotPermittedException openCircuit) {
             throw new PaymentGatewayUnavailableException("La pasarela viene fallando: el circuito está abierto");
         }
+    }
+
+    @Override
+    public PaymentStatus cancel(Payment payment) {
+        return delegate.cancel(payment);
     }
 
     @Override

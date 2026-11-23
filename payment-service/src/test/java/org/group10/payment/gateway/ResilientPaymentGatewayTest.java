@@ -257,6 +257,11 @@ class ResilientPaymentGatewayTest {
         }
 
         @Override
+        public PaymentStatus cancel(Payment payment) {
+            return PaymentStatus.CANCELLED;
+        }
+
+        @Override
         public RefundResult refund(Refund refund) {
             refunds.incrementAndGet();
             if (failRefunds) {

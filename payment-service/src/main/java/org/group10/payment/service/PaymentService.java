@@ -15,6 +15,7 @@ import org.group10.payment.gateway.PaymentGateway;
 import org.group10.payment.mapper.PaymentMapper;
 import org.group10.payment.repository.PaymentRepository;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -45,6 +46,28 @@ public class PaymentService {
             logChargeResult(request, null, "FAILED");
             throw failure;
         }
+    }
+
+    public PaymentResponse cancel(String idempotencyKey) {
+        Payment payment = paymentRepository.findByIdempotencyKey(idempotencyKey)
+                .orElseThrow(() -> new TicketYaException(PaymentErrorCode.PAYMENT_NOT_FOUND,
+                        "No se encontró el pago con clave de idempotencia"));
+
+        if (payment.getStatus() != PaymentStatus.PENDING) {
+            return PaymentMapper.toResponse(payment);
+        }
+
+        try {
+            PaymentStatus gatewayStatus = paymentGateway.cancel(payment);
+            if (gatewayStatus != PaymentStatus.PENDING) {
+                payment.setStatus(gatewayStatus);
+                payment = saveUnlessResolvedMeanwhile(payment);
+            }
+        } catch (RuntimeException gatewayFailure) {
+            log.error("La pasarela no respondió al anular el pago {}", payment.getId(), gatewayFailure);
+        }
+
+        return PaymentMapper.toResponse(payment);
     }
 
     public List<OrderPaymentResponse> findPaymentsOfOrder(Long orderId) {
@@ -155,7 +178,16 @@ public class PaymentService {
         payment.setGatewayId(chargeResult.gatewayId());
         payment.setStatus(chargeResult.status());
         payment.setFailureReason(chargeResult.failureReason());
-        return paymentRepository.save(payment);
+        return saveUnlessResolvedMeanwhile(payment);
+    }
+
+    private Payment saveUnlessResolvedMeanwhile(Payment payment) {
+        try {
+            return paymentRepository.save(payment);
+        } catch (OptimisticLockingFailureException resolvedMeanwhile) {
+            log.info("El pago {} se resolvió en otro request: se responde con el estado guardado", payment.getId());
+            return paymentRepository.findById(payment.getId()).orElseThrow(() -> resolvedMeanwhile);
+        }
     }
 
     private void ensurePaymentWasNotRejected(Payment payment) {

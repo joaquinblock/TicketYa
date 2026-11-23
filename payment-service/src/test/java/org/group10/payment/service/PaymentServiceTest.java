@@ -11,6 +11,7 @@ import org.group10.payment.entity.PaymentStatus;
 import org.group10.payment.exception.PaymentErrorCode;
 import org.group10.payment.gateway.ChargeResult;
 import org.group10.payment.gateway.PaymentGateway;
+import org.group10.payment.gateway.PaymentGatewayUnavailableException;
 import org.group10.payment.repository.PaymentRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -346,6 +347,74 @@ class PaymentServiceTest {
 
         verifyNoInteractions(paymentGateway);
         verify(paymentRepository, never()).save(any());
+    }
+
+    @Test
+    void cancel_pendingPaymentConfirmedByTheGateway_persistsAndReturnsTheFinalStatus() {
+        Payment pendingPayment = storedPayment(PaymentStatus.PENDING);
+        when(paymentRepository.findByIdempotencyKey("attempt-1")).thenReturn(Optional.of(pendingPayment));
+        when(paymentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(paymentGateway.cancel(pendingPayment)).thenReturn(PaymentStatus.CANCELLED);
+
+        PaymentResponse response = paymentService.cancel("attempt-1");
+
+        assertThat(response.status()).isEqualTo(PaymentStatus.CANCELLED);
+        assertThat(pendingPayment.getStatus()).isEqualTo(PaymentStatus.CANCELLED);
+        verify(paymentRepository).save(pendingPayment);
+    }
+
+    @Test
+    void cancel_pendingPaymentAndUnavailableGateway_returnsPendingWithoutChangingThePayment() {
+        Payment pendingPayment = storedPayment(PaymentStatus.PENDING);
+        when(paymentRepository.findByIdempotencyKey("attempt-1")).thenReturn(Optional.of(pendingPayment));
+        when(paymentGateway.cancel(pendingPayment)).thenThrow(
+                new PaymentGatewayUnavailableException("La pasarela no respondió"));
+
+        PaymentResponse response = paymentService.cancel("attempt-1");
+
+        assertThat(response.status()).isEqualTo(PaymentStatus.PENDING);
+        assertThat(pendingPayment.getStatus()).isEqualTo(PaymentStatus.PENDING);
+        verify(paymentRepository, never()).save(any());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PaymentStatus.class, names = {"APPROVED", "REJECTED", "CANCELLED"})
+    void cancel_paymentAlreadyFinal_returnsItsStatusWithoutCallingTheGateway(PaymentStatus status) {
+        Payment finalPayment = storedPayment(status);
+        when(paymentRepository.findByIdempotencyKey("attempt-1")).thenReturn(Optional.of(finalPayment));
+
+        PaymentResponse response = paymentService.cancel("attempt-1");
+
+        assertThat(response.status()).isEqualTo(status);
+        assertThat(finalPayment.getStatus()).isEqualTo(status);
+        verifyNoInteractions(paymentGateway);
+        verify(paymentRepository, never()).save(any());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PaymentStatus.class, names = {"APPROVED", "REJECTED", "CANCELLED"})
+    void cancel_pendingPaymentGatewayReportsFinalStatus_persistsAndReturnsThatStatus(PaymentStatus status) {
+        Payment pendingPayment = storedPayment(PaymentStatus.PENDING);
+        when(paymentRepository.findByIdempotencyKey("attempt-1")).thenReturn(Optional.of(pendingPayment));
+        when(paymentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(paymentGateway.cancel(pendingPayment)).thenReturn(status);
+
+        PaymentResponse response = paymentService.cancel("attempt-1");
+
+        assertThat(response.status()).isEqualTo(status);
+        assertThat(pendingPayment.getStatus()).isEqualTo(status);
+        verify(paymentRepository).save(pendingPayment);
+    }
+
+    @Test
+    void cancel_unknownIdempotencyKey_failsAsPaymentNotFound() {
+        when(paymentRepository.findByIdempotencyKey("unknown")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> paymentService.cancel("unknown"))
+                .isInstanceOfSatisfying(TicketYaException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(PaymentErrorCode.PAYMENT_NOT_FOUND));
+
+        verifyNoInteractions(paymentGateway);
     }
 
     @Test

@@ -45,10 +45,43 @@ public class PurchaseHistory {
     @AllArgsConstructor
     public static class FavoriteCounts {
 
+        private static final int MIN_EVENTS_TO_INFER = 2;
+        private static final int MAX_INFERRED = 3;
+
         private Map<String, Integer> participants;
 
         private Map<String, Integer> venues;
 
         private Map<String, Integer> organizations;
+
+        public List<Long> inferredParticipants() {
+            return inferred(participants);
+        }
+
+        public List<Long> inferredVenues() {
+            return inferred(venues);
+        }
+
+        public List<Long> inferredOrganizations() {
+            return inferred(organizations);
+        }
+
+        /**
+         * Favoritos inferidos de las compras: los que aparecen en al menos {@value #MIN_EVENTS_TO_INFER} eventos, los
+         * {@value #MAX_INFERRED} más repetidos (a igual cantidad, el de menor id).
+         */
+        private static List<Long> inferred(Map<String, Integer> counts) {
+            if (counts == null) {
+                return List.of();
+            }
+            return counts.entrySet().stream()
+                    .filter(entry -> entry.getValue() != null && entry.getValue() >= MIN_EVENTS_TO_INFER)
+                    .map(entry -> Map.entry(Long.valueOf(entry.getKey()), entry.getValue()))
+                    .sorted(Map.Entry.<Long, Integer>comparingByValue().reversed()
+                            .thenComparing(Map.Entry.comparingByKey()))
+                    .limit(MAX_INFERRED)
+                    .map(Map.Entry::getKey)
+                    .toList();
+        }
     }
 }

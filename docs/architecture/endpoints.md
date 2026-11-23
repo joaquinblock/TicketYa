@@ -130,6 +130,16 @@ Cobros y reintegros contra la pasarela simulada. Detalle de reglas y decisiones:
 | `GET` | `/internal/payments` | Consultar los pagos de una orden | `?orderId` | Solo entre servicios | **200** Pagos de la orden, del más antiguo al más nuevo<br>**400** invalid_parameter o validation_error: falta orderId o no es válido<br>**404** payment_not_found: la orden no tiene pagos |
 | `POST` | `/internal/refunds` | Reintegrar una entrada | body `RefundRequest` | Solo entre servicios | **201** Reintegro acreditado<br>**200** La entrada ya tenía ese reintegro y no se acredita de nuevo<br>**400** validation_error<br>**404** payment_not_found: la orden no tiene pagos<br>**409** payment_not_refundable: sin pago aprobado o supera lo cobrado. data_conflict: la entrada ya tiene un reintegro con otros datos<br>**502** refund_failed: la pasarela no acreditó y se puede reintentar |
 
+## recommendation-service
+
+Preferencias, sugerencias y fans de un artista. Puerto 8087.
+
+### Internos (entre servicios)
+
+| Método | Ruta | Qué hace | Parámetros | Quién | Respuestas |
+|---|---|---|---|---|---|
+| `GET` | `/internal/fans` | Ver los clientes con alguno de los participantes como favorito (elegido o inferido de sus compras) que guardaron esa ciudad (US-NOT-03) | `?participantIds` (uno o más, repetido o separado por comas)<br>`?city`<br>header `X-Internal-Secret` | Solo entre servicios (notification-service) | **200** Ids de los clientes, de menor a mayor; vacío si no hay<br>**400** invalid_parameter: falta un parámetro o un id no es número. validation_error: id no positivo o ciudad en blanco<br>**401** unauthorized: sin el secreto interno |
+
 ## Ejemplos
 
 Con los datos de los seeders recién cargados. Las fechas del event-service son relativas al día de arranque, así que las de los ejemplos varían.

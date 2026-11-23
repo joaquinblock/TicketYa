@@ -24,11 +24,6 @@ ticketya:
       correlation:
         enabled: true
 
-logging:
-  structured:
-      format:
-        console: logstash
-
 springdoc:
   swagger-ui:
     path: /swagger-ui.html

@@ -4,6 +4,8 @@ services:
   recommendation-service:
     build: .
     environment:
+      # Logs JSON con el correlationId como campo, para seguir una operación entre servicios (ADR 0010)
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: logstash
       SPRING_PROFILES_ACTIVE: dev
       # Spring Boot 4 lee spring.mongodb.uri: spring.data.mongodb.uri ya no tiene efecto
       SPRING_MONGODB_URI: mongodb://${DB_USER:-group10}:${DB_PASSWORD:-group10}@recommendation-mongo:27017/recommendation_db?authSource=admin

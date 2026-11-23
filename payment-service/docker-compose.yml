@@ -4,6 +4,8 @@ services:
   payment-service:
     build: .
     environment:
+      # Logs JSON con el correlationId como campo, para seguir una operación entre servicios (ADR 0010)
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: logstash
       SPRING_PROFILES_ACTIVE: dev
       SPRING_DATASOURCE_URL: jdbc:mysql://payment-db:3306/payment_db
       SPRING_DATASOURCE_USERNAME: ${DB_USER:-group10}

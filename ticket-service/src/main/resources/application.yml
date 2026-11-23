@@ -92,8 +92,3 @@ management:
     health:
       # Muestra qué componente está caído (p. ej. rabbit) sin exponer sus detalles
       show-components: always
-
-logging:
-  structured:
-    format:
-      console: logstash

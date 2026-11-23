@@ -299,6 +299,27 @@ class OrderPaymentMySqlIntegrationTest {
     }
 
     @Test
+    void pay_customerRepeatsTheAttemptAfterServiceUnavailable_issuesTheTicketsChargingWithTheSameKey() {
+        long orderId = reserveSeats(CUSTOMER, 1, 2);
+        String key = newKey();
+        doThrow(HttpServerErrorException.create(HttpStatus.SERVICE_UNAVAILABLE, "payment_gateway_unavailable",
+                new HttpHeaders(), new byte[0], StandardCharsets.UTF_8)).doNothing().when(paymentClient).charge(any());
+        assertThat(pay(CUSTOMER, orderId, key).status()).isEqualTo(503);
+
+        HttpResult paid = pay(CUSTOMER, orderId, key);
+
+        assertThat(paid.status()).isEqualTo(200);
+        assertThat(paid.body().get("status")).isEqualTo("PAID");
+        assertThat(paid.tickets()).hasSize(2)
+                .allSatisfy(ticket -> assertThat(ticket.get("status")).isEqualTo("ISSUED"));
+        assertThat(seat(1).getStatus()).isEqualTo(EventSeatStatus.SOLD);
+        ArgumentCaptor<ChargeRequest> charges = ArgumentCaptor.forClass(ChargeRequest.class);
+        verify(paymentClient, times(2)).charge(charges.capture());
+        assertThat(charges.getAllValues()).extracting(ChargeRequest::idempotencyKey).containsOnly(key);
+        assertThat(order(orderId).getPaymentAttemptKey()).isNull();
+    }
+
+    @Test
     void pay_paymentServiceDoesNotAnswerOnce_repeatsTheSameAttemptAndIssuesTheTickets() {
         long orderId = reserveSeats(CUSTOMER, 1);
         String key = newKey();

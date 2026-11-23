@@ -78,6 +78,7 @@ docker compose down             # apagar
 - **Necesita unos 4 GB para Docker** (17 contenedores). Con WSL 2 se configura en `%UserProfile%\.wslconfig`, `[wsl2]` y `memory=4GB`.
 - **Las variables** (credenciales y `INTERNAL_SECRET`) son opcionales: sin `.env` se usan los valores de desarrollo. Están en `.env.example`.
 - **El sistema completo y el desarrollo no van a la vez:** RabbitMQ usa el mismo puerto en los dos.
+- **Nada guarda datos entre corridas:** las bases se recrean con el seeder (`ddl-auto: create`), y en el sistema completo RabbitMQ va sin volumen (`rabbitmq.no-data.compose.yaml`), así no hereda uno viejo de otra corrida.
 - **Postman contra los contenedores:** los requests a `/api/**` funcionan por el gateway. Los de `/internal/**`, que van directo al puerto de un servicio, no: ese puerto no se publica.
 - **Por qué está armado así:** [ADR 0008](docs/adr/0008-despliegue-con-docker-compose.md).
 

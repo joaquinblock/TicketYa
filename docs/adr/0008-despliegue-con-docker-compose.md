@@ -36,6 +36,7 @@ Restricciones:
 ## Consecuencias
 - Antes de levantar hay que compilar. Si se olvida, la imagen lleva un jar viejo, o falla con "no hay jar" si nunca se compiló.
 - Con `ddl-auto: create`, cada reinicio de un contenedor vuelve a los datos del seeder. Para la demo y la prueba de carga es lo buscado.
+- Por lo mismo, en el sistema completo RabbitMQ no tiene volumen: el compose de la raíz lo incluye con `rabbitmq.no-data.compose.yaml`, que anula el volumen con `!reset`. Con un volumen heredado de otra corrida, RabbitMQ falló al leer `.erlang.cookie` (`EACCES`). El exchange y las colas se declaran solos al arrancar. El desarrollo mantiene su volumen.
 - Las colecciones de Postman que llaman a `/internal/**` directo al puerto de un servicio no funcionan contra el sistema en Docker. Todo lo de `/api/**` sí, por el gateway.
 - El sistema completo y el desarrollo no corren a la vez, porque RabbitMQ usa el mismo puerto en los dos.
 - Pendientes:

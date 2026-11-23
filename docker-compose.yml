@@ -7,7 +7,9 @@
 name: ticketya
 
 include:
-  - rabbitmq.compose.yaml
+  - path:
+      - rabbitmq.compose.yaml
+      - rabbitmq.no-data.compose.yaml
   - api-gateway/docker-compose.yml
   - auth-service/docker-compose.yml
   - event-service/docker-compose.yml

@@ -29,6 +29,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -272,6 +273,14 @@ public class EventSeeder implements ApplicationRunner {
     /**
      * An event of the first organization with the fields every event has; the caller adds the rest.
      */
+    private static final Map<EventType, String> PHOTO_BY_TYPE = Map.of(
+            EventType.CONCERT, "https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?auto=format&fit=crop&w=1000&q=80",
+            EventType.FESTIVAL, "https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?auto=format&fit=crop&w=1000&q=80",
+            EventType.THEATER, "https://images.unsplash.com/photo-1507676184212-d03ab07a01bf?auto=format&fit=crop&w=1000&q=80",
+            EventType.SPORTS, "https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=1000&q=80",
+            EventType.CONFERENCE, "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=1000&q=80"
+    );
+
     private static Event.EventBuilder base(String name, String description, EventType type, Venue venue,
                                            LocalDateTime dateTime, EventStatus status) {
         return Event.builder()
@@ -283,6 +292,7 @@ public class EventSeeder implements ApplicationRunner {
                 .venue(venue)
                 .dateTime(dateTime)
                 .status(status)
+                .photoUrl(PHOTO_BY_TYPE.get(type))
                 .highDemand(false);
     }
 

@@ -21,5 +21,6 @@ public record EventSummaryResponse(
         @Schema(description = "Organización en el auth-service", example = "1") Long organizationId,
         VenueSummaryResponse venue,
         @Schema(description = "Precio del sector más barato", example = "45000.00") BigDecimal priceFrom,
-        @Schema(description = "Nombres de los participantes, en orden alfabético") List<String> participants
+        @Schema(description = "Nombres de los participantes, en orden alfabético") List<String> participants,
+        @Schema(example = "https://images.unsplash.com/photo-1501281668745-f7f57925c3b4") String photoUrl
 ) {}

@@ -44,6 +44,9 @@ public class Event {
     @Column(length = 2000)
     private String description;
 
+    @Column(length = 1000)
+    private String photoUrl;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private EventType type;

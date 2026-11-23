@@ -24,5 +24,6 @@ public record EventDetailResponse(
         @Schema(description = "Suma de la capacidad de los sectores que vende el evento", example = "5080")
         int capacity,
         @Schema(description = "Sectores que vende, ordenados por nombre") List<EventSectorResponse> sectors,
-        @Schema(description = "Participantes, ordenados por nombre") List<ParticipantResponse> participants
+        @Schema(description = "Participantes, ordenados por nombre") List<ParticipantResponse> participants,
+        @Schema(example = "https://images.unsplash.com/photo-1501281668745-f7f57925c3b4") String photoUrl
 ) {}

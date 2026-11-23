@@ -5,6 +5,7 @@ import org.group10.ticket.client.EventClient;
 import org.group10.ticket.client.PaymentClient;
 import org.group10.ticket.client.dto.ChargeRequest;
 import org.group10.ticket.client.dto.RefundRequest;
+import org.group10.ticket.config.ReservationProperties;
 import org.group10.ticket.entity.EventSaleStatus;
 import org.group10.ticket.entity.EventSeat;
 import org.group10.ticket.entity.EventSeatId;
@@ -108,6 +109,8 @@ class OrderPaymentMySqlIntegrationTest {
     private EventSeatRepository eventSeatRepository;
     @Autowired
     private EventSectorStockRepository eventSectorStockRepository;
+    @Autowired
+    private ReservationProperties reservationProperties;
     @Autowired
     private TransactionTemplate transaction;
 
@@ -242,7 +245,7 @@ class OrderPaymentMySqlIntegrationTest {
         assertThat(seat(1).getStatus()).isEqualTo(EventSeatStatus.RESERVED);
         assertThat(rejected.status()).isEqualTo(422);
 
-        doNothing().when(paymentClient).charge(any());
+        doReturn(null).when(paymentClient).charge(any());
         assertThat(pay(CUSTOMER, orderId, newKey()).status()).isEqualTo(200);
     }
 
@@ -271,9 +274,96 @@ class OrderPaymentMySqlIntegrationTest {
         assertThat(pay(CUSTOMER, orderId, key).status()).isEqualTo(503);
         assertThat(order(orderId).getPaymentAttemptKey()).isEqualTo(key);
 
-        doNothing().when(paymentClient).charge(any());
+        doReturn(null).when(paymentClient).charge(any());
         assertThat(pay(CUSTOMER, orderId, newKey()).error()).isEqualTo("payment_in_progress");
         assertThat(pay(CUSTOMER, orderId, key).status()).isEqualTo(200);
+    }
+
+    @Test
+    void pay_paymentServiceDoesNotAnswer_returnsServiceUnavailableAndKeepsThePlacesReserved() {
+        long seatsOrderId = reserveSeats(CUSTOMER, 1);
+        long placesOrderId = reservePlaces(CUSTOMER, 2);
+        String key = newKey();
+        doThrow(new ResourceAccessException("payment-service no respondió a tiempo")).when(paymentClient).charge(any());
+
+        HttpResult seatsResult = pay(CUSTOMER, seatsOrderId, key);
+        HttpResult placesResult = pay(CUSTOMER, placesOrderId, newKey());
+
+        assertThat(seatsResult.status()).isEqualTo(503);
+        assertThat(seatsResult.error()).isEqualTo("service_unavailable");
+        assertThat(placesResult.error()).isEqualTo("service_unavailable");
+        assertThat(order(seatsOrderId).getStatus()).isEqualTo(OrderStatus.PENDING);
+        assertThat(order(seatsOrderId).getPaymentAttemptKey()).isEqualTo(key);
+        assertThat(seat(1).getStatus()).isEqualTo(EventSeatStatus.RESERVED);
+        assertThat(eventSectorStockRepository.findById(generalSector).orElseThrow().getTaken()).isEqualTo(2);
+    }
+
+    @Test
+    void pay_customerRepeatsTheAttemptAfterServiceUnavailable_issuesTheTicketsChargingWithTheSameKey() {
+        long orderId = reserveSeats(CUSTOMER, 1, 2);
+        String key = newKey();
+        doThrow(HttpServerErrorException.create(HttpStatus.SERVICE_UNAVAILABLE, "payment_gateway_unavailable",
+                new HttpHeaders(), new byte[0], StandardCharsets.UTF_8)).doReturn(null).when(paymentClient).charge(any());
+        assertThat(pay(CUSTOMER, orderId, key).status()).isEqualTo(503);
+
+        HttpResult paid = pay(CUSTOMER, orderId, key);
+
+        assertThat(paid.status()).isEqualTo(200);
+        assertThat(paid.body().get("status")).isEqualTo("PAID");
+        assertThat(paid.tickets()).hasSize(2)
+                .allSatisfy(ticket -> assertThat(ticket.get("status")).isEqualTo("ISSUED"));
+        assertThat(seat(1).getStatus()).isEqualTo(EventSeatStatus.SOLD);
+        ArgumentCaptor<ChargeRequest> charges = ArgumentCaptor.forClass(ChargeRequest.class);
+        verify(paymentClient, times(2)).charge(charges.capture());
+        assertThat(charges.getAllValues()).extracting(ChargeRequest::idempotencyKey).containsOnly(key);
+        assertThat(order(orderId).getPaymentAttemptKey()).isNull();
+    }
+
+    @Test
+    void pay_paymentServiceDoesNotAnswerOnce_repeatsTheSameAttemptAndIssuesTheTickets() {
+        long orderId = reserveSeats(CUSTOMER, 1);
+        String key = newKey();
+        doThrow(new ResourceAccessException("payment-service no respondió a tiempo")).doReturn(null)
+                .when(paymentClient).charge(any());
+
+        HttpResult result = pay(CUSTOMER, orderId, key);
+
+        assertThat(result.status()).isEqualTo(200);
+        assertThat(order(orderId).getStatus()).isEqualTo(OrderStatus.PAID);
+        ArgumentCaptor<ChargeRequest> charges = ArgumentCaptor.forClass(ChargeRequest.class);
+        verify(paymentClient, times(2)).charge(charges.capture());
+        assertThat(charges.getAllValues()).extracting(ChargeRequest::idempotencyKey).containsOnly(key);
+    }
+
+    @Test
+    void pay_paymentServiceNeverAnswers_givesUpAfterTheConfiguredAttempts() {
+        long orderId = reserveSeats(CUSTOMER, 1);
+        doThrow(new ResourceAccessException("payment-service no respondió a tiempo")).when(paymentClient).charge(any());
+
+        assertThat(pay(CUSTOMER, orderId, newKey()).status()).isEqualTo(503);
+
+        verify(paymentClient, times(reservationProperties.paymentCallAttempts())).charge(any());
+    }
+
+    @Test
+    void pay_paymentServiceAnswersUnavailable_doesNotRepeatTheCall() {
+        long orderId = reserveSeats(CUSTOMER, 1);
+        doThrow(HttpServerErrorException.create(HttpStatus.SERVICE_UNAVAILABLE, "payment_gateway_unavailable",
+                new HttpHeaders(), new byte[0], StandardCharsets.UTF_8)).when(paymentClient).charge(any());
+
+        assertThat(pay(CUSTOMER, orderId, newKey()).status()).isEqualTo(503);
+
+        verify(paymentClient, times(1)).charge(any());
+    }
+
+    @Test
+    void paymentCallAttempts_worstCaseWait_endsBeforeThePaymentMarginRunsOut(
+            @Value("${spring.http.serviceclient.payment-service.connect-timeout}") Duration connectTimeout,
+            @Value("${spring.http.serviceclient.payment-service.read-timeout}") Duration readTimeout) {
+        Duration worstCase = connectTimeout.plus(readTimeout).multipliedBy(reservationProperties.paymentCallAttempts());
+
+        assertThat(reservationProperties.paymentCallAttempts()).isGreaterThan(1);
+        assertThat(worstCase).isLessThan(reservationProperties.paymentMargin());
     }
 
     @Test

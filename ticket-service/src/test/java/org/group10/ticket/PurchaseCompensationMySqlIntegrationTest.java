@@ -3,6 +3,8 @@ package org.group10.ticket;
 import org.group10.common.dto.ErrorDto;
 import org.group10.ticket.client.EventClient;
 import org.group10.ticket.client.PaymentClient;
+import org.group10.ticket.client.dto.PaymentResult;
+import org.group10.ticket.client.dto.PaymentResultStatus;
 import org.group10.ticket.client.dto.RefundRequest;
 import org.group10.ticket.entity.EventSeatId;
 import org.group10.ticket.entity.EventSeatStatus;
@@ -254,6 +256,21 @@ class PurchaseCompensationMySqlIntegrationTest {
         assertThat(order(orderId).getChargeApprovedAt()).isNotNull();
         assertRefundsOfCompensation(orderId, 1);
         assertThat(tickets(orderId)).allSatisfy(ticket -> assertThat(ticket.getCompensatedAt()).isNotNull());
+    }
+
+    @Test
+    void pay_attemptCancelledWhileCharging_doesNotRecordAChargeNorAskForRefunds() {
+        long orderId = reserveSeats(1);
+        doAnswer(invocation -> {
+            cancelTheEvent();
+            return new PaymentResult(PaymentResultStatus.CANCELLED);
+        }).when(paymentClient).charge(any());
+
+        assertThat(pay(orderId, newKey()).error()).isEqualTo("order_not_payable");
+
+        assertThat(order(orderId).getStatus()).isEqualTo(OrderStatus.CANCELLED);
+        assertThat(order(orderId).getChargeApprovedAt()).isNull();
+        assertThat(refundsOf(orderId)).isEmpty();
     }
 
     @Test

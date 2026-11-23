@@ -17,11 +17,14 @@ spring:
       payment-service:
         base-url: ${PAYMENT_SERVICE_URL:http://localhost:8084}
         connect-timeout: 1s
-        read-timeout: 20s
+        # Por encima del peor caso de payment con sus reintentos a la pasarela (~10 s, ADR 0007).
+        # Con ticketya.reservation.payment-call-attempts tiene que entrar en el payment-margin.
+        read-timeout: 12s
   task:
     scheduling:
       pool:
-        size: 3
+        # Uno por método @Scheduled: con payment colgado, sus tres jobs no le quitan el hilo al vencimiento
+        size: 5
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
@@ -61,11 +64,14 @@ ticketya:
     hold: 10m
     payment-margin: 1m
     max-rejected-payments: 3
+    payment-call-attempts: 2
     expiration-check: PT30S
   cancellation:
     refund-check: PT30S
   compensation:
     refund-check: PT30S
+  payment-attempt:
+    resolution-check: PT30S
 
 springdoc:
   swagger-ui:

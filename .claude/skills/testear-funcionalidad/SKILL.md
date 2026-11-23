@@ -27,7 +27,7 @@ Revisar siempre en un endpoint:
 | Cuerpo | `{}`, `[]`, JSON cortado, no JSON, vacío, `Content-Type` incorrecto |
 | Estado | Repetir la operación, operar tras un rechazo, recurso en cada estado posible |
 | Idempotencia | Misma clave con el mismo cuerpo, con otro cuerpo y después de un fallo |
-| Dependencia | La llamada externa falla o tarda: qué queda guardado y qué ve quien llamó |
+| Dependencia | La llamada externa falla o tarda: qué queda guardado y qué ve quien llamó. También un 2xx con un estado que no es éxito y un 404 que no es del recurso (ruta inexistente) |
 | Orden | El efecto ocurre antes o después de lo que debe (`InOrder`) y no se llama a lo que no corresponde |
 
 El límite del DTO y el de la columna tienen que coincidir. Se prueba el borde válido y el primer valor inválido.

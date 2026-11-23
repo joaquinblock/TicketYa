@@ -110,6 +110,7 @@ ticketya.http.retry:
 |---|---|---|
 | `GET` sin respuesta (timeout o conexión rechazada) | Sí, una vez | Es idempotente: repetirlo no cambia nada |
 | `POST`/`PUT`/`DELETE` sin respuesta | No | Puede haberse aplicado igual, y repetirlo duplicaría el efecto (p. ej. dos cobros) |
+| Excepción: el cobro de ticket-service a payment-service sin respuesta | Sí, hasta `ticketya.reservation.payment-call-attempts` (2) | Lleva la `idempotencyKey` del intento y payment no cobra dos veces la misma clave (US-PAY-12). Ver *Manda la reserva* en `ticket-service.md` |
 | Respuesta con error (4xx o 5xx) | No | Hubo respuesta: un `404` no se arregla reintentando, y el `GlobalExceptionHandler` ya lo reenvía o lo convierte en `503` |
 
 **Peor caso:** con auth colgado, un request espera unos 10,2 s (5 s + 0,2 s + 5 s) y recibe `503`. Ya no queda esperando sin límite.

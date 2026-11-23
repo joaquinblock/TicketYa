@@ -48,6 +48,29 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             """)
     int clearPaymentAttempt(Long id, String attemptKey);
 
+    /**
+     * Órdenes que se cerraron con un intento de pago sin resultado. Las que tienen el cobro aprobado ya las compensa
+     * {@code PurchaseCompensationService}.
+     */
+    @Query("""
+            select o from Order o
+            where o.status in (org.group10.ticket.entity.OrderStatus.EXPIRED,
+                               org.group10.ticket.entity.OrderStatus.CANCELLED)
+              and o.paymentAttemptKey is not null
+              and o.chargeApprovedAt is null
+            order by o.id
+            """)
+    List<Order> findClosedOrdersWithAnAttemptWithoutResult();
+
+    @Modifying
+    @Query("""
+            update Order o set o.paymentAttemptKey = null
+            where o.id = :id
+              and o.status <> org.group10.ticket.entity.OrderStatus.PENDING
+              and o.paymentAttemptKey = :attemptKey
+            """)
+    int clearPaymentAttemptOfClosedOrder(Long id, String attemptKey);
+
     @Modifying
     @Query("""
             update Order o

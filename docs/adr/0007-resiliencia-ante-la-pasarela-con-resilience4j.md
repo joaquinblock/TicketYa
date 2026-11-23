@@ -9,7 +9,7 @@ La consigna pide reintentos, timeouts y fallback ante fallos de servicios extern
 Restricciones:
 
 - **Sin doble cobro.** Un timeout no dice si la pasarela cobró. Por eso el pago queda `PENDING` y todo reintento usa la misma `idempotency_key`, que la pasarela no cobra dos veces ([`payment-service.md`](../architecture/payment-service.md), *`PENDING` como estado de duda*).
-- **Tiempo acotado.** ticket-service espera a payment-service hasta 20 s (`read-timeout`), y el intento tiene que resolverse dentro del margen de 1 minuto de la reserva. El peor caso con reintentos tiene que quedar por debajo de esos 20 s.
+- **Tiempo acotado.** ticket-service espera cada llamada a payment-service hasta 12 s (`read-timeout`, eran 20 s hasta la US-TKT-23), y el intento tiene que resolverse dentro del margen de 1 minuto de la reserva. El peor caso con reintentos tiene que quedar por debajo de esos 12 s.
 - **Llamada síncrona.** `PaymentGateway.charge` es bloqueante, igual que lo sería un cliente HTTP a una pasarela real.
 
 ## Decisión
@@ -23,7 +23,7 @@ Los decoradores van así: `Retry( CircuitBreaker( TimeLimiter( charge ) ) )`.
 | Retry | `max-attempts: 3`, `wait-between-attempts: 500ms`, solo ante `PaymentGatewayUnavailableException` | Un rechazo es una respuesta, no una falla: nunca se reintenta. Un error nuestro tampoco |
 | CircuitBreaker | Ventana de 10 llamadas, mínimo 5, abre con 50% de fallas, 10 s abierto, 2 llamadas de prueba | Ante fallas recurrentes deja de esperar y responde al instante |
 
-- **Peor caso:** 3 × 3 s + 2 × 0,5 s ≈ 10 s, debajo de los 20 s de ticket-service.
+- **Peor caso:** 3 × 3 s + 2 × 0,5 s ≈ 10 s, debajo de los 12 s por llamada de ticket-service.
 - **El circuit breaker va adentro del retry,** así cuenta cada intento. Por afuera contaría un pedido entero, y harían falta 5 clientes esperando 10 s cada uno para que se abra.
 - **Con el circuito abierto** el retry no reintenta (`CallNotPermittedException` no está en la lista) y se responde 503 sin llamar a la pasarela.
 - **Fallback:** 503 `payment_gateway_unavailable`, con el pago `PENDING`. No se inventa un resultado: el cliente conserva la reserva y puede reintentar el mismo intento sin riesgo de doble cobro. Se eligió 503 y no 500 porque es un problema temporal de un servicio externo que se puede reintentar, no un error nuestro.
@@ -40,5 +40,5 @@ Los decoradores van así: `Retry( CircuitBreaker( TimeLimiter( charge ) ) )`.
 - Una pasarela real tiene que traducir sus fallas de red a `PaymentGatewayUnavailableException`. Si tira otra excepción, no se reintenta ni cuenta para el circuit breaker.
 - Una llamada cortada por timeout puede haber llegado a la pasarela. Es seguro por la `idempotency_key`, pero el resultado de esa llamada se descarta.
 - El estado del circuit breaker es por instancia. Con varias réplicas, cada una abre su circuito por su cuenta.
-- Al cambiar `timeout` o `max-attempts` hay que recalcular el peor caso contra el `read-timeout` de ticket-service. Si se baja ese timeout, pasa lo mismo. Los dos lados se definen juntos en la US-TKT-23.
+- Al cambiar `timeout` o `max-attempts` hay que recalcular el peor caso contra el `read-timeout` de ticket-service. Si se baja ese timeout, pasa lo mismo. La US-TKT-23 definió el lado de ticket-service: 12 s por llamada y hasta 2 llamadas con la misma clave (26 s en total, dentro del margen de 1 minuto). Un test lo verifica con la configuración real. Ver *Manda la reserva* en `ticket-service.md`.
 - Para probarlo sin una pasarela real, el mock tiene demora y caída configurables y, con el perfil `dev`, `PUT /internal/mock/gateway` las cambia en ejecución.

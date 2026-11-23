@@ -35,5 +35,18 @@ management:
         include: health,info
 
 payment:
+  gateway:
+    # Peor caso: 3 × 3s + 2 × 500ms ≈ 10s, debajo de los 20s que ticket-service espera a payment-service.
+    resilience:
+      timeout: 3s
+      max-attempts: 3
+      wait-between-attempts: 500ms
+      sliding-window-size: 10
+      minimum-calls: 5
+      failure-rate-threshold: 50
+      wait-in-open-state: 10s
+      calls-in-half-open-state: 2
   mock:
     rejected-method: DEBIT_CARD
+    delay-ms: 0
+    down: false

@@ -116,7 +116,7 @@ ticketya.http.retry:
 
 **Por qué 5 s y no 2 s:** con 2 s, el primer request a un auth-service recién levantado fallaba con `503`. Sus primeras respuestas tardan más de 2 s mientras arranca (JIT, conexiones a la base), y los dos intentos vencían. Ya caliente responde en unos 0,1 s, así que 5 s deja margen sin esperar de más cuando el servicio está colgado de verdad.
 
-**Lo que falta:** un *circuit breaker*, para dejar de llamar un rato a un servicio que viene fallando en vez de esperar el timeout en cada request. Para la Entrega 1 alcanza con timeouts y reintentos.
+**Lo que falta:** un *circuit breaker*, para dejar de llamar un rato a un servicio que viene fallando en vez de esperar el timeout en cada request. Para la Entrega 1 alcanza con timeouts y reintentos. La llamada de payment-service a la pasarela ya lo tiene, con Resilience4j ([ADR 0007](../adr/0007-resiliencia-ante-la-pasarela-con-resilience4j.md)); los clientes entre servicios todavía no.
 
 ## Módulos Maven
 

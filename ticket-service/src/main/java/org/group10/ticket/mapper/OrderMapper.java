@@ -9,16 +9,18 @@ import org.group10.ticket.entity.Ticket;
 import org.group10.ticket.entity.TicketStatus;
 
 import java.util.List;
+import java.util.Set;
 
 public final class OrderMapper {
 
     private OrderMapper() {
     }
 
-    public static OrderResponse toResponse(Order order, EventSale sale, List<Ticket> tickets) {
+    public static OrderResponse toResponse(Order order, EventSale sale, List<Ticket> tickets,
+                                           Set<Long> pendingReturnTicketIds) {
         return new OrderResponse(order.getId(), order.getEventId(), toEventOfOrder(sale), order.getStatus(),
                 order.getExpiresAt(), order.getTotal(), order.getPaymentMethod(),
-                tickets.stream().map(OrderMapper::toTicketResponse).toList());
+                tickets.stream().map(ticket -> toTicketResponse(ticket, pendingReturnTicketIds)).toList());
     }
 
     private static EventOfOrder toEventOfOrder(EventSale sale) {
@@ -26,9 +28,10 @@ public final class OrderMapper {
                 sale.getVenueCity());
     }
 
-    private static TicketResponse toTicketResponse(Ticket ticket) {
+    private static TicketResponse toTicketResponse(Ticket ticket, Set<Long> pendingReturnTicketIds) {
         return new TicketResponse(ticket.getId(), ticket.getEventSectorId(), ticket.getSectorName(),
                 ticket.getSeatId(), ticket.getRow(), ticket.getNumber(), ticket.getPrice(), ticket.getStatus(),
-                ticket.getStatus() == TicketStatus.ISSUED ? ticket.getQrCode() : null);
+                ticket.getStatus() == TicketStatus.ISSUED ? ticket.getQrCode() : null,
+                pendingReturnTicketIds.contains(ticket.getId()));
     }
 }

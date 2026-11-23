@@ -103,7 +103,7 @@ class InternalOrderControllerTest {
         EventOfOrder event = new EventOfOrder("Los Serranos en vivo", LocalDateTime.of(2026, 12, 13, 21, 0),
                 "Estadio del Sur", "Av. del Estadio 1000", "Buenos Aires");
         TicketResponse ticket = new TicketResponse(1L, 2L, "Platea", 15L, "A", 15, new BigDecimal("70000.00"),
-                TicketStatus.ISSUED, "3f1c2d3e-4b5a-4c6d-8e7f-0a1b2c3d4e5f");
+                TicketStatus.ISSUED, "3f1c2d3e-4b5a-4c6d-8e7f-0a1b2c3d4e5f", false);
         return new OrderResponse(10L, 1L, event, OrderStatus.PAID, null, new BigDecimal("70000.00"),
                 PaymentMethod.CREDIT_CARD, List.of(ticket));
     }

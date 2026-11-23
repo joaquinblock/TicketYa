@@ -10,7 +10,9 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.Optional;
+import java.util.Set;
 
 public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Long> {
 
@@ -35,4 +37,10 @@ public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Lo
               and r.ticket.id in (select t.id from Ticket t where t.order.eventId = :eventId)
             """)
     int cancelPendingRequestsOfEvent(Long eventId);
+
+    @Query("""
+            select r.ticket.id from ReturnRequest r
+            where r.ticket.id in :ticketIds and r.status = org.group10.ticket.entity.ReturnRequestStatus.PENDING
+            """)
+    Set<Long> findTicketIdsWithPendingRequest(Collection<Long> ticketIds);
 }

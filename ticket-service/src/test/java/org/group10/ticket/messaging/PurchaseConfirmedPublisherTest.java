@@ -14,7 +14,7 @@ import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessagePostProcessor;
 import org.springframework.amqp.core.MessageProperties;
 import org.slf4j.MDC;
-import org.group10.common.tracing.CorrelationHeaders;
+import org.group10.common.logging.CorrelationIds;
 
 import java.net.ConnectException;
 import java.time.Instant;
@@ -55,7 +55,7 @@ class PurchaseConfirmedPublisherTest {
 
     @Test
     void publish_confirmedPurchase_propagatesCorrelationIdInRabbitHeader() {
-        MDC.put(CorrelationHeaders.MDC_KEY, "operation-123");
+        MDC.put(CorrelationIds.MDC_KEY, "operation-123");
         ArgumentCaptor<MessagePostProcessor> processor = ArgumentCaptor.forClass(MessagePostProcessor.class);
 
         publisher.publish(new PurchaseConfirmed(42L, 7L, 3L, PAID_AT));
@@ -64,7 +64,7 @@ class PurchaseConfirmedPublisherTest {
                 any(Object.class), processor.capture());
         Message processed = processor.getValue().postProcessMessage(
                 new Message(new byte[0], new MessageProperties()));
-        assertThat((Object) processed.getMessageProperties().getHeader(CorrelationHeaders.HEADER))
+        assertThat((Object) processed.getMessageProperties().getHeader(CorrelationIds.HEADER_NAME))
                 .isEqualTo("operation-123");
         MDC.clear();
     }

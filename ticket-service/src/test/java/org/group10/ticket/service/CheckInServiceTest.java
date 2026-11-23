@@ -17,7 +17,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.slf4j.MDC;
-import org.group10.common.tracing.CorrelationHeaders;
+import org.group10.common.logging.CorrelationIds;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -67,7 +67,7 @@ class CheckInServiceTest {
 
     @Test
     void checkIn_success_logsCriticalOperationWithoutQr(CapturedOutput output) {
-        MDC.put(CorrelationHeaders.MDC_KEY, "operation-123");
+        MDC.put(CorrelationIds.MDC_KEY, "operation-123");
         when(ticketRepository.findWithOrderByQrCode(QR)).thenReturn(Optional.of(ticket(EVENT_ID, TicketStatus.ISSUED)));
         when(ticketRepository.markIssuedTicketAsUsed(10L, NOW, STAFF_ID)).thenReturn(1);
 

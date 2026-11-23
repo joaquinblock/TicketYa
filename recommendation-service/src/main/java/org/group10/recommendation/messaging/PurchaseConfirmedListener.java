@@ -1,7 +1,7 @@
 package org.group10.recommendation.messaging;
 
 import lombok.RequiredArgsConstructor;
-import org.group10.common.tracing.CorrelationHeaders;
+import org.group10.common.logging.CorrelationIds;
 import org.group10.recommendation.config.RabbitConfig;
 import org.group10.recommendation.service.PurchaseHistoryService;
 import org.slf4j.MDC;
@@ -30,15 +30,15 @@ public class PurchaseConfirmedListener {
 
     @RabbitListener(queues = RabbitConfig.PURCHASE_QUEUE)
     public void onPurchaseConfirmed(PurchaseConfirmedMessage message,
-                                     @Header(name = CorrelationHeaders.HEADER, required = false) String correlationId) {
-        MDC.put(CorrelationHeaders.MDC_KEY, CorrelationHeaders.normalize(correlationId));
+                                     @Header(name = CorrelationIds.HEADER_NAME, required = false) String correlationId) {
+        MDC.put(CorrelationIds.MDC_KEY, CorrelationIds.validOrNew(correlationId));
         try {
             if (message.userId() == null || message.eventId() == null) {
                 throw new AmqpRejectAndDontRequeueException("purchase.confirmed sin userId o eventId: " + message);
             }
             purchaseHistoryService.record(message.userId(), message.eventId());
         } finally {
-            MDC.remove(CorrelationHeaders.MDC_KEY);
+            MDC.remove(CorrelationIds.MDC_KEY);
         }
     }
 }

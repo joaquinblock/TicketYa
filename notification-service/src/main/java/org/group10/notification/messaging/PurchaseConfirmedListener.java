@@ -3,7 +3,7 @@ package org.group10.notification.messaging;
 import lombok.extern.slf4j.Slf4j;
 import org.group10.notification.config.RabbitConfig;
 import org.group10.notification.service.PurchaseNotificationService;
-import org.group10.common.tracing.CorrelationHeaders;
+import org.group10.common.logging.CorrelationIds;
 import org.slf4j.MDC;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.amqp.AmqpRejectAndDontRequeueException;
@@ -36,8 +36,8 @@ public class PurchaseConfirmedListener {
 
     @RabbitListener(queues = RabbitConfig.PURCHASE_QUEUE)
     public void onPurchaseConfirmed(PurchaseConfirmedMessage message,
-                                    @Header(name = CorrelationHeaders.HEADER, required = false) String correlationId) {
-        MDC.put(CorrelationHeaders.MDC_KEY, CorrelationHeaders.normalize(correlationId));
+                                    @Header(name = CorrelationIds.HEADER_NAME, required = false) String correlationId) {
+        MDC.put(CorrelationIds.MDC_KEY, CorrelationIds.validOrNew(correlationId));
         try {
             if (message.messageId() == null || message.orderId() == null || message.userId() == null) {
                 throw new AmqpRejectAndDontRequeueException(
@@ -50,7 +50,7 @@ public class PurchaseConfirmedListener {
                         message.messageId(), message.orderId());
             }
         } finally {
-            MDC.remove(CorrelationHeaders.MDC_KEY);
+            MDC.remove(CorrelationIds.MDC_KEY);
         }
     }
 }

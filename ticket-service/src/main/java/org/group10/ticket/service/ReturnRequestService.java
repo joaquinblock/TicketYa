@@ -3,7 +3,7 @@ package org.group10.ticket.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.group10.common.exception.TicketYaException;
-import org.group10.common.tracing.CorrelationHeaders;
+import org.group10.common.logging.CorrelationIds;
 import org.group10.ticket.client.PaymentClient;
 import org.group10.ticket.client.dto.RefundRequest;
 import org.group10.ticket.dto.ReturnRequestPageResponse;
@@ -82,7 +82,7 @@ public class ReturnRequestService {
             throw requestAlreadyResolved(requestId);
         }
         log.info("operation=refund_request status=success requestId={} ticketId={} correlationId={}",
-                requestId, request.getTicket().getId(), CorrelationHeaders.currentOrCreate());
+                requestId, request.getTicket().getId(), CorrelationIds.currentOrNew());
         return ReturnRequestMapper.toResponse(findRequest(requestId));
     }
 

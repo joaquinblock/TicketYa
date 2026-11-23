@@ -2,7 +2,7 @@ package org.group10.ticket.messaging;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.group10.common.tracing.CorrelationHeaders;
+import org.group10.common.logging.CorrelationIds;
 import org.group10.ticket.config.RabbitConfig;
 import org.springframework.amqp.AmqpException;
 import org.springframework.amqp.core.MessagePostProcessor;
@@ -41,8 +41,8 @@ public class PurchaseConfirmedPublisher {
 
     private static MessagePostProcessor correlationPostProcessor() {
         return amqpMessage -> {
-            amqpMessage.getMessageProperties().setHeader(CorrelationHeaders.HEADER,
-                    CorrelationHeaders.currentOrCreate());
+            amqpMessage.getMessageProperties().setHeader(CorrelationIds.HEADER_NAME,
+                    CorrelationIds.currentOrNew());
             return amqpMessage;
         };
     }

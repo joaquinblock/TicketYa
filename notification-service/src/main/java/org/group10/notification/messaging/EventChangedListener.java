@@ -2,7 +2,7 @@ package org.group10.notification.messaging;
 
 import org.group10.notification.config.RabbitConfig;
 import org.group10.notification.service.EventChangeNotificationService;
-import org.group10.common.tracing.CorrelationHeaders;
+import org.group10.common.logging.CorrelationIds;
 import org.slf4j.MDC;
 import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -34,8 +34,8 @@ public class EventChangedListener {
 
     @RabbitListener(queues = RabbitConfig.EVENT_QUEUE)
     public void onEventChanged(EventChangedMessage message,
-                               @Header(name = CorrelationHeaders.HEADER, required = false) String correlationId) {
-        MDC.put(CorrelationHeaders.MDC_KEY, CorrelationHeaders.normalize(correlationId));
+                               @Header(name = CorrelationIds.HEADER_NAME, required = false) String correlationId) {
+        MDC.put(CorrelationIds.MDC_KEY, CorrelationIds.validOrNew(correlationId));
         try {
             if (message.messageId() == null || message.eventId() == null || message.change() == null) {
                 throw new AmqpRejectAndDontRequeueException(
@@ -46,7 +46,7 @@ public class EventChangedListener {
             }
             notificationService.notifyChange(message.messageId(), message.eventId(), message.change());
         } finally {
-            MDC.remove(CorrelationHeaders.MDC_KEY);
+            MDC.remove(CorrelationIds.MDC_KEY);
         }
     }
 }

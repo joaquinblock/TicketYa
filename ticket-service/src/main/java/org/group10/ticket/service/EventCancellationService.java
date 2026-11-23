@@ -2,7 +2,7 @@ package org.group10.ticket.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.group10.common.tracing.CorrelationHeaders;
+import org.group10.common.logging.CorrelationIds;
 import org.group10.ticket.client.PaymentClient;
 import org.group10.ticket.client.dto.RefundRequest;
 import org.group10.ticket.entity.OrderStatus;
@@ -44,7 +44,7 @@ public class EventCancellationService {
             transactions.executeWithoutResult(transaction ->
                     ticketRepository.markSoldTicketAsRefunded(ticket.getId()));
             log.info("operation=event_cancellation status=success ticketId={} eventId={} correlationId={}",
-                    ticket.getId(), ticket.getOrder().getEventId(), CorrelationHeaders.currentOrCreate());
+                    ticket.getId(), ticket.getOrder().getEventId(), CorrelationIds.currentOrNew());
         } catch (RuntimeException failure) {
             log.error("No se pudo reintegrar la entrada {} del evento cancelado {}", ticket.getId(),
                     ticket.getOrder().getEventId(), failure);

@@ -2,7 +2,7 @@ package org.group10.ticket.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.group10.common.tracing.CorrelationHeaders;
+import org.group10.common.logging.CorrelationIds;
 import org.group10.common.exception.TicketYaException;
 import org.group10.ticket.dto.CheckInResponse;
 import org.group10.ticket.entity.Ticket;
@@ -44,7 +44,7 @@ public class CheckInService {
             throw alreadyUsed(ticket);
         }
         log.info("operation=check_in status=success ticketId={} eventId={} userId={} correlationId={}",
-                ticket.getId(), eventId, staffId, CorrelationHeaders.currentOrCreate());
+                ticket.getId(), eventId, staffId, CorrelationIds.currentOrNew());
         return new CheckInResponse(ticket.getId(), ticket.getSectorName(), ticket.getRow(), ticket.getNumber(), now);
     }
 

@@ -1,3 +1,4 @@
 org.group10.common.config.ErrorHandlingAutoConfiguration
 org.group10.common.config.PermissionAutoConfiguration
 org.group10.common.config.InternalSecretAutoConfiguration
+org.group10.common.config.TracingAutoConfiguration

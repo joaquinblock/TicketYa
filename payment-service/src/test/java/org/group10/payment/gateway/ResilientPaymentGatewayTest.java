@@ -173,13 +173,24 @@ class ResilientPaymentGatewayTest {
     }
 
     @Test
-    void refund_gatewayFails_passesThroughWithoutRetrying() {
+    void refund_gatewayFailsOnceAndAnswersOnTheRetry_creditsOnceWithTheSameRefund() {
+        Refund refund = Refund.builder().ticketId(5L).build();
+        delegate.scriptRefund(
+                () -> { throw new PaymentGatewayUnavailableException("caída momentánea"); },
+                () -> RefundResult.credited("MOCK-R"));
+
+        assertThat(gateway.refund(refund)).isEqualTo(RefundResult.credited("MOCK-R"));
+        assertThat(delegate.refunds()).isEqualTo(2);
+    }
+
+    @Test
+    void refund_gatewayFailsEveryAttempt_exhaustsTheRetries() {
         Refund refund = Refund.builder().ticketId(5L).build();
         delegate.failRefunds();
 
         assertThatThrownBy(() -> gateway.refund(refund))
                 .isInstanceOf(PaymentGatewayUnavailableException.class);
-        assertThat(delegate.refunds()).isEqualTo(1);
+        assertThat(delegate.refunds()).isEqualTo(MAX_ATTEMPTS);
     }
 
     private void failTheMinimumCallsToOpenTheCircuit() {
@@ -202,6 +213,7 @@ class ResilientPaymentGatewayTest {
     private static final class ScriptedGateway implements PaymentGateway {
 
         private final Deque<Supplier<ChargeResult>> answers = new ArrayDeque<>();
+        private final Deque<Supplier<RefundResult>> refundAnswers = new ArrayDeque<>();
         private final AtomicInteger charges = new AtomicInteger();
         private final AtomicInteger refunds = new AtomicInteger();
         private volatile boolean failRefunds;
@@ -216,6 +228,14 @@ class ResilientPaymentGatewayTest {
 
         void failRefunds() {
             failRefunds = true;
+        }
+
+        @SafeVarargs
+        final void scriptRefund(Supplier<RefundResult>... nextAnswers) {
+            synchronized (refundAnswers) {
+                refundAnswers.clear();
+                refundAnswers.addAll(List.of(nextAnswers));
+            }
         }
 
         int charges() {
@@ -242,7 +262,11 @@ class ResilientPaymentGatewayTest {
             if (failRefunds) {
                 throw new PaymentGatewayUnavailableException("caída");
             }
-            return RefundResult.credited("MOCK-R");
+            synchronized (refundAnswers) {
+                Supplier<RefundResult> answer =
+                        refundAnswers.size() > 1 ? refundAnswers.poll() : refundAnswers.peek();
+                return answer == null ? RefundResult.credited("MOCK-R") : answer.get();
+            }
         }
     }
 

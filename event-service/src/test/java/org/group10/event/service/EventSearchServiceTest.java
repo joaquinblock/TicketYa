@@ -39,6 +39,7 @@ class EventSearchServiceTest {
     private static final int VISIBLE_EVENTS = 6;
     private static final int BILLBOARD_EVENTS = 30;
     private static final int BILLBOARD_CONCERTS = 7;
+    private static final int BILLBOARD_PLAYS = 6;
     private static final int BILLBOARD_CONCERTS_IN_TANDIL = 2;
     private static final int BILLBOARD_IN_CORDOBA = 7;
     private static final int BILLBOARD_IN_MAR_DEL_PLATA = 5;
@@ -135,6 +136,15 @@ class EventSearchServiceTest {
     }
 
     @Test
+    void summary_bringsTheSaleStart_orNullWhenTheSaleHasNoStart() {
+        EventSummaryResponse festival = search(null, EventType.FESTIVAL, null, null, null, null, null, null).content().getFirst();
+        EventSummaryResponse play = search(null, EventType.THEATER, null, null, null, null, null, null).content().getFirst();
+
+        assertThat(festival.saleStart()).isEqualTo(LocalDate.now().plusDays(20).atTime(12, 0));
+        assertThat(play.saleStart()).isNull();
+    }
+
+    @Test
     void paging_countsEveryResult() {
         EventPageResponse second = searchService.search(
                 new EventSearchRequest(null, null, null, null, null, null, null, null, null, 1, 4));
@@ -145,10 +155,13 @@ class EventSearchServiceTest {
     }
 
     @Test
-    void bySeveralTypes_matchesAnyOfThem() {
-        assertThat(ids(searchBy(List.of(EventType.CONCERT, EventType.THEATER), null)))
-                .containsExactly(6L, 11L, 2L, 1L);
+    void bySeveralTypes_matchesAnyOfThem_fromTheNearest() {
+        EventPageResponse page = searchBy(List.of(EventType.CONCERT, EventType.THEATER), null);
+
+        assertThat(ids(page)).startsWith(6L, 11L, 2L, 1L);
+        assertThat(page.totalElements()).isEqualTo(4 + BILLBOARD_CONCERTS + BILLBOARD_PLAYS);
     }
+
 
     @Test
     void byParticipantId_leavesTheSuspendedEventOut() {

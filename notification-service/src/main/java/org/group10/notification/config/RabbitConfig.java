@@ -26,9 +26,11 @@ import tools.jackson.databind.json.JsonMapper;
  * <ul>
  *   <li>El exchange {@code ticketya.events} lo declaran ticket-service y event-service, y también acá (con los mismos
  *       atributos) para que el binding no dependa de qué servicio arranque primero.</li>
- *   <li>{@code notification.purchase} recibe {@code purchase.confirmed}, y {@code notification.event} los cambios de
- *       un evento que publica event-service ({@code event.*}). Lo que se rechaza sin requeue pasa, por el exchange
- *       por defecto, a la DLQ de cada cola ({@code <cola>.dlq}).</li>
+ *   <li>{@code notification.purchase} recibe {@code purchase.confirmed}; {@code notification.event}, todo lo que
+ *       publica event-service sobre un evento ({@code event.*}), y {@code notification.favorites}, solo las
+ *       publicaciones ({@code event.published}). Una publicación llega a las dos colas: {@code notification.event} la
+ *       descarta (ver {@code EventChangedListener}). Lo que se rechaza sin requeue pasa, por el exchange por defecto,
+ *       a la DLQ de cada cola ({@code <cola>.dlq}).</li>
  *   <li>El reintento ({@code spring.rabbitmq.listener.simple.retry.*}) no repite lo que nunca va a andar: un mensaje
  *       ilegible o uno que el listener rechaza.</li>
  * </ul>
@@ -44,6 +46,9 @@ public class RabbitConfig {
     public static final String EVENT_CHANGES = "event.*";
     public static final String EVENT_QUEUE = "notification.event";
     public static final String EVENT_DLQ = EVENT_QUEUE + ".dlq";
+    public static final String EVENT_PUBLISHED = "event.published";
+    public static final String FAVORITES_QUEUE = "notification.favorites";
+    public static final String FAVORITES_DLQ = FAVORITES_QUEUE + ".dlq";
 
     /** La autoconfiguración lo usa en el RabbitTemplate y en los listeners. */
     @Bean
@@ -90,6 +95,24 @@ public class RabbitConfig {
     @Bean
     Binding eventChangesBinding(Queue eventQueue, TopicExchange eventsExchange) {
         return BindingBuilder.bind(eventQueue).to(eventsExchange).with(EVENT_CHANGES);
+    }
+
+    @Bean
+    Queue favoritesQueue() {
+        return QueueBuilder.durable(FAVORITES_QUEUE)
+                .deadLetterExchange("")
+                .deadLetterRoutingKey(FAVORITES_DLQ)
+                .build();
+    }
+
+    @Bean
+    Queue favoritesDeadLetterQueue() {
+        return QueueBuilder.durable(FAVORITES_DLQ).build();
+    }
+
+    @Bean
+    Binding eventPublishedBinding(Queue favoritesQueue, TopicExchange eventsExchange) {
+        return BindingBuilder.bind(favoritesQueue).to(eventsExchange).with(EVENT_PUBLISHED);
     }
 
     /**

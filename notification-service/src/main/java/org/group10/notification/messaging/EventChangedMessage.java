@@ -16,6 +16,8 @@ public record EventChangedMessage(UUID messageId, Instant occurredAt, Long event
     public enum Change {
         CANCELLED,
         SUSPENDED,
-        RESCHEDULED
+        RESCHEDULED,
+        /** Llega por {@code event.*} pero no es un cambio: lo avisa {@code EventPublishedListener} (US-NOT-03). */
+        PUBLISHED
     }
 }

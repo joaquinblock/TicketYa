@@ -17,7 +17,7 @@ La agregación centralizada queda a cargo del entorno que recolecta stdout; esta
 
 ## Alternativas consideradas
 
-- **W3C `traceparent` con OpenTelemetry:** estándar más amplio, pero agrega instrumentación y conceptos que no existen todavía en el proyecto; se puede adoptar en una iniciativa de trazabilidad de todos los servicios.
+- **W3C `traceparent` con OpenTelemetry:** estándar más amplio, pero agrega instrumentación y conceptos que no existen todavía en el proyecto; se puede adoptar en una iniciativa de trazabilidad de todos los servicios. *Se sumó después, como complemento: ver Ampliación (#191), Zipkin.*
 - **Pasar el ID como parámetro en cada método:** obliga a cambiar firmas de negocio y no cubre llamadas programadas que no nacen de un request HTTP.
 - **Agregar un colector al compose:** centralizaría el almacenamiento local, pero excede el alcance de US-PAY-15 y requiere elegir y operar otra infraestructura.
 
@@ -50,8 +50,20 @@ La consigna pide registrar las operaciones críticas "en un log centralizado". H
   - Con `spring-boot:run` la consola sigue en texto. Por eso ticket-service y payment-service ya no lo fijan en su `application.yml`.
 - **El punto central es la salida del compose.** Con todos los servicios en JSON, `docker compose logs` junta los logs de todo el sistema, y una operación se sigue filtrando por su id ([README](../../README.md), *Seguir una operación*).
   - No se agregó un colector (Loki, Elasticsearch) porque son 2 o 3 contenedores más y el sistema ya llega al límite de memoria de las máquinas del equipo.
-  - Si hace falta para la defensa, se puede sumar como un perfil de compose que no arranque por defecto.
+  - Para ver una operación, en vez de un colector de logs se sumó Zipkin (abajo): muestra el recorrido y los tiempos, que es lo que más sirve para la prueba de carga y la defensa.
 - **Lo crítico se ve.** Una `TicketYaException` se registra con el nivel de su `ErrorCode`: `ERROR` si es 5xx, `WARN` si es 4xx. Antes todas quedaban en `WARN`, y un evento inexistente se veía igual que la pasarela caída.
   - El nivel sale del status (`ErrorCode.getLevel()`), y un código que sea crítico aunque responda 4xx lo sobrescribe.
   - Se usa `org.slf4j.event.Level` y no un enum propio, porque es lo que ya entiende el logger.
   - Así, `docker compose logs | grep '"level":"ERROR"'` muestra lo crítico de todo el sistema con su `correlationId` ([`error-handling.md`](../architecture/error-handling.md)).
+
+### Zipkin, para ver el recorrido y los tiempos
+
+Los logs dicen qué pasó en cada servicio; Zipkin muestra la operación entera en una línea de tiempo, con cuánto tardó cada salto. Es lo que hace falta para encontrar el cuello de botella en la prueba de carga.
+
+- **Micrometer Tracing con Brave** (`spring-boot-starter-zipkin`, en el `pom.xml` de la raíz para todos los servicios). Cada request tiene un `traceId` y cada salto un `spanId`, que viajan en el header estándar `traceparent` por los `RestClient` de Boot, el proxy del gateway y, con la observación activada, RabbitMQ.
+- **No reemplaza al `X-Correlation-ID`, convive con él.** El `correlationId` se puede mandar desde afuera (`demo-compra-1`) y es el que usan nuestros logs. El `traceId` lo genera Micrometer y es el de Zipkin. Los dos salen en cada línea de log JSON, así que de un log se llega a la traza y al revés.
+- **Solo con `observability.compose.yaml`.** El export está apagado en cada `application.yml` (`management.tracing.export.zipkin.enabled: false`), así que el desarrollo y los tests no intentan mandar trazas. El overlay suma el contenedor de Zipkin (memoria, unos 300 MB) y en cada servicio prende el export, el muestreo al 100% y la observación de RabbitMQ:
+  `docker compose -f docker-compose.yml -f observability.compose.yaml up --build`, y la interfaz en http://localhost:9411.
+- **Los healthchecks no se trazan** (`TracingAutoConfiguration`): Docker pide `/actuator/health` cada pocos segundos y taparían las trazas de las operaciones.
+- **El log del request lleva el `traceId`** porque `CorrelationIdFilter` corre justo después del filtro de observación (`HIGHEST_PRECEDENCE + 2`), y sigue antes que la seguridad.
+- **Probado en Docker** con gateway, event-service y Zipkin: un `GET /api/events/{id}` sale como una traza con tres spans (gateway servidor, gateway cliente, event-service), y los logs de los dos servicios tienen el mismo `traceId`. El salto por RabbitMQ se probó solo por configuración: falta verlo con el sistema completo.

@@ -1,4 +1,4 @@
-# 0005: MongoDB en recommendation-service
+# 0006: MongoDB en recommendation-service
 
 - **Fecha:** 2026-11-23
 - **Estado:** aceptada

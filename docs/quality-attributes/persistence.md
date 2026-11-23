@@ -43,4 +43,4 @@ Cada servicio tiene su propia base en su propio contenedor. Sin embargo, algunas
 
 - [`ticket-service.md`](../architecture/ticket-service.md), [`payment-service.md`](../architecture/payment-service.md) y [`auth-service.md`](../architecture/auth-service.md) detallan cada modelo.
 - [RFC-004](../rfc/RFC-004-cross-service-relations.md) trata las relaciones entre servicios.
-- [ADR 0005](../adr/0005-mongodb-en-recommendation-service.md) justifica MongoDB en recommendation-service.
+- [ADR 0006](../adr/0006-mongodb-en-recommendation-service.md) justifica MongoDB en recommendation-service.

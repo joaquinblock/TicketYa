@@ -135,6 +135,15 @@ class EventSearchServiceTest {
     }
 
     @Test
+    void summary_bringsTheSaleStart_orNullWhenTheSaleHasNoStart() {
+        EventSummaryResponse festival = search(null, EventType.FESTIVAL, null, null, null, null, null, null).content().getFirst();
+        EventSummaryResponse play = search(null, EventType.THEATER, null, null, null, null, null, null).content().getFirst();
+
+        assertThat(festival.saleStart()).isEqualTo(LocalDate.now().plusDays(20).atTime(12, 0));
+        assertThat(play.saleStart()).isNull();
+    }
+
+    @Test
     void paging_countsEveryResult() {
         EventPageResponse second = searchService.search(
                 new EventSearchRequest(null, null, null, null, null, null, null, null, null, 1, 4));

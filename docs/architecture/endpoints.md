@@ -213,11 +213,11 @@ GET /api/events?q=serran&sort=RELEVANCE&size=2
 {
   "content": [
     { "id": 11, "name": "Peña folklórica serrana", "type": "CONCERT", "status": "PUBLISHED",
-      "dateTime": "2026-11-28T21:00:00", "highDemand": false, "organizationId": 2,
+      "dateTime": "2026-11-28T21:00:00", "highDemand": false, "saleStart": null, "organizationId": 2,
       "venue": { "id": 2, "name": "Teatro de la Sierra", "city": "Tandil", "...": "..." },
       "priceFrom": 7000.00, "participants": ["Ballet Folklórico Serrano"] },
     { "id": 1, "name": "Los Serranos en vivo", "type": "CONCERT", "status": "PUBLISHED",
-      "dateTime": "2026-12-13T21:00:00", "highDemand": true, "organizationId": 1,
+      "dateTime": "2026-12-13T21:00:00", "highDemand": true, "saleStart": "2026-11-20T10:00:00", "organizationId": 1,
       "venue": { "id": 1, "name": "Estadio del Sur", "city": "Buenos Aires", "...": "..." },
       "priceFrom": 45000.00, "participants": ["Los Serranos"] }
   ],

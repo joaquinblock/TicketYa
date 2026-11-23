@@ -16,6 +16,8 @@ public record EventSummaryResponse(
         @Schema(description = "PUBLISHED o SOLD_OUT", example = "PUBLISHED") EventStatus status,
         @Schema(example = "2026-12-12T21:00:00") LocalDateTime dateTime,
         @Schema(example = "true") boolean highDemand,
+        @Schema(description = "Apertura de la venta; null si se vende desde la publicación",
+                example = "2026-11-20T10:00:00") LocalDateTime saleStart,
         @Schema(description = "Organización en el auth-service", example = "1") Long organizationId,
         VenueSummaryResponse venue,
         @Schema(description = "Precio del sector más barato", example = "45000.00") BigDecimal priceFrom,

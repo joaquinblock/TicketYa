@@ -371,10 +371,21 @@ El `TicketSeeder` usa los IDs, fechas y nombres que generan los seeders del auth
 | 9 Jornada de arquitectura | `FINISHED` | 14 Sala | — |
 | 11 Peña folklórica serrana | `PUBLISHED`, Platea agotada | 15 Platea, 16 Pullman | 81–154 |
 | 13 a 42, la cartelera | `PUBLISHED`, venta abierta, hasta 4 por persona | 18 a 47, uno por evento | Platea 81–130, Pullman 131–154 |
+| 43 Noche grande en la Ribera | `PUBLISHED`, Platea alta agotada | 48 Campo, 49 Platea baja, 50 Platea alta, 51 Palco VIP | 240–419 |
+| 44 Clásico de la Ribera | `PUBLISHED`, Campo agotado | 52 Campo, 53 Platea baja, 54 Platea alta, 55 Palco VIP | 240–419 |
+| 45 Festival de la Costanera | `PUBLISHED`, queda 1 lugar en Campo | 56 Campo, 57 Platea baja, 58 Platea alta, 59 Palco VIP | 240–419 |
+| 46 Final de la Copa Ribera | `PUBLISHED`, queda 1 asiento | 60 Platea baja, 61 Palco VIP | 240–351, 408–419 |
 
 Los eventos en `DRAFT` (3, 10 y 12) no tienen venta. Si se cambia el orden de los datos en el `EventSeeder`, hay que actualizar el `TicketSeeder`.
 
 Además carga, a nombre del cliente `user` 1, una compra pagada en el Campo del recital, una pagada con asientos en la obra (con una devolución pendiente) y una reserva en curso en la Platea del recital. En la peña (evento 11) vende todos los asientos de la Platea y deja libre la Pullman: es el evento a la venta con el primer sector agotado.
+
+Los casos de venta (43 a 46) cargan, sin órdenes, lo que ya está vendido, para ver en el front el paso de disponible a agotado:
+
+- **43:** uno de cada tres asientos de la Platea baja (los de `seatId` múltiplo de 3) y toda la Platea alta.
+- **44:** todo el Campo.
+- **45:** el Campo, menos un lugar.
+- **46:** toda la Platea baja salvo D7 (asiento 288), y todo el Palco VIP.
 
 ## User stories
 

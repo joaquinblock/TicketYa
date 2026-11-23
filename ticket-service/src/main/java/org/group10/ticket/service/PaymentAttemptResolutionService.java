@@ -2,6 +2,7 @@ package org.group10.ticket.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.group10.common.dto.ErrorDto;
 import org.group10.ticket.client.PaymentClient;
 import org.group10.ticket.client.dto.CancelPaymentRequest;
 import org.group10.ticket.client.dto.PaymentResultStatus;
@@ -25,6 +26,8 @@ import java.time.LocalDateTime;
 @Slf4j
 public class PaymentAttemptResolutionService {
 
+    private static final String PAYMENT_NOT_FOUND = "payment_not_found";
+
     private final OrderRepository orderRepository;
     private final PaymentClient paymentClient;
     private final PurchaseCompensationService purchaseCompensationService;
@@ -39,7 +42,7 @@ public class PaymentAttemptResolutionService {
         try {
             resolve(order);
         } catch (RestClientResponseException answer) {
-            if (answer.getStatusCode().isSameCodeAs(HttpStatus.NOT_FOUND)) {
+            if (isPaymentNotFound(answer)) {
                 log.info("payment-service no registró el intento de la orden {}: no hubo cobro", order.getId());
                 clearAttempt(order);
             } else {
@@ -49,6 +52,22 @@ public class PaymentAttemptResolutionService {
         } catch (RuntimeException withoutAnswer) {
             log.error("No se pudo anular el intento de la orden {}: se reintenta en la próxima corrida",
                     order.getId(), withoutAnswer);
+        }
+    }
+
+    /**
+     * Solo el 404 {@code payment_not_found} dice que el cobro nunca llegó. Otro 404, como una ruta que no existe, no
+     * dice nada del pago: limpiar la clave ahí podría dejar sin reintegrar un cobro aprobado.
+     */
+    private static boolean isPaymentNotFound(RestClientResponseException answer) {
+        if (!answer.getStatusCode().isSameCodeAs(HttpStatus.NOT_FOUND)) {
+            return false;
+        }
+        try {
+            ErrorDto error = answer.getResponseBodyAs(ErrorDto.class);
+            return error != null && PAYMENT_NOT_FOUND.equals(error.error());
+        } catch (RuntimeException unreadableBody) {
+            return false;
         }
     }
 

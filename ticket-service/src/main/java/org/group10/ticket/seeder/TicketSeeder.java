@@ -50,11 +50,13 @@ public class TicketSeeder implements ApplicationRunner {
     private static final Long CONCERT_EVENT_ID = 1L;
     private static final Long PLAY_EVENT_ID = 2L;
     private static final Long SOLD_OUT_JAZZ_EVENT_ID = 6L;
+    private static final Long FOLK_NIGHT_EVENT_ID = 11L;
 
     private static final Long CONCERT_FIELD_SECTOR_ID = 1L;
     private static final Long CONCERT_STAND_SECTOR_ID = 2L;
     private static final Long PLAY_STALLS_SECTOR_ID = 3L;
     private static final Long JAZZ_ROOM_SECTOR_ID = 10L;
+    private static final Long FOLK_NIGHT_STALLS_SECTOR_ID = 15L;
 
     private static final long STADIUM_FIRST_SEAT_ID = 1L;
     private static final long THEATER_FIRST_SEAT_ID = 81L;
@@ -143,6 +145,7 @@ public class TicketSeeder implements ApplicationRunner {
         seedEventSalesWithTheSameDataAsTheEventSeeder();
         seedBillboardSales();
         sellOutTheJazzRoom();
+        sellOutTheFolkNightStalls();
         seedPaidFieldOrder();
         seedPaidSeatOrder();
         seedPendingSeatOrder();
@@ -175,8 +178,9 @@ public class TicketSeeder implements ApplicationRunner {
         sale(9L, "Jornada de arquitectura de software", HARBOR_HALL, EventSaleStatus.FINISHED, at(-30, 9, 0), null,
                 false, null,
                 generalAdmission(14L, "Sala", "8000", 300));
-        sale(11L, "Peña folklórica serrana", THEATER, EventSaleStatus.PUBLISHED, at(18, 21, 0), null, false, 8,
-                numbered(15L, "Platea", "9000", THEATER_STALLS),
+        sale(FOLK_NIGHT_EVENT_ID, "Peña folklórica serrana", THEATER, EventSaleStatus.PUBLISHED, at(18, 21, 0), null,
+                false, 8,
+                numbered(FOLK_NIGHT_STALLS_SECTOR_ID, "Platea", "9000", THEATER_STALLS),
                 numbered(16L, "Pullman", "7000", THEATER_BALCONY));
     }
 
@@ -249,6 +253,15 @@ public class TicketSeeder implements ApplicationRunner {
     private void sellOutTheJazzRoom() {
         EventSectorStock room = eventSectorStockRepository.findById(JAZZ_ROOM_SECTOR_ID).orElseThrow();
         room.setTaken(room.getCapacity());
+    }
+
+    /**
+     * Anchor for an event on sale whose first sector is sold out while the second one still has seats.
+     */
+    private void sellOutTheFolkNightStalls() {
+        eventSeatRepository.findByEventIdOrderBySeatId(FOLK_NIGHT_EVENT_ID).stream()
+                .filter(seat -> FOLK_NIGHT_STALLS_SECTOR_ID.equals(seat.getEventSectorId()))
+                .forEach(seat -> seat.setStatus(EventSeatStatus.SOLD));
     }
 
     private void seedPaidFieldOrder() {

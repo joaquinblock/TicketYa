@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 public interface EventRepository extends JpaRepository<Event, Long> {
 
@@ -30,6 +31,13 @@ public interface EventRepository extends JpaRepository<Event, Long> {
             order by e.id
             """)
     List<Long> findIdsOfOnSaleEventsThatAlreadyHappened(LocalDateTime now);
+
+    /**
+     * Locks the event row until the transaction ends, so two changes of the same event run one after the other and
+     * the second one reads the status the first one left. Call it before reading the event in that transaction.
+     */
+    @Query(value = "select id from event where id = :id for update", nativeQuery = true)
+    Optional<Long> lockById(Long id);
 
     @Modifying
     @Query("""

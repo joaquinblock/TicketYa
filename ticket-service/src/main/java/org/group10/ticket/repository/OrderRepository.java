@@ -59,6 +59,22 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             """)
     List<Long> findIdsOfPendingOrdersOfEvent(Long eventId);
 
+    /**
+     * Compradores de órdenes {@code PAID} del evento, sin los que tienen todas sus entradas con una devolución
+     * aprobada: esos ya no van al evento. No se filtra por estado de la entrada porque al cancelar el evento el job
+     * de reintegros también las pasa a {@code REFUNDED}.
+     */
+    @Query("""
+            select distinct o.userId from Order o
+            where o.eventId = :eventId and o.status = org.group10.ticket.entity.OrderStatus.PAID
+              and (not exists (select t from Ticket t where t.order = o)
+                   or exists (select t from Ticket t where t.order = o
+                              and not exists (select r from ReturnRequest r where r.ticket = t
+                                              and r.status = org.group10.ticket.entity.ReturnRequestStatus.APPROVED)))
+            order by o.userId
+            """)
+    List<Long> findDistinctUserIdsOfPaidOrdersOfEvent(Long eventId);
+
     @Modifying
     @Query("""
             update Order o set o.status = :nextStatus

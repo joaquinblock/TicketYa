@@ -31,7 +31,7 @@
 
 **Para la Entrega 1 alcanza con el gateway y los cuatro primeros servicios.** Cada servicio arranca su base con Docker la primera vez (`spring.docker.compose`). No hace falta levantarlas a mano.
 
-**RabbitMQ** (AMQP en 5672, consola en http://localhost:15672, usuario `ticketya` / `ticketya`) lleva los avisos entre servicios ([ADR 0004](docs/adr/0004-rabbitmq-para-avisos-entre-servicios.md)). Es uno solo para todos, así que no lo levanta ningún servicio: va antes que ellos (ver *Levantarlo*). Lo usan ticket-service y notification-service; sin él arrancan igual, pero no se mandan los avisos.
+**RabbitMQ** (AMQP en 5672, consola en http://localhost:15672, usuario `ticketya` / `ticketya`) lleva los avisos entre servicios ([ADR 0004](docs/adr/0004-rabbitmq-para-avisos-entre-servicios.md)). Es uno solo para todos, así que no lo levanta ningún servicio: va antes que ellos (ver *Levantarlo*). Lo usan ticket-service, event-service y notification-service; sin él arrancan igual, pero no se mandan los avisos.
 
 ### Levantarlo
 

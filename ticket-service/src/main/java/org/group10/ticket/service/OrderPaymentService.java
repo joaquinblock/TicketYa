@@ -24,6 +24,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionOperations;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.time.Clock;
@@ -94,13 +95,33 @@ public class OrderPaymentService {
 
     private void chargeRegisteringAnyRejection(Order order, PayOrderRequest request) {
         try {
-            paymentClient.charge(new ChargeRequest(order.getId(), order.getTotal(), request.paymentMethod(),
-                    request.idempotencyKey()));
+            chargeRepeatingWhileThereIsNoAnswer(new ChargeRequest(order.getId(), order.getTotal(),
+                    request.paymentMethod(), request.idempotencyKey()));
         } catch (RestClientResponseException failure) {
             if (failure.getStatusCode().isSameCodeAs(HttpStatus.UNPROCESSABLE_CONTENT)) {
                 registerRejection(order.getId(), request.idempotencyKey(), rejectedAttemptsOf(failure));
             }
             throw failure;
+        }
+    }
+
+    /**
+     * Repite la llamada solo si no hubo respuesta (timeout o conexión caída), con la misma clave: payment-service no
+     * cobra dos veces. Un 5xx no se repite, porque payment ya agotó sus reintentos a la pasarela.
+     */
+    private void chargeRepeatingWhileThereIsNoAnswer(ChargeRequest charge) {
+        int attempts = reservationProperties.paymentCallAttempts();
+        for (int call = 1; ; call++) {
+            try {
+                paymentClient.charge(charge);
+                return;
+            } catch (ResourceAccessException withoutAnswer) {
+                if (call >= attempts) {
+                    throw withoutAnswer;
+                }
+                log.warn("payment-service no respondió el cobro de la orden {} (llamada {} de {}): se repite con la "
+                        + "misma clave", charge.orderId(), call, attempts, withoutAnswer);
+            }
         }
     }
 

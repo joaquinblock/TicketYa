@@ -39,11 +39,26 @@ public class RefundService {
     }
 
     public RefundOutcome refund(RefundRequest request) {
-        RegisteredRefund registered = transaction.execute(status -> registerHoldingThePaymentLock(request));
-        Refund refund = registered.refund().getStatus() == RefundStatus.REQUESTED
-                ? creditThroughTheGateway(registered.refund())
-                : registered.refund();
+        RegisteredRefund registered;
+        try {
+            registered = transaction.execute(status -> registerHoldingThePaymentLock(request));
+        } catch (RuntimeException failure) {
+            logRefundResult(request, null, false, "FAILED");
+            throw failure;
+        }
 
+        Refund refund;
+        try {
+            refund = registered.refund().getStatus() == RefundStatus.REQUESTED
+                    ? creditThroughTheGateway(registered.refund())
+                    : registered.refund();
+        } catch (RuntimeException failure) {
+            logRefundResult(request, registered.refund(), registered.created(), "FAILED");
+            throw failure;
+        }
+
+        logRefundResult(request, refund, registered.created(), refund.getStatus().name());
+        ensureRefundWasCredited(refund);
         return new RefundOutcome(RefundMapper.toResponse(refund), registered.created());
     }
 
@@ -116,17 +131,21 @@ public class RefundService {
 
     private Refund creditThroughTheGateway(Refund requestedRefund) {
         RefundResult result = askTheGatewayToCredit(requestedRefund);
-        Refund refund = transaction.execute(status -> commitGatewayAnswer(requestedRefund.getId(), result));
-
-        ensureRefundWasCredited(refund);
-        return refund;
+        return transaction.execute(status -> commitGatewayAnswer(requestedRefund.getId(), result));
     }
 
     private RefundResult askTheGatewayToCredit(Refund requestedRefund) {
         try {
             return paymentGateway.refund(requestedRefund);
         } catch (RuntimeException gatewayFailure) {
-            log.error("La pasarela falló al acreditar el reintegro {}", requestedRefund.getId(), gatewayFailure);
+            log.atError()
+                    .addKeyValue("operation", "refund")
+                    .addKeyValue("orderId", requestedRefund.getPayment().getOrderId())
+                    .addKeyValue("ticketId", requestedRefund.getTicketId())
+                    .addKeyValue("refundId", requestedRefund.getId())
+                    .addKeyValue("result", "FAILED")
+                    .addKeyValue("errorType", gatewayFailure.getClass().getSimpleName())
+                    .log("Payment gateway refund failed");
             return RefundResult.failed(GATEWAY_DID_NOT_ANSWER);
         }
     }
@@ -148,5 +167,18 @@ public class RefundService {
                     "La pasarela no acreditó el reintegro: %s".formatted(refund.getFailureReason()),
                     Map.of("reason", refund.getFailureReason()));
         }
+    }
+
+    private void logRefundResult(RefundRequest request, Refund refund, boolean created, String result) {
+        var event = "CREDITED".equals(result) ? log.atInfo() : log.atWarn();
+        event.addKeyValue("operation", "refund")
+                .addKeyValue("orderId", request.orderId())
+                .addKeyValue("ticketId", request.ticketId())
+                .addKeyValue("created", created)
+                .addKeyValue("result", result);
+        if (refund != null) {
+            event.addKeyValue("refundId", refund.getId());
+        }
+        event.log("Payment refund result");
     }
 }

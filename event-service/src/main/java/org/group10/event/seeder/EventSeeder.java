@@ -29,6 +29,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -262,6 +263,8 @@ public class EventSeeder implements ApplicationRunner {
                 new BillboardEvent("Foro de energías renovables", EventType.CONFERENCE, stadiumField)
         ));
 
+        seedSaleShowcase();
+
         log.info("EventSeeder: {} lugares, {} sectores, {} asientos, {} participantes y {} eventos cargados",
                 venueRepository.count(), sectorRepository.count(), seatRepository.count(),
                 participantRepository.count(), eventRepository.count());
@@ -270,6 +273,14 @@ public class EventSeeder implements ApplicationRunner {
     /**
      * An event of the first organization with the fields every event has; the caller adds the rest.
      */
+    private static final Map<EventType, String> PHOTO_BY_TYPE = Map.of(
+            EventType.CONCERT, "https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?auto=format&fit=crop&w=1000&q=80",
+            EventType.FESTIVAL, "https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?auto=format&fit=crop&w=1000&q=80",
+            EventType.THEATER, "https://images.unsplash.com/photo-1507676184212-d03ab07a01bf?auto=format&fit=crop&w=1000&q=80",
+            EventType.SPORTS, "https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=1000&q=80",
+            EventType.CONFERENCE, "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=1000&q=80"
+    );
+
     private static Event.EventBuilder base(String name, String description, EventType type, Venue venue,
                                            LocalDateTime dateTime, EventStatus status) {
         return Event.builder()
@@ -281,6 +292,7 @@ public class EventSeeder implements ApplicationRunner {
                 .venue(venue)
                 .dateTime(dateTime)
                 .status(status)
+                .photoUrl(PHOTO_BY_TYPE.get(type))
                 .highDemand(false);
     }
 
@@ -299,6 +311,53 @@ public class EventSeeder implements ApplicationRunner {
             String price = String.valueOf(BILLBOARD_BASE_PRICE + index * BILLBOARD_PRICE_STEP);
             eventSectorRepository.save(eventSector(event, item.sector(), price));
         }
+    }
+
+    /**
+     * Events 43 to 46, after the billboard in date and with prices from 52000, so the searches still see the
+     * original six first. They exist to see the purchase screens go from available to sold out: the ticket-service
+     * sells part of them (see "Datos de prueba" in {@code ticket-service.md}).
+     * <p>
+     * Event sectors 48 to 61 and seats 240 to 419 are used by id by the {@code TicketSeeder}.
+     */
+    private void seedSaleShowcase() {
+        Venue ribera = venueRepository.save(venue("Estadio Ribera", "Av. Costanera 500", "Buenos Aires", -34.5800, -58.4000));
+        Sector field = sectorRepository.save(generalAdmission(ribera, "Campo", 5000));
+        Sector lowerStand = sectorRepository.save(numbered(ribera, "Platea baja"));
+        Sector upperStand = sectorRepository.save(numbered(ribera, "Platea alta"));
+        Sector vipBox = sectorRepository.save(numbered(ribera, "Palco VIP"));
+        seedSeats(lowerStand, List.of("A", "B", "C", "D", "E", "F", "G", "H"), 14);   // seats 240-351
+        seedSeats(upperStand, List.of("A", "B", "C", "D"), 14);                       // seats 352-407
+        seedSeats(vipBox, List.of("A", "B"), 6);                                      // seats 408-419
+
+        // Every category, with the Platea alta sold out (event_sector 48 to 51)
+        Event bigNight = eventRepository.save(showcase("Noche grande en la Ribera", EventType.FESTIVAL, ribera, 170));
+        // Campo sold out (52 to 55)
+        Event derby = eventRepository.save(showcase("Clásico de la Ribera", EventType.SPORTS, ribera, 175));
+        // A single place left in Campo (56 to 59)
+        Event coastFestival = eventRepository.save(showcase("Festival de la Costanera", EventType.FESTIVAL, ribera, 180));
+        // A single free seat in the Platea baja and the Palco VIP sold out (60 and 61)
+        Event cupFinal = eventRepository.save(showcase("Final de la Copa Ribera", EventType.SPORTS, ribera, 185));
+
+        for (Event event : List.of(bigNight, derby, coastFestival)) {
+            eventSectorRepository.saveAll(List.of(
+                    eventSector(event, field, "52000"),
+                    eventSector(event, lowerStand, "68000"),
+                    eventSector(event, upperStand, "85000"),
+                    eventSector(event, vipBox, "120000")
+            ));
+        }
+        eventSectorRepository.saveAll(List.of(
+                eventSector(cupFinal, lowerStand, "68000"),
+                eventSector(cupFinal, vipBox, "120000")
+        ));
+    }
+
+    private Event showcase(String name, EventType type, Venue venue, int daysFromToday) {
+        return base(name, "Para ver la venta de punta a punta", type, venue, at(daysFromToday, 21, 0),
+                EventStatus.PUBLISHED)
+                .maxTicketsPerCustomer(BILLBOARD_MAX_TICKETS)
+                .build();
     }
 
     /**

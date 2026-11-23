@@ -18,6 +18,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.amqp.core.MessagePostProcessor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -106,7 +107,7 @@ class EventPublishConcurrencyMySqlIntegrationTest {
         assertThat(succeeded).containsExactlyInAnyOrder(true, false);
         assertThat(eventRepository.findById(eventId).orElseThrow().getStatus()).isEqualTo(EventStatus.PUBLISHED);
         verify(rabbitTemplate, times(1)).convertAndSend(eq(RabbitConfig.EVENTS_EXCHANGE), eq("event.published"),
-                any(Object.class));
+                any(Object.class), any(MessagePostProcessor.class));
     }
 
     private List<Boolean> atTheSameTime(Runnable publication) throws Exception {

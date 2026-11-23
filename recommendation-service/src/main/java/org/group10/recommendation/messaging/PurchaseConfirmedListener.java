@@ -1,10 +1,13 @@
 package org.group10.recommendation.messaging;
 
 import lombok.RequiredArgsConstructor;
+import org.group10.common.logging.CorrelationIds;
 import org.group10.recommendation.config.RabbitConfig;
 import org.group10.recommendation.service.PurchaseHistoryService;
+import org.slf4j.MDC;
 import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
 /**
@@ -21,11 +24,21 @@ public class PurchaseConfirmedListener {
 
     private final PurchaseHistoryService purchaseHistoryService;
 
-    @RabbitListener(queues = RabbitConfig.PURCHASE_QUEUE)
     public void onPurchaseConfirmed(PurchaseConfirmedMessage message) {
-        if (message.userId() == null || message.eventId() == null) {
-            throw new AmqpRejectAndDontRequeueException("purchase.confirmed sin userId o eventId: " + message);
+        onPurchaseConfirmed(message, null);
+    }
+
+    @RabbitListener(queues = RabbitConfig.PURCHASE_QUEUE)
+    public void onPurchaseConfirmed(PurchaseConfirmedMessage message,
+                                     @Header(name = CorrelationIds.HEADER_NAME, required = false) String correlationId) {
+        MDC.put(CorrelationIds.MDC_KEY, CorrelationIds.validOrNew(correlationId));
+        try {
+            if (message.userId() == null || message.eventId() == null) {
+                throw new AmqpRejectAndDontRequeueException("purchase.confirmed sin userId o eventId: " + message);
+            }
+            purchaseHistoryService.record(message.userId(), message.eventId());
+        } finally {
+            MDC.remove(CorrelationIds.MDC_KEY);
         }
-        purchaseHistoryService.record(message.userId(), message.eventId());
     }
 }

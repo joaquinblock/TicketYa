@@ -2,7 +2,7 @@
 
 - **Estado:** Aceptado
 - **Fecha:** 17/11/2026
-- **Relacionado:** [RFC-001](../rfc/RFC-001-auth-modality.md), US-AUTH-03, épicas #9 y #11
+- **Relacionado:** [RFC-001](../rfc/RFC-001-auth-modality.md), US-AUTH-03, épicas #9 y #11, [ADR 0008](0008-despliegue-con-docker-compose.md) (cómo está armado el compose)
 
 ## Contexto
 

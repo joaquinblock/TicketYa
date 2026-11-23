@@ -141,7 +141,7 @@ La llamada es síncrona, pero con un tiempo máximo. Ese tiempo, sumando reinten
 
 ### Resiliencia ante la pasarela (US-PAY-11)
 
-`ResilientPaymentGateway` envuelve a la pasarela con Resilience4j ([ADR 0007](../adr/0007-resiliencia-ante-la-pasarela-con-resilience4j.md)). Es el bean `@Primary` de `PaymentGateway`, así que `PaymentService` no lo conoce. Solo cubre los cobros: los reintegros pasan directo hasta la US-PAY-13.
+`ResilientPaymentGateway` envuelve a la pasarela con Resilience4j ([ADR 0007](../adr/0007-resiliencia-ante-la-pasarela-con-resilience4j.md)). Es el bean `@Primary` de `PaymentGateway`, así que `PaymentService` no lo conoce. Aplica el timeout, los reintentos y el circuit breaker a cobros y reintegros.
 
 | Situación | Qué pasa | Respuesta |
 |---|---|---|
@@ -231,9 +231,15 @@ REST síncrono en la Entrega 1. **payment-service nunca llama a ticket-service**
 | `GET /api/payments?orderId=` | Solo administrador (`REFUND_RESOLVE`), por el gateway. Sin token, 401; con otro rol, 403 | 200 con los pagos de la orden; 404 `payment_not_found` |
 
 - **Reintento de un cobro:** con la misma clave y los mismos datos responde con el mismo status y cuerpo que la primera vez. Si fue rechazado, vuelve a dar 422 `payment_rejected`, sin llamar a la pasarela. Si todavía no tiene resultado, vuelve a llamar a la pasarela con la misma clave y responde como un cobro normal, o con 503 `payment_gateway_unavailable` si la pasarela falla otra vez. La pasarela no cobra dos veces la misma clave, aunque reciba dos reintentos simultáneos.
-- **Reintento de un reintegro:** si está `CREDITED`, se devuelve el existente con 200. Si sigue `REQUESTED`, se vuelve a llamar a la pasarela y responde 200, o 502 `refund_failed` si falla. Si falló, se reintenta sobre la misma fila y responde 201 o 502.
+- **Reintento de un reintegro:** si está `CREDITED`, se devuelve el existente con 200. Si sigue `REQUESTED`, se vuelve a llamar a la pasarela y responde 200, o 502 `refund_failed` si falla. Si falló, se reintenta sobre la misma fila y responde 201 o 502. Cada llamada de reintegro usa hasta 3 intentos con la pasarela y timeout de 3 s por intento, conservando la clave derivada del `ticketId`.
 - **Consulta de pagos:** las dos rutas `GET` devuelven los pagos de la orden del más antiguo al más nuevo, con `id`, `orderId`, `amount`, `paymentMethod`, `status`, `failureReason`, `gatewayId` y `createdAt`. Es una respuesta aparte de la del cobro, porque el `POST` tiene que repetir exactamente el mismo cuerpo. Sin `orderId`, o si no es un número: 400 `invalid_parameter`. Si no es positivo: 400 `validation_error`.
 - **Errores:** los resuelve `GlobalExceptionHandler` de `common`: los 4xx se reenvían tal cual y los 5xx llegan a ticket como 503.
+
+## Trazabilidad de cobros y reintegros (US-PAY-15)
+
+Las llamadas de ticket-service a payment-service llevan `X-Correlation-ID`. ticket-service conserva el valor si tiene entre 1 y 128 caracteres ASCII permitidos (`[A-Za-z0-9._:-]`); si falta o es inválido, genera un UUID. El filtro común lo coloca en el MDC durante el request y lo limpia al terminar. El interceptor de clientes HTTP lo propaga en todas las llamadas entre servicios; payment-service también establece el contexto al recibir la llamada.
+
+Ambos servicios escriben logs JSON `logstash` a stdout. Cada evento de cobro o reintegro incluye `correlationId`, operación, referencias y resultado; el cobro incluye además `paymentMethod`. No se registran monto, número de tarjeta, código de seguridad, `gatewayId` ni motivo devuelto por la pasarela. La recolección central queda en el entorno de ejecución, no en un colector añadido a la aplicación. La decisión está en [ADR 0008](../adr/0008-trazabilidad-de-pagos-con-x-correlation-id.md).
 
 ## Datos de prueba
 

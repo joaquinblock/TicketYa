@@ -32,9 +32,20 @@ public class PaymentService {
     private final PaymentGateway paymentGateway;
 
     public PaymentResponse charge(PaymentRequest request) {
-        return paymentRepository.findByIdempotencyKey(request.idempotencyKey())
-                .map(storedPayment -> answerWithTheStoredResult(storedPayment, request))
-                .orElseGet(() -> chargeNewAttempt(request));
+        try {
+            PaymentResponse response = paymentRepository.findByIdempotencyKey(request.idempotencyKey())
+                    .map(storedPayment -> answerWithTheStoredResult(storedPayment, request))
+                    .orElseGet(() -> chargeNewAttempt(request));
+            logChargeResult(request, response.id(), response.status().name());
+            return response;
+        } catch (TicketYaException failure) {
+            String result = failure.getErrorCode() == PaymentErrorCode.PAYMENT_REJECTED ? "REJECTED" : "FAILED";
+            logChargeResult(request, null, result);
+            throw failure;
+        } catch (RuntimeException failure) {
+            logChargeResult(request, null, "FAILED");
+            throw failure;
+        }
     }
 
     public PaymentResponse cancel(String idempotencyKey) {
@@ -114,10 +125,29 @@ public class PaymentService {
         try {
             return paymentGateway.charge(pendingPayment);
         } catch (RuntimeException gatewayFailure) {
-            log.error("La pasarela falló al cobrar el pago {}", pendingPayment.getId(), gatewayFailure);
+            log.atError()
+                    .addKeyValue("operation", "charge")
+                    .addKeyValue("orderId", pendingPayment.getOrderId())
+                    .addKeyValue("paymentId", pendingPayment.getId())
+                    .addKeyValue("result", "FAILED")
+                    .addKeyValue("paymentMethod", pendingPayment.getPaymentMethod().name())
+                    .addKeyValue("errorType", gatewayFailure.getClass().getSimpleName())
+                    .log("Payment gateway charge failed");
             throw new TicketYaException(PaymentErrorCode.PAYMENT_GATEWAY_UNAVAILABLE,
                     "La pasarela no respondió, se puede reintentar con la misma clave");
         }
+    }
+
+    private void logChargeResult(PaymentRequest request, Long paymentId, String result) {
+        var event = "APPROVED".equals(result) ? log.atInfo() : log.atWarn();
+        event.addKeyValue("operation", "charge")
+                .addKeyValue("orderId", request.orderId())
+                .addKeyValue("result", result)
+                .addKeyValue("paymentMethod", request.paymentMethod().name());
+        if (paymentId != null) {
+            event.addKeyValue("paymentId", paymentId);
+        }
+        event.log("Payment charge result");
     }
 
     private void ensureRequestRepeatsTheDataOfTheStoredPayment(Payment storedPayment, PaymentRequest request) {

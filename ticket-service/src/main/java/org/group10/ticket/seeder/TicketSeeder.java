@@ -38,6 +38,7 @@ import java.time.LocalTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Predicate;
 import java.util.stream.IntStream;
 
 @Component
@@ -92,6 +93,31 @@ public class TicketSeeder implements ApplicationRunner {
     private static final int BILLBOARD_BASE_PRICE = 50000;
     private static final int BILLBOARD_PRICE_STEP = 1500;
     private static final int BILLBOARD_MAX_TICKETS = 4;
+
+    /** The EventSeeder's sale showcase: events 43 to 46 at the Estadio Ribera, event_sector 48 to 61. */
+    private static final Venue RIBERA = new Venue("Estadio Ribera", "Av. Costanera 500", "Buenos Aires");
+    private static final SeatBlock RIBERA_LOWER_STAND = new SeatBlock(240L, List.of("A", "B", "C", "D", "E", "F", "G", "H"), 14);
+    private static final SeatBlock RIBERA_UPPER_STAND = new SeatBlock(352L, List.of("A", "B", "C", "D"), 14);
+    private static final SeatBlock RIBERA_VIP_BOX = new SeatBlock(408L, List.of("A", "B"), 6);
+    private static final int RIBERA_FIELD_CAPACITY = 5000;
+    private static final int SHOWCASE_MAX_TICKETS = 4;
+
+    private static final Long BIG_NIGHT_EVENT_ID = 43L;
+    private static final Long DERBY_EVENT_ID = 44L;
+    private static final Long COAST_FESTIVAL_EVENT_ID = 45L;
+    private static final Long CUP_FINAL_EVENT_ID = 46L;
+
+    private static final Long BIG_NIGHT_LOWER_STAND_SECTOR_ID = 49L;
+    private static final Long BIG_NIGHT_UPPER_STAND_SECTOR_ID = 50L;
+    private static final Long DERBY_FIELD_SECTOR_ID = 52L;
+    private static final Long COAST_FESTIVAL_FIELD_SECTOR_ID = 56L;
+    private static final Long CUP_FINAL_LOWER_STAND_SECTOR_ID = 60L;
+    private static final Long CUP_FINAL_VIP_BOX_SECTOR_ID = 61L;
+
+    /** D7 of the Platea baja: the only seat left in the cup final. */
+    private static final Long CUP_FINAL_LAST_FREE_SEAT_ID = 288L;
+    /** In the big night, one Platea baja seat out of three is sold, scattered along the rows. */
+    private static final int BIG_NIGHT_SOLD_EVERY = 3;
 
     private final EventSaleService eventSaleService;
     private final OrderRepository orderRepository;
@@ -152,6 +178,7 @@ public class TicketSeeder implements ApplicationRunner {
         seedPaidSeatOrder();
         seedPastEventOrder();
         seedPendingSeatOrder();
+        seedSaleShowcase();
 
         log.info("TicketSeeder: {} asientos por evento, {} cupos, {} órdenes, {} entradas y {} devoluciones cargados",
                 eventSeatRepository.count(), eventSectorStockRepository.count(), orderRepository.count(),
@@ -265,6 +292,50 @@ public class TicketSeeder implements ApplicationRunner {
         eventSeatRepository.findByEventIdOrderBySeatId(FOLK_NIGHT_EVENT_ID).stream()
                 .filter(seat -> FOLK_NIGHT_STALLS_SECTOR_ID.equals(seat.getEventSectorId()))
                 .forEach(seat -> seat.setStatus(EventSeatStatus.SOLD));
+    }
+
+    /**
+     * The same events as the EventSeeder's showcase, each one a step between available and sold out. The seats and
+     * places are taken without orders, like the folk night's stalls.
+     */
+    private void seedSaleShowcase() {
+        showcaseSale(BIG_NIGHT_EVENT_ID, "Noche grande en la Ribera", 170, 48L);
+        showcaseSale(DERBY_EVENT_ID, "Clásico de la Ribera", 175, 52L);
+        showcaseSale(COAST_FESTIVAL_EVENT_ID, "Festival de la Costanera", 180, 56L);
+        sale(CUP_FINAL_EVENT_ID, "Final de la Copa Ribera", RIBERA, EventSaleStatus.PUBLISHED, at(185, 21, 0), null,
+                false, SHOWCASE_MAX_TICKETS,
+                numbered(CUP_FINAL_LOWER_STAND_SECTOR_ID, "Platea baja", "68000", RIBERA_LOWER_STAND),
+                numbered(CUP_FINAL_VIP_BOX_SECTOR_ID, "Palco VIP", "120000", RIBERA_VIP_BOX));
+
+        sellSeats(BIG_NIGHT_EVENT_ID, BIG_NIGHT_LOWER_STAND_SECTOR_ID,
+                seat -> seat.getSeatId() % BIG_NIGHT_SOLD_EVERY == 0);
+        sellSeats(BIG_NIGHT_EVENT_ID, BIG_NIGHT_UPPER_STAND_SECTOR_ID, seat -> true);
+        takePlaces(DERBY_FIELD_SECTOR_ID, RIBERA_FIELD_CAPACITY);
+        takePlaces(COAST_FESTIVAL_FIELD_SECTOR_ID, RIBERA_FIELD_CAPACITY - 1);
+        sellSeats(CUP_FINAL_EVENT_ID, CUP_FINAL_LOWER_STAND_SECTOR_ID,
+                seat -> !CUP_FINAL_LAST_FREE_SEAT_ID.equals(seat.getSeatId()));
+        sellSeats(CUP_FINAL_EVENT_ID, CUP_FINAL_VIP_BOX_SECTOR_ID, seat -> true);
+    }
+
+    /** Campo, Platea baja, Platea alta and Palco VIP, from {@code firstEventSectorId} on. */
+    private void showcaseSale(Long eventId, String name, int daysFromToday, long firstEventSectorId) {
+        sale(eventId, name, RIBERA, EventSaleStatus.PUBLISHED, at(daysFromToday, 21, 0), null, false,
+                SHOWCASE_MAX_TICKETS,
+                generalAdmission(firstEventSectorId, "Campo", "52000", RIBERA_FIELD_CAPACITY),
+                numbered(firstEventSectorId + 1, "Platea baja", "68000", RIBERA_LOWER_STAND),
+                numbered(firstEventSectorId + 2, "Platea alta", "85000", RIBERA_UPPER_STAND),
+                numbered(firstEventSectorId + 3, "Palco VIP", "120000", RIBERA_VIP_BOX));
+    }
+
+    private void sellSeats(Long eventId, Long eventSectorId, Predicate<EventSeat> isSold) {
+        eventSeatRepository.findByEventIdOrderBySeatId(eventId).stream()
+                .filter(seat -> eventSectorId.equals(seat.getEventSectorId()))
+                .filter(isSold)
+                .forEach(seat -> seat.setStatus(EventSeatStatus.SOLD));
+    }
+
+    private void takePlaces(Long eventSectorId, int places) {
+        eventSectorStockRepository.findById(eventSectorId).orElseThrow().setTaken(places);
     }
 
     private void seedPaidFieldOrder() {

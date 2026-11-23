@@ -71,7 +71,7 @@ class EventServiceTest {
         when(venueRepository.findById(VENUE_ID)).thenReturn(Optional.of(venue));
         when(eventRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         EventCreateRequest request = new EventCreateRequest("  Recital  ", "  Gira  ", EventType.CONCERT, VENUE_ID,
-                DATE, false, null, null);
+                DATE, false, null, null, null);
 
         EventResponse response = eventService.create(ORGANIZER, request);
 
@@ -127,7 +127,7 @@ class EventServiceTest {
 
     private static EventCreateRequest request(boolean highDemand, LocalDateTime saleStart) {
         return new EventCreateRequest("Los Serranos en vivo", "Presentación", EventType.CONCERT, VENUE_ID, DATE,
-                highDemand, saleStart, 4);
+                highDemand, saleStart, 4, null);
     }
 
     private static void assertError(org.assertj.core.api.ThrowableAssert.ThrowingCallable call, EventErrorCode code) {

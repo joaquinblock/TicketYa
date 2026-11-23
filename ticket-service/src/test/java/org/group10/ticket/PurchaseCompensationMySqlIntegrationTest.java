@@ -18,6 +18,7 @@ import org.group10.ticket.repository.TicketRepository;
 import org.group10.ticket.service.PurchaseCompensationService;
 import org.mockito.ArgumentCaptor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.amqp.core.MessagePostProcessor;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.junit.jupiter.api.BeforeEach;
@@ -213,7 +214,8 @@ class PurchaseCompensationMySqlIntegrationTest {
 
         pay(orderId, newKey());
 
-        verify(rabbitTemplate, never()).convertAndSend(anyString(), anyString(), any(Object.class));
+        verify(rabbitTemplate, never()).convertAndSend(anyString(), anyString(), any(Object.class),
+                any(MessagePostProcessor.class));
     }
 
     @Test

@@ -1,0 +1,44 @@
+# recommendation-service con su MongoDB, para el sistema completo (lo incluye el docker-compose.yml de la raíz).
+# No es el compose.yaml de al lado: ese levanta solo MongoDB para spring-boot:run.
+services:
+  recommendation-service:
+    build: .
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      # Spring Boot 4 lee spring.mongodb.uri: spring.data.mongodb.uri ya no tiene efecto
+      SPRING_MONGODB_URI: mongodb://${DB_USER:-group10}:${DB_PASSWORD:-group10}@recommendation-mongo:27017/recommendation_db?authSource=admin
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-dev-internal-secret}
+      EVENT_SERVICE_URL: http://event-service:8082
+      TICKET_SERVICE_URL: http://ticket-service:8083
+      RABBITMQ_HOST: rabbitmq
+    # Sin ports: solo lo alcanzan el api-gateway y los otros servicios por la red de Docker (ADR-003)
+    depends_on:
+      recommendation-mongo:
+        condition: service_healthy
+    mem_limit: 384m
+    healthcheck:
+      # La imagen no trae curl ni wget: bash pide /actuator/health por /dev/tcp
+      test:
+        - CMD
+        - bash
+        - -c
+        - exec 3<>/dev/tcp/localhost/8087 && printf 'GET /actuator/health HTTP/1.0\r\n\r\n' >&3 && grep -q '"status":"UP"' <&3
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  recommendation-mongo:
+    image: mongo:8.0
+    # Cache de WiredTiger al mínimo: la base de prueba es chica y así entra con las demás en la máquina
+    command: ["--wiredTigerCacheSizeGB", "0.25"]
+    environment:
+      MONGO_INITDB_DATABASE: recommendation_db
+      MONGO_INITDB_ROOT_USERNAME: ${DB_USER:-group10}
+      MONGO_INITDB_ROOT_PASSWORD: ${DB_PASSWORD:-group10}
+    mem_limit: 384m
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20

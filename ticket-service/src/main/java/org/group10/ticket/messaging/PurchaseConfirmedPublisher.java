@@ -2,8 +2,10 @@ package org.group10.ticket.messaging;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.group10.common.logging.CorrelationIds;
 import org.group10.ticket.config.RabbitConfig;
 import org.springframework.amqp.AmqpException;
+import org.springframework.amqp.core.MessagePostProcessor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
@@ -29,10 +31,19 @@ public class PurchaseConfirmedPublisher {
         PurchaseConfirmedMessage message = new PurchaseConfirmedMessage(UUID.randomUUID(), purchase.occurredAt(),
                 purchase.orderId(), purchase.userId(), purchase.eventId());
         try {
-            rabbitTemplate.convertAndSend(RabbitConfig.EVENTS_EXCHANGE, ROUTING_KEY, message);
+            rabbitTemplate.convertAndSend(RabbitConfig.EVENTS_EXCHANGE, ROUTING_KEY, message,
+                    correlationPostProcessor());
         } catch (AmqpException e) {
             // Spring atraparía la excepción igual, pero la loguearía sin decir de qué orden era el aviso.
             log.error("No se pudo avisar la compra de la orden {}", purchase.orderId(), e);
         }
+    }
+
+    private static MessagePostProcessor correlationPostProcessor() {
+        return amqpMessage -> {
+            amqpMessage.getMessageProperties().setHeader(CorrelationIds.HEADER_NAME,
+                    CorrelationIds.currentOrNew());
+            return amqpMessage;
+        };
     }
 }

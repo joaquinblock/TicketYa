@@ -115,6 +115,12 @@ Todas van por ID, sin FK física, porque cada servicio tiene su propia base.
 | `event_sector_price.sector_name`, `ticket.sector_name` | `sector.name` | Lo mismo para el sector de la entrada y de la disponibilidad |
 | `event_seat.seat_row`, `event_seat.number`, `ticket.seat_row`, `ticket.number` | `seat.row`, `seat.number` | Lo mismo para la fila y el número del asiento |
 
+## Trazabilidad
+
+Todos los servicios servlet, salvo el api-gateway, reciben `X-Correlation-ID` mediante la autoconfiguración de `common` ([ADR 0008](../adr/0008-trazabilidad-de-pagos-con-x-correlation-id.md)). Si falta o no cumple el formato (`[A-Za-z0-9._:-]`, de 1 a 128 caracteres), generan un UUID, lo devuelven en la respuesta y lo guardan en el MDC durante el request. Los clientes HTTP propagan el header; los publishers RabbitMQ lo agregan a las propiedades del mensaje y los listeners lo restauran en el MDC. Fuera de un request, como en los jobs, se usa un id nuevo por llamada sin escribirlo en el MDC del hilo.
+
+Cada request registra método, endpoint, usuario, status HTTP y duración. Las operaciones críticas registran `operation`, `status`, identificadores del recurso y `correlationId`. No se registran códigos QR, cuerpos de request ni datos de la pasarela; el medio de pago puede aparecer solo como tipo.
+
 ## Decisiones
 
 ### No doble venta en sectores numerados: `event_seat` con `version`
@@ -371,10 +377,21 @@ El `TicketSeeder` usa los IDs, fechas y nombres que generan los seeders del auth
 | 9 Jornada de arquitectura | `FINISHED` | 14 Sala | — |
 | 11 Peña folklórica serrana | `PUBLISHED`, Platea agotada | 15 Platea, 16 Pullman | 81–154 |
 | 13 a 42, la cartelera | `PUBLISHED`, venta abierta, hasta 4 por persona | 18 a 47, uno por evento | Platea 81–130, Pullman 131–154 |
+| 43 Noche grande en la Ribera | `PUBLISHED`, Platea alta agotada | 48 Campo, 49 Platea baja, 50 Platea alta, 51 Palco VIP | 240–419 |
+| 44 Clásico de la Ribera | `PUBLISHED`, Campo agotado | 52 Campo, 53 Platea baja, 54 Platea alta, 55 Palco VIP | 240–419 |
+| 45 Festival de la Costanera | `PUBLISHED`, queda 1 lugar en Campo | 56 Campo, 57 Platea baja, 58 Platea alta, 59 Palco VIP | 240–419 |
+| 46 Final de la Copa Ribera | `PUBLISHED`, queda 1 asiento | 60 Platea baja, 61 Palco VIP | 240–351, 408–419 |
 
 Los eventos en `DRAFT` (3, 10 y 12) no tienen venta. Si se cambia el orden de los datos en el `EventSeeder`, hay que actualizar el `TicketSeeder`.
 
 Además carga, a nombre del cliente `user` 1, una compra pagada en el Campo del recital, una pagada con asientos en la obra (con una devolución pendiente) y una reserva en curso en la Platea del recital. En la peña (evento 11) vende todos los asientos de la Platea y deja libre la Pullman: es el evento a la venta con el primer sector agotado.
+
+Los casos de venta (43 a 46) cargan, sin órdenes, lo que ya está vendido, para ver en el front el paso de disponible a agotado:
+
+- **43:** uno de cada tres asientos de la Platea baja (los de `seatId` múltiplo de 3) y toda la Platea alta.
+- **44:** todo el Campo.
+- **45:** el Campo, menos un lugar.
+- **46:** toda la Platea baja salvo D7 (asiento 288), y todo el Palco VIP.
 
 ## User stories
 

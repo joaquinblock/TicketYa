@@ -33,6 +33,7 @@ public final class EventMapper {
                 .highDemand(request.highDemand())
                 .saleStart(request.saleStart())
                 .maxTicketsPerCustomer(request.maxTicketsPerCustomer())
+                .photoUrl(trimToNull(request.photoUrl()))
                 .build();
     }
 
@@ -48,13 +49,14 @@ public final class EventMapper {
         event.setHighDemand(request.highDemand());
         event.setSaleStart(request.saleStart());
         event.setMaxTicketsPerCustomer(request.maxTicketsPerCustomer());
+        event.setPhotoUrl(trimToNull(request.photoUrl()));
     }
 
     public static EventResponse toResponse(Event event) {
         return new EventResponse(event.getId(), event.getName(), event.getDescription(), event.getType(),
                 event.getOrganizationId(), event.getCreatedBy(), VenueMapper.toSummary(event.getVenue()),
                 event.getDateTime(), event.getStatus(), event.isHighDemand(), event.getSaleStart(),
-                event.getMaxTicketsPerCustomer());
+                event.getMaxTicketsPerCustomer(), event.getPhotoUrl());
     }
 
     /**
@@ -72,7 +74,7 @@ public final class EventMapper {
         return new EventDetailResponse(event.getId(), event.getName(), event.getDescription(), event.getType(),
                 event.getOrganizationId(), event.getCreatedBy(), VenueMapper.toSummary(event.getVenue()),
                 event.getDateTime(), event.getStatus(), event.isHighDemand(), event.getSaleStart(),
-                event.getMaxTicketsPerCustomer(), capacity, sortedSectors, participants);
+                event.getMaxTicketsPerCustomer(), capacity, sortedSectors, participants, event.getPhotoUrl());
     }
 
     private static String trimToNull(String text) {

@@ -3,6 +3,9 @@ package org.group10.notification.messaging;
 import lombok.extern.slf4j.Slf4j;
 import org.group10.notification.config.RabbitConfig;
 import org.group10.notification.service.PurchaseNotificationService;
+import org.group10.common.logging.CorrelationIds;
+import org.slf4j.MDC;
+import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -27,15 +30,27 @@ public class PurchaseConfirmedListener {
         this.notificationService = notificationService;
     }
 
-    @RabbitListener(queues = RabbitConfig.PURCHASE_QUEUE)
     public void onPurchaseConfirmed(PurchaseConfirmedMessage message) {
-        if (message.messageId() == null || message.orderId() == null || message.userId() == null) {
-            throw new AmqpRejectAndDontRequeueException("purchase.confirmed sin messageId, orderId o userId: " + message);
-        }
+        onPurchaseConfirmed(message, null);
+    }
+
+    @RabbitListener(queues = RabbitConfig.PURCHASE_QUEUE)
+    public void onPurchaseConfirmed(PurchaseConfirmedMessage message,
+                                    @Header(name = CorrelationIds.HEADER_NAME, required = false) String correlationId) {
+        MDC.put(CorrelationIds.MDC_KEY, CorrelationIds.validOrNew(correlationId));
         try {
-            notificationService.notifyPurchase(message.messageId(), message.orderId(), message.userId());
-        } catch (DataIntegrityViolationException e) {
-            log.info("Mensaje repetido {} de la orden {}: el mail ya se envió", message.messageId(), message.orderId());
+            if (message.messageId() == null || message.orderId() == null || message.userId() == null) {
+                throw new AmqpRejectAndDontRequeueException(
+                        "purchase.confirmed sin messageId, orderId o userId: " + message);
+            }
+            try {
+                notificationService.notifyPurchase(message.messageId(), message.orderId(), message.userId());
+            } catch (DataIntegrityViolationException e) {
+                log.info("Mensaje repetido {} de la orden {}: el mail ya se envió",
+                        message.messageId(), message.orderId());
+            }
+        } finally {
+            MDC.remove(CorrelationIds.MDC_KEY);
         }
     }
 }

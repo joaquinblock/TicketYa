@@ -46,5 +46,10 @@ public record EventCreateRequest(
 
         @Schema(description = "Tope de entradas por cliente; opcional (sin tope)", example = "4")
         @Positive
-        Integer maxTicketsPerCustomer
+        Integer maxTicketsPerCustomer,
+
+        @Schema(description = "URL de la foto del evento; opcional",
+                example = "https://images.unsplash.com/photo-1501281668745-f7f57925c3b4")
+        @Size(max = 1000)
+        String photoUrl
 ) {}

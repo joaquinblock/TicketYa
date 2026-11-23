@@ -6,9 +6,11 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.group10.auth.dto.UserContactResponse;
 import org.group10.auth.dto.UserPermissionsResponse;
 import org.group10.auth.service.UserService;
 import org.group10.common.dto.ErrorDto;
+import org.group10.common.security.Caller;
 import org.group10.common.security.Permission;
 import org.group10.common.security.RequiresPermission;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,6 +25,18 @@ import org.springframework.web.bind.annotation.RestController;
 public class UserController {
 
     private final UserService userService;
+
+    @GetMapping("/me")
+    @Operation(summary = "Ver mis datos",
+            description = "Email y nombre del usuario del token, de cualquier rol. Un usuario dado de baja da 404.")
+    @ApiResponse(responseCode = "200", description = "Usuario activo con su email y su nombre")
+    @ApiResponse(responseCode = "401", description = "unauthorized: sin token",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "404", description = "user_not_found: el usuario del token está dado de baja",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    public UserContactResponse findMe(Caller caller) {
+        return userService.findContact(caller.userId());
+    }
 
     @GetMapping("/{id}/permissions")
     @RequiresPermission(Permission.USER_MANAGE)

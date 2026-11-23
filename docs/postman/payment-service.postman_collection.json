@@ -26,7 +26,10 @@
     { "key": "pendingOrderId", "value": "3" },
     { "key": "pendingKey", "value": "seed-pending-order-3" },
     { "key": "orderWithPaymentsId", "value": "2" },
-    { "key": "orderPaymentsAnswer", "value": "" }
+    { "key": "orderPaymentsAnswer", "value": "" },
+    { "key": "resilienceOrderId", "value": "" },
+    { "key": "resilienceKey", "value": "" },
+    { "key": "resilienceApprovedAnswer", "value": "" }
   ],
   "item": [
     {
@@ -607,6 +610,415 @@
               { "key": "X-User-Permissions", "value": "REFUND_RESOLVE" }
             ],
             "url": "{{paymentUrl}}/api/payments?orderId=0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "US-PAY-11: Tolerar problemas momentáneos de la pasarela",
+      "description": "Necesita payment-service con el perfil dev, que habilita /internal/mock/gateway. Correr la carpeta completa y en orden: abre el circuit breaker y espera a que se recupere (unos 30 segundos en total). El último request deja la pasarela como estaba.",
+      "item": [
+        {
+          "name": "Ver la pasarela simulada → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 con la demora y la caída', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.delayMs).to.be.a('number');",
+                  "  pm.expect(body.down).to.be.a('boolean');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{paymentUrl}}/internal/mock/gateway"
+          }
+        },
+        {
+          "name": "Tirar la pasarela → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 con el comportamiento nuevo', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json()).to.eql({ delayMs: 0, down: true });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{paymentUrl}}/internal/mock/gateway",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"delayMs\": 0,\n  \"down\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "Cobro con la pasarela caída → 503 tras los reintentos",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('resilienceOrderId', String(Date.now()));",
+                  "pm.collectionVariables.set('resilienceKey', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('503 payment_gateway_unavailable', () => {",
+                  "  pm.response.to.have.status(503);",
+                  "  pm.expect(pm.response.json().error).to.eql('payment_gateway_unavailable');",
+                  "});",
+                  "pm.test('Responde en menos de 15000 ms', () => {",
+                  "  pm.expect(pm.response.responseTime).to.be.below(15000);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{paymentUrl}}/internal/payments",
+            "description": "Tres intentos de hasta 3 s cada uno. El pago queda PENDING.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{resilienceOrderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{resilienceKey}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Repetir con la pasarela caída → 503 y se abre el circuito",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('503 payment_gateway_unavailable', () => {",
+                  "  pm.response.to.have.status(503);",
+                  "  pm.expect(pm.response.json().error).to.eql('payment_gateway_unavailable');",
+                  "});",
+                  "pm.test('Responde en menos de 15000 ms', () => {",
+                  "  pm.expect(pm.response.responseTime).to.be.below(15000);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{paymentUrl}}/internal/payments",
+            "description": "Con este pedido se llega a 5 intentos fallidos y el circuit breaker se abre.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{resilienceOrderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{resilienceKey}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Con el circuito abierto → 503 al instante",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('503 payment_gateway_unavailable', () => {",
+                  "  pm.response.to.have.status(503);",
+                  "  pm.expect(pm.response.json().error).to.eql('payment_gateway_unavailable');",
+                  "});",
+                  "pm.test('Responde en menos de 1000 ms', () => {",
+                  "  pm.expect(pm.response.responseTime).to.be.below(1000);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{paymentUrl}}/internal/payments",
+            "description": "No llama a la pasarela ni espera los reintentos.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{resilienceOrderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{resilienceKey}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Recuperar la pasarela → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 con el comportamiento nuevo', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json()).to.eql({ delayMs: 0, down: false });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{paymentUrl}}/internal/mock/gateway",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"delayMs\": 0,\n  \"down\": false\n}"
+            }
+          }
+        },
+        {
+          "name": "Misma clave después de la espera → reintenta y cobra 201",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "setTimeout(() => {}, 10500);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 aprobado sobre el mismo pago', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('APPROVED');",
+                  "  pm.expect(body.orderId).to.eql(Number(pm.collectionVariables.get('resilienceOrderId')));",
+                  "});",
+                  "pm.collectionVariables.set('resilienceApprovedAnswer', pm.response.text());"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{paymentUrl}}/internal/payments",
+            "description": "Espera los 10 s del circuito abierto. Sin reiniciar el servicio, la llamada de prueba pasa y cobra el pago PENDING con la misma clave.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{resilienceOrderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{resilienceKey}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Repetir la misma clave → mismo 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Misma respuesta, sin cobrar de nuevo', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(pm.response.text()).to.eql(pm.collectionVariables.get('resilienceApprovedAnswer'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{paymentUrl}}/internal/payments",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{resilienceOrderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{resilienceKey}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Otro cobro con la pasarela recuperada → 201 y se cierra el circuito",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 aprobado', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(pm.response.json().status).to.eql('APPROVED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{paymentUrl}}/internal/payments",
+            "description": "Es la segunda llamada de prueba del circuito: con las dos bien, se cierra. Repetir la misma clave no cuenta, porque responde sin llamar a la pasarela.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{resilienceOrderId}}1,\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{$guid}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Pasarela más lenta que el timeout → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 con el comportamiento nuevo', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json()).to.eql({ delayMs: 4000, down: false });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{paymentUrl}}/internal/mock/gateway",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"delayMs\": 4000,\n  \"down\": false\n}"
+            }
+          }
+        },
+        {
+          "name": "Cobro con la pasarela lenta → 503 por timeout",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('resilienceOrderId', String(Date.now()));",
+                  "pm.collectionVariables.set('resilienceKey', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('503 payment_gateway_unavailable', () => {",
+                  "  pm.response.to.have.status(503);",
+                  "  pm.expect(pm.response.json().error).to.eql('payment_gateway_unavailable');",
+                  "});",
+                  "pm.test('Responde en menos de 15000 ms', () => {",
+                  "  pm.expect(pm.response.responseTime).to.be.below(15000);",
+                  "});",
+                  "pm.test('Agota los tres intentos de 3 s', () => {",
+                  "  pm.expect(pm.response.responseTime).to.be.above(9000);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{paymentUrl}}/internal/payments",
+            "description": "Cada intento se corta a los 3 s y se reintenta: unos 10 s en total. El pago queda PENDING.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{resilienceOrderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{resilienceKey}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Dejar la pasarela como estaba → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 con el comportamiento nuevo', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json()).to.eql({ delayMs: 0, down: false });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{paymentUrl}}/internal/mock/gateway",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"delayMs\": 0,\n  \"down\": false\n}"
+            }
           }
         }
       ]

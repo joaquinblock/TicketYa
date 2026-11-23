@@ -1,4 +1,6 @@
-# 0008: Trazabilidad de pagos con X-Correlation-ID
+# 0010: Trazabilidad con X-Correlation-ID
+
+> Era el ADR 0008. Se renumeró en #191 porque había otro 0008, el de Docker.
 
 - **Fecha:** 2026-11-23
 - **Estado:** aceptada
@@ -33,3 +35,19 @@ US-TKT-27 lleva el mismo mecanismo a todos los servicios, en lugar de sumar uno 
 - El interceptor se aplica a todos los clientes HTTP entre servicios, no solo al grupo `payment-service`.
 - Los mensajes RabbitMQ llevan el id en el header `X-Correlation-ID` y los listeners lo validan con la misma regla y lo ponen en el MDC mientras procesan el mensaje.
 - Fuera de un request, como en los jobs, `CorrelationIds.currentOrNew()` da un id nuevo sin escribirlo en el MDC, para que el hilo del scheduler no arrastre el id de una corrida a las siguientes.
+
+## Ampliación (#191): el gateway y el log centralizado
+
+La consigna pide registrar las operaciones críticas "en un log centralizado". Hasta acá cada servicio escribía en su propia salida, solo ticket-service y payment-service lo hacían en JSON, y el api-gateway no participaba.
+
+- **El id nace en el api-gateway.** El gateway registra `CorrelationIdFilter` a mano (`RequestLogConfig`), con la máxima prioridad.
+  - Así quedan registrados también los requests que rechaza: el 401 del JWT, el 503 si no consigue la clave pública y las rutas que no existen.
+  - La autoconfiguración de `common` sigue excluyendo al gateway. Lee el usuario de `X-User-Id`, que en el gateway todavía es el del cliente y se puede falsificar. El gateway lo toma del token que validó `IdentityHeadersFilter`, que lo deja en un atributo del request.
+- **El id viaja al servicio.** `CorrelationIdFilter` le pasa a la cadena un request con el id en el header, el que llegó o el que generó. Sin eso, el gateway reenviaba el header original, o ninguno, y cada servicio inventaba otro id.
+  - `SingleCorrelationIdFilter` evita que el cliente reciba el header dos veces: el del gateway y el que devuelve el servicio.
+- **Logs JSON en todos los servicios, solo en Docker.** Cada `docker-compose.yml` pone `LOGGING_STRUCTURED_FORMAT_CONSOLE=logstash`.
+  - El `correlationId` del MDC y los campos del log del request (`method`, `endpoint`, `userId`, `status`, `durationMs`) salen como campos JSON.
+  - Con `spring-boot:run` la consola sigue en texto. Por eso ticket-service y payment-service ya no lo fijan en su `application.yml`.
+- **El punto central es la salida del compose.** Con todos los servicios en JSON, `docker compose logs` junta los logs de todo el sistema, y una operación se sigue filtrando por su id ([README](../../README.md), *Seguir una operación*).
+  - No se agregó un colector (Loki, Elasticsearch) porque son 2 o 3 contenedores más y el sistema ya llega al límite de memoria de las máquinas del equipo.
+  - Si hace falta para la defensa, se puede sumar como un perfil de compose que no arranque por defecto.

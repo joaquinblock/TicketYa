@@ -239,7 +239,7 @@ REST síncrono en la Entrega 1. **payment-service nunca llama a ticket-service**
 
 Las llamadas de ticket-service a payment-service llevan `X-Correlation-ID`. ticket-service conserva el valor si tiene entre 1 y 128 caracteres ASCII permitidos (`[A-Za-z0-9._:-]`); si falta o es inválido, genera un UUID. El filtro común lo coloca en el MDC durante el request y lo limpia al terminar. El interceptor de clientes HTTP lo propaga en todas las llamadas entre servicios; payment-service también establece el contexto al recibir la llamada.
 
-Ambos servicios escriben logs JSON `logstash` a stdout. Cada evento de cobro o reintegro incluye `correlationId`, operación, referencias y resultado; el cobro incluye además `paymentMethod`. No se registran monto, número de tarjeta, código de seguridad, `gatewayId` ni motivo devuelto por la pasarela. La recolección central queda en el entorno de ejecución, no en un colector añadido a la aplicación. La decisión está en [ADR 0008](../adr/0008-trazabilidad-de-pagos-con-x-correlation-id.md).
+En Docker, todos los servicios escriben logs JSON `logstash` a stdout. Cada evento de cobro o reintegro incluye `correlationId`, operación, referencias y resultado; el cobro incluye además `paymentMethod`. No se registran monto, número de tarjeta, código de seguridad, `gatewayId` ni motivo devuelto por la pasarela. El punto central es la salida de `docker compose logs`. La decisión está en [ADR 0010](../adr/0010-trazabilidad-con-x-correlation-id.md).
 
 ## Datos de prueba
 

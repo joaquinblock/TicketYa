@@ -233,6 +233,12 @@ REST síncrono en la Entrega 1. **payment-service nunca llama a ticket-service**
 - **Consulta de pagos:** las dos rutas `GET` devuelven los pagos de la orden del más antiguo al más nuevo, con `id`, `orderId`, `amount`, `paymentMethod`, `status`, `failureReason`, `gatewayId` y `createdAt`. Es una respuesta aparte de la del cobro, porque el `POST` tiene que repetir exactamente el mismo cuerpo. Sin `orderId`, o si no es un número: 400 `invalid_parameter`. Si no es positivo: 400 `validation_error`.
 - **Errores:** los resuelve `GlobalExceptionHandler` de `common`: los 4xx se reenvían tal cual y los 5xx llegan a ticket como 503.
 
+## Trazabilidad de cobros y reintegros (US-PAY-15)
+
+Las llamadas de ticket-service a payment-service llevan `X-Correlation-ID`. ticket-service conserva el valor si tiene entre 1 y 128 caracteres ASCII permitidos (`[A-Za-z0-9._:-]`); si falta o es inválido, genera un UUID. El filtro común lo coloca en el MDC durante el request y lo limpia al terminar. El interceptor de clientes HTTP lo propaga al grupo `payment-service`; payment-service también establece el contexto al recibir la llamada.
+
+Ambos servicios escriben logs JSON `logstash` a stdout. Cada evento de cobro o reintegro incluye `correlationId`, operación, referencias y resultado; el cobro incluye además `paymentMethod`. No se registran monto, número de tarjeta, código de seguridad, `gatewayId` ni motivo devuelto por la pasarela. La recolección central queda en el entorno de ejecución, no en un colector añadido a la aplicación. La decisión está en [ADR 0008](../adr/0008-trazabilidad-de-pagos-con-x-correlation-id.md).
+
 ## Datos de prueba
 
 El `PaymentSeeder` usa las órdenes que crea el `TicketSeeder`:

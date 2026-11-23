@@ -428,6 +428,8 @@ Servicio: ticket-service · Involucra: payment-service · Consigna: NF · Épica
 
 **Notas técnicas:** timeout y reintentos limitados con la misma `idempotency_key`, con un tiempo total menor al margen de 1 minuto. Ver *Manda la reserva* en `ticket-service.md`.
 
+**Estado:** hecha en el PR de #66: hasta 2 llamadas de 12 s con la misma clave y un job que anula el intento de las órdenes cerradas. Ver [*Manda la reserva*](architecture/ticket-service.md#manda-la-reserva).
+
 ## F10. Integración con otros servicios
 
 ### US-TKT-24: Publicar compras y cancelaciones

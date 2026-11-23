@@ -40,6 +40,9 @@ springdoc:
   api-docs:
     path: /api-docs
 
+ticketya:
+  # Las fechas de los eventos vienen sin zona: "fecha futura" se mide en esta
+  time-zone: America/Argentina/Buenos_Aires
 
 management:
   endpoints:

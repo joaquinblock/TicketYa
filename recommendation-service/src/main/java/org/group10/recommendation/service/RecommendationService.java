@@ -58,8 +58,6 @@ public class RecommendationService {
     private static final int MAX_CO_PURCHASE_POINTS = 3;
     private static final int INFERRED_VENUE_POINTS = 1;
     private static final int INFERRED_ORGANIZATION_POINTS = 1;
-    private static final int MIN_EVENTS_TO_INFER = 2;
-    private static final int MAX_INFERRED = 3;
     /** Lo mismo que muestra la búsqueda: lo que se puede comprar o puede volver a tener lugar. */
     private static final Set<String> BUYABLE = Set.of("PUBLISHED", "SOLD_OUT");
 
@@ -76,7 +74,7 @@ public class RecommendationService {
         Optional<PurchaseHistory.FavoriteCounts> counts = history.map(PurchaseHistory::getCounts);
         List<Long> favorites = Stream.concat(
                         preferences.map(CustomerPreferences::getParticipantIds).stream().flatMap(List::stream),
-                        inferred(counts.map(PurchaseHistory.FavoriteCounts::getParticipants)).stream())
+                        counts.map(PurchaseHistory.FavoriteCounts::inferredParticipants).stream().flatMap(List::stream))
                 .distinct()
                 .toList();
         List<EventType> types = preferences.map(CustomerPreferences::getEventTypes).map(List::copyOf).orElse(List.of());
@@ -108,8 +106,8 @@ public class RecommendationService {
                     .toList();
         }
         Taste taste = new Taste(Set.copyOf(types.stream().map(Enum::name).toList()), normalize(city),
-                Set.copyOf(inferred(counts.map(PurchaseHistory.FavoriteCounts::getVenues))),
-                Set.copyOf(inferred(counts.map(PurchaseHistory.FavoriteCounts::getOrganizations))));
+                Set.copyOf(counts.map(PurchaseHistory.FavoriteCounts::inferredVenues).orElse(List.of())),
+                Set.copyOf(counts.map(PurchaseHistory.FavoriteCounts::inferredOrganizations).orElse(List.of())));
         return candidates.values().stream()
                 .sorted(Comparator.comparingInt((Candidate c) -> c.score(taste)).reversed()
                         .thenComparing(c -> c.event.dateTime())
@@ -132,20 +130,6 @@ public class RecommendationService {
         } catch (HttpClientErrorException.NotFound e) {
             return Optional.empty();
         }
-    }
-
-    /**
-     * Favoritos inferidos de las compras: los que aparecen en al menos {@value #MIN_EVENTS_TO_INFER} eventos, los
-     * {@value #MAX_INFERRED} más repetidos (a igual cantidad, el de menor id).
-     */
-    private static List<Long> inferred(Optional<Map<String, Integer>> counts) {
-        return counts.orElse(Map.of()).entrySet().stream()
-                .filter(entry -> entry.getValue() != null && entry.getValue() >= MIN_EVENTS_TO_INFER)
-                .map(entry -> Map.entry(Long.valueOf(entry.getKey()), entry.getValue()))
-                .sorted(Map.Entry.<Long, Integer>comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey()))
-                .limit(MAX_INFERRED)
-                .map(Map.Entry::getKey)
-                .toList();
     }
 
     private static Candidate candidate(Map<Long, Candidate> candidates, EventSummary event) {

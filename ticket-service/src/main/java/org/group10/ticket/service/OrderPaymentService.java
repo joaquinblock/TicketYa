@@ -3,10 +3,13 @@ package org.group10.ticket.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.group10.common.dto.ErrorDto;
+import org.group10.common.exception.CommonErrorCode;
 import org.group10.common.exception.TicketYaException;
 import org.group10.common.logging.CorrelationIds;
 import org.group10.ticket.client.PaymentClient;
 import org.group10.ticket.client.dto.ChargeRequest;
+import org.group10.ticket.client.dto.PaymentResult;
+import org.group10.ticket.client.dto.PaymentResultStatus;
 import org.group10.ticket.config.ReservationProperties;
 import org.group10.ticket.dto.OrderResponse;
 import org.group10.ticket.dto.PayOrderRequest;
@@ -65,7 +68,10 @@ public class OrderPaymentService {
             return answerWhenTheOrderCouldNotBeTaken(orderId);
         }
 
-        chargeRegisteringAnyRejection(order, request);
+        PaymentResult result = chargeRegisteringAnyRejection(order, request);
+        if (endedWithoutCharge(result)) {
+            return answerWhenTheAttemptEndedWithoutCharge(orderId, request.idempotencyKey());
+        }
         recordTheApprovedCharge(orderId);
         return issueTicketsOrCompensate(order, request.paymentMethod());
     }
@@ -93,9 +99,9 @@ public class OrderPaymentService {
                 "La orden %d tiene otro pago en curso".formatted(orderId));
     }
 
-    private void chargeRegisteringAnyRejection(Order order, PayOrderRequest request) {
+    private PaymentResult chargeRegisteringAnyRejection(Order order, PayOrderRequest request) {
         try {
-            chargeRepeatingWhileThereIsNoAnswer(new ChargeRequest(order.getId(), order.getTotal(),
+            return chargeRepeatingWhileThereIsNoAnswer(new ChargeRequest(order.getId(), order.getTotal(),
                     request.paymentMethod(), request.idempotencyKey()));
         } catch (RestClientResponseException failure) {
             if (failure.getStatusCode().isSameCodeAs(HttpStatus.UNPROCESSABLE_CONTENT)) {
@@ -109,12 +115,11 @@ public class OrderPaymentService {
      * Repite la llamada solo si no hubo respuesta (timeout o conexión caída), con la misma clave: payment-service no
      * cobra dos veces. Un 5xx no se repite, porque payment ya agotó sus reintentos a la pasarela.
      */
-    private void chargeRepeatingWhileThereIsNoAnswer(ChargeRequest charge) {
+    private PaymentResult chargeRepeatingWhileThereIsNoAnswer(ChargeRequest charge) {
         int attempts = reservationProperties.paymentCallAttempts();
         for (int call = 1; ; call++) {
             try {
-                paymentClient.charge(charge);
-                return;
+                return paymentClient.charge(charge);
             } catch (ResourceAccessException withoutAnswer) {
                 if (call >= attempts) {
                     throw withoutAnswer;
@@ -123,6 +128,25 @@ public class OrderPaymentService {
                         + "misma clave", charge.orderId(), call, attempts, withoutAnswer);
             }
         }
+    }
+
+    /**
+     * Un 2xx de payment es un cobro aprobado, salvo que diga otro estado: si el job anuló el intento mientras se
+     * cobraba (US-TKT-23), payment responde el pago {@code CANCELLED} y no hay nada cobrado ni para reintegrar.
+     */
+    private static boolean endedWithoutCharge(PaymentResult result) {
+        return result != null && result.status() != PaymentResultStatus.APPROVED;
+    }
+
+    private OrderResponse answerWhenTheAttemptEndedWithoutCharge(Long orderId, String attemptKey) {
+        Order current = findOrder(orderId);
+        if (current.getStatus() == OrderStatus.PAID) {
+            return orderQueryService.toResponse(current);
+        }
+        ensureOrderIsPending(current);
+        transactions.executeWithoutResult(transaction -> orderRepository.clearPaymentAttempt(orderId, attemptKey));
+        throw new TicketYaException(CommonErrorCode.SERVICE_UNAVAILABLE,
+                "El pago de la orden %d se anuló sin cobrar: se puede intentar de nuevo".formatted(orderId));
     }
 
     private void recordTheApprovedCharge(Long orderId) {

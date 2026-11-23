@@ -245,7 +245,7 @@ class OrderPaymentMySqlIntegrationTest {
         assertThat(seat(1).getStatus()).isEqualTo(EventSeatStatus.RESERVED);
         assertThat(rejected.status()).isEqualTo(422);
 
-        doNothing().when(paymentClient).charge(any());
+        doReturn(null).when(paymentClient).charge(any());
         assertThat(pay(CUSTOMER, orderId, newKey()).status()).isEqualTo(200);
     }
 
@@ -274,7 +274,7 @@ class OrderPaymentMySqlIntegrationTest {
         assertThat(pay(CUSTOMER, orderId, key).status()).isEqualTo(503);
         assertThat(order(orderId).getPaymentAttemptKey()).isEqualTo(key);
 
-        doNothing().when(paymentClient).charge(any());
+        doReturn(null).when(paymentClient).charge(any());
         assertThat(pay(CUSTOMER, orderId, newKey()).error()).isEqualTo("payment_in_progress");
         assertThat(pay(CUSTOMER, orderId, key).status()).isEqualTo(200);
     }
@@ -303,7 +303,7 @@ class OrderPaymentMySqlIntegrationTest {
         long orderId = reserveSeats(CUSTOMER, 1, 2);
         String key = newKey();
         doThrow(HttpServerErrorException.create(HttpStatus.SERVICE_UNAVAILABLE, "payment_gateway_unavailable",
-                new HttpHeaders(), new byte[0], StandardCharsets.UTF_8)).doNothing().when(paymentClient).charge(any());
+                new HttpHeaders(), new byte[0], StandardCharsets.UTF_8)).doReturn(null).when(paymentClient).charge(any());
         assertThat(pay(CUSTOMER, orderId, key).status()).isEqualTo(503);
 
         HttpResult paid = pay(CUSTOMER, orderId, key);
@@ -323,7 +323,7 @@ class OrderPaymentMySqlIntegrationTest {
     void pay_paymentServiceDoesNotAnswerOnce_repeatsTheSameAttemptAndIssuesTheTickets() {
         long orderId = reserveSeats(CUSTOMER, 1);
         String key = newKey();
-        doThrow(new ResourceAccessException("payment-service no respondió a tiempo")).doNothing()
+        doThrow(new ResourceAccessException("payment-service no respondió a tiempo")).doReturn(null)
                 .when(paymentClient).charge(any());
 
         HttpResult result = pay(CUSTOMER, orderId, key);

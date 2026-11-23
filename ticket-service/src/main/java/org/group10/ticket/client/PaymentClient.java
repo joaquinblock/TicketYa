@@ -12,7 +12,7 @@ import org.springframework.web.service.annotation.PostExchange;
 public interface PaymentClient {
 
     @PostExchange("/internal/payments")
-    void charge(@RequestBody ChargeRequest request);
+    PaymentResult charge(@RequestBody ChargeRequest request);
 
     @PostExchange("/internal/payments/cancel")
     PaymentResult cancel(@RequestBody CancelPaymentRequest request);

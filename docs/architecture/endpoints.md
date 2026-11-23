@@ -5,7 +5,7 @@
 ## Convenciones
 
 - **Todo entra por el gateway** (`http://localhost:8080`). Las rutas `/internal/**` son llamadas entre servicios: el gateway no las enruta y se usan contra el puerto de cada servicio.
-- **Identidad:** en la Entrega 1 va en el header `X-User-Id` (sin JWT). En el event-service, los endpoints con permiso lo verifican contra el auth-service antes de entrar (ver [`permissions.md`](permissions.md)): si falta, `400`; si el usuario no tiene el permiso, `403 forbidden`; si no existe, `404 user_not_found`.
+- **Identidad:** en la Entrega 1 va en el header `X-User-Id` (sin JWT). En la Entrega 2, el api-gateway valida el JWT y reenvía la identidad y los permisos en `X-User-*` (ADR-003). El event-service de la Entrega 1 verifica los permisos contra auth-service (ver [`permissions.md`](permissions.md)).
 - **Errores:** todos responden con el mismo `ErrorDto` (`error`, `message`, `status` y, a veces, `detail`). Los códigos de cada servicio están en [`error-handling.md`](error-handling.md).
 - **Validación:** un body o un parámetro inválido responde `400 validation_error` con cada campo en `detail`, aunque la tabla no lo repita en cada fila. Un servicio del que se depende y no responde da `503 service_unavailable`.
 - **Fechas:** ISO-8601 sin zona (`2026-12-12T21:00:00`). **Montos:** decimales con dos posiciones, en pesos.
@@ -18,6 +18,7 @@
 | [event-service](#event-service) | 8082 | 31 | Lugares, sectores, asientos, participantes y eventos (alta, configuración, estados y búsqueda). |
 | [ticket-service](#ticket-service) | 8083 | 13 | Disponibilidad, reservas, pago y emisión de entradas, compras, devoluciones, ingreso con QR y reportes. |
 | [payment-service](#payment-service) | 8084 | 4 | Cobros y reintegros contra la pasarela simulada. |
+| [queue-service](#queue-service) | 8085 | 3 | Fila virtual, turnos de compra y publicación de la clave pública para verificarlos. |
 
 ## auth-service
 
@@ -260,6 +261,31 @@ Content-Type: application/json
 ```
 
 El flujo completo, con el rechazo y el vencimiento de la reserva, está en [`purchase-sequence.md`](purchase-sequence.md).
+
+### Entrar y consultar la fila (queue-service)
+
+```http
+POST /api/queue/1/join
+Authorization: Bearer <JWT de auth-service con TICKET_PURCHASE>
+```
+```json
+201 Created
+{ "status": "WAITING", "position": 1, "queueToken": null, "enabledUntil": null }
+```
+```http
+GET /api/queue/1/me
+Authorization: Bearer <JWT de auth-service con TICKET_PURCHASE>
+```
+```json
+200 OK
+{
+  "status": "ENABLED",
+  "position": null,
+  "queueToken": "<JWT RS256 emitido por queue-service>",
+  "enabledUntil": "2026-11-22T13:10:30Z"
+}
+```
+El token de turno vence exactamente en `enabledUntil`; consultas posteriores no renuevan la ventana.
 
 ### Un error de permisos (event-service)
 

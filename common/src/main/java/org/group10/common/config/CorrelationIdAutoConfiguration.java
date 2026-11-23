@@ -14,7 +14,8 @@ import org.springframework.core.Ordered;
 import org.springframework.web.client.support.RestClientHttpServiceGroupConfigurer;
 
 /**
- * Correlación de requests en todos los servicios servlet salvo el gateway (ADR 0008).
+ * Correlación de requests en todos los servicios servlet salvo el gateway, que la registra con su propio usuario
+ * ({@code RequestLogConfig}, ADR 0010).
  * El filtro va primero para que los 401/403 de seguridad también queden registrados con su id.
  */
 @AutoConfiguration
@@ -26,7 +27,9 @@ public class CorrelationIdAutoConfiguration {
     @Bean
     FilterRegistrationBean<CorrelationIdFilter> ticketyaCorrelationIdFilter() {
         FilterRegistrationBean<CorrelationIdFilter> registration = new FilterRegistrationBean<>(new CorrelationIdFilter());
-        registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        // Justo después del filtro de observación (HIGHEST_PRECEDENCE + 1), para que el log del request lleve el
+        // traceId de Zipkin; y antes que la seguridad, para que los 401/403 también queden registrados
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 2);
         return registration;
     }
 

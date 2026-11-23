@@ -45,6 +45,17 @@ No se crea una clase por error. Cada servicio tiene su enum `<Servicio>ErrorCode
 | Otro servicio responde 5xx o no responde | 503 | `service_unavailable` |
 | Cualquier otra excepción | 500 | `internal_error` (sin exponer el mensaje) |
 
+## Con qué nivel se registra
+
+Una `TicketYaException` se registra con el nivel de su `ErrorCode` (`getLevel()`):
+
+- **`ERROR`** si su status es 5xx. Lo que falla es de nuestro lado: un servicio caído, la pasarela que no responde (`payment_gateway_unavailable`), un reintegro que falló (`refund_failed`).
+- **`WARN`** si es 4xx. Es un error del cliente y una respuesta esperada: un id que no existe, un token vencido, un asiento ya vendido.
+
+El nivel sale del status, así que un código nuevo no tiene que declararlo. Uno que sea crítico aunque responda 4xx sobrescribe `getLevel()`. Las excepciones no previstas (500) se registran en `ERROR`, con su stack trace.
+
+En Docker los logs son JSON, así que lo crítico de todo el sistema se encuentra con `docker compose logs | grep '"level":"ERROR"'`, y cada línea trae su `correlationId` ([ADR 0010](../adr/0010-trazabilidad-con-x-correlation-id.md)).
+
 ## Tests
 
 - No hay tests propios del handler ni de los controllers: los códigos de error se prueban a mano con las colecciones de Postman, y los tests de servicio verifican qué `ErrorCode` se tira.

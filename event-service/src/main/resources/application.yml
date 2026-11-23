@@ -60,6 +60,11 @@ springdoc:
 
 
 management:
+  tracing:
+    export:
+      zipkin:
+        # Las trazas van a Zipkin solo con observability.compose.yaml (ADR 0010)
+        enabled: false
   health:
     redis:
       # Sin Redis el catálogo sigue respondiendo desde la base: no es motivo para marcar el servicio caído

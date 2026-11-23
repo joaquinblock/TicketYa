@@ -82,6 +82,27 @@ docker compose down             # apagar
 - **Postman contra los contenedores:** los requests a `/api/**` funcionan por el gateway. Los de `/internal/**`, que van directo al puerto de un servicio, no: ese puerto no se publica.
 - **Por qué está armado así:** [ADR 0008](docs/adr/0008-despliegue-con-docker-compose.md).
 
+#### Seguir una operación
+
+En Docker, todos los servicios escriben logs JSON con un `correlationId`. El api-gateway lo genera, lo devuelve en el header `X-Correlation-ID` y lo reenvía, así que una compra se sigue con un solo id por todos los servicios ([ADR 0010](docs/adr/0010-trazabilidad-con-x-correlation-id.md)). Se puede mandar un id propio para encontrarlo fácil:
+
+```bash
+curl -H "X-Correlation-ID: demo-compra-1" -H "Authorization: Bearer <token>" ... http://localhost:8080/api/orders
+docker compose logs | grep '"correlationId":"demo-compra-1"'
+```
+
+Cada línea empieza con el contenedor que la escribió (`api-gateway-1  | {...}`). Aparecen el request en el gateway y en cada servicio (`method`, `endpoint`, `userId`, `status`, `durationMs`), y las operaciones críticas con su `operation` (`purchase`, `refund_request`, `event_cancellation`, `check_in`).
+
+#### Ver el recorrido en Zipkin
+
+Para ver una operación como línea de tiempo, con cuánto tardó cada servicio, se suma `observability.compose.yaml`. Agrega Zipkin, unos 300 MB más:
+
+```bash
+docker compose -f docker-compose.yml -f observability.compose.yaml up --build
+```
+
+En http://localhost:9411 se busca por servicio, o se pega el `traceId` que trae cada línea de log. Las trazas viven en memoria y se pierden al bajar el contenedor ([ADR 0010](docs/adr/0010-trazabilidad-con-x-correlation-id.md)).
+
 - **Todo entra por el gateway (`http://localhost:8080`).** Las rutas `/internal/**` (llamadas entre servicios) no pasan por el gateway: se usan directo contra el puerto de cada servicio.
 - **Swagger de todo el sistema:** http://localhost:8080/swagger-ui.html. Arriba a la derecha se elige el servicio. Los endpoints con candado piden token: *Authorize* y pegar el `accessToken` de `dev-login` (ver *Swagger* en [`permissions.md`](docs/architecture/permissions.md)).
 - **La identidad va en un JWT** (`Authorization: Bearer`). El api-gateway lo valida y les pasa a los servicios el usuario, sus permisos y su organización en headers (ver [`permissions.md`](docs/architecture/permissions.md)). Para probar, el token se pide con `dev-login`; las colecciones de Postman lo hacen solas con el usuario del header `X-User-Id` de cada request.

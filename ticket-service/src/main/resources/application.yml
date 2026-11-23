@@ -84,6 +84,11 @@ springdoc:
 
 
 management:
+  tracing:
+    export:
+      zipkin:
+        # Las trazas van a Zipkin solo con observability.compose.yaml (ADR 0010)
+        enabled: false
   endpoints:
     web:
       exposure:
@@ -92,8 +97,3 @@ management:
     health:
       # Muestra qué componente está caído (p. ej. rabbit) sin exponer sus detalles
       show-components: always
-
-logging:
-  structured:
-    format:
-      console: logstash

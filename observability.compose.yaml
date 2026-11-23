@@ -1,0 +1,41 @@
+# Trazas distribuidas con Zipkin (ADR 0010). Se suma al sistema completo, no arranca solo:
+#   docker compose -f docker-compose.yml -f observability.compose.yaml up --build
+#   http://localhost:9411 -> buscar por servicio, o pegar el traceId de un log
+# Cada servicio manda sus spans a Zipkin, con todos los requests muestreados y RabbitMQ observado, así una compra
+# sale como una sola traza: gateway, ticket-service, payment-service y el mensaje hasta notification-service.
+# Suma un contenedor de unos 300 MB: por eso no va en el docker-compose.yml de siempre.
+
+x-tracing: &tracing
+  MANAGEMENT_TRACING_EXPORT_ZIPKIN_ENABLED: "true"
+  MANAGEMENT_TRACING_EXPORT_ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+  MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
+  SPRING_RABBITMQ_TEMPLATE_OBSERVATION_ENABLED: "true"
+  SPRING_RABBITMQ_LISTENER_SIMPLE_OBSERVATION_ENABLED: "true"
+
+services:
+  zipkin:
+    image: openzipkin/zipkin:3.5.0
+    # Guarda las trazas en memoria: se pierden al bajar el contenedor, como los logs
+    environment:
+      STORAGE_TYPE: mem
+      JAVA_OPTS: -Xms96m -Xmx192m -XX:+UseSerialGC
+    ports:
+      - "9411:9411"
+    mem_limit: 320m
+
+  api-gateway:
+    environment: *tracing
+  auth-service:
+    environment: *tracing
+  event-service:
+    environment: *tracing
+  ticket-service:
+    environment: *tracing
+  payment-service:
+    environment: *tracing
+  queue-service:
+    environment: *tracing
+  notification-service:
+    environment: *tracing
+  recommendation-service:
+    environment: *tracing

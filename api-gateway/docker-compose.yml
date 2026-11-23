@@ -3,6 +3,8 @@ services:
   api-gateway:
     build: .
     environment:
+      # Logs JSON con el correlationId como campo, para seguir una operación entre servicios (ADR 0010)
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: logstash
       SPRING_PROFILES_ACTIVE: dev
       AUTH_SERVICE_URL: http://auth-service:8081
       EVENT_SERVICE_URL: http://event-service:8082

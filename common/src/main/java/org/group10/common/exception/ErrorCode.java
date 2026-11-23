@@ -1,6 +1,7 @@
 package org.group10.common.exception;
 
 import org.group10.common.dto.ErrorDto;
+import org.slf4j.event.Level;
 import org.springframework.http.HttpStatus;
 
 import java.util.Locale;
@@ -15,6 +16,15 @@ public interface ErrorCode {
     HttpStatus getStatus();
 
     String name();
+
+    /**
+     * Con qué nivel se registra cuando se responde: {@code ERROR} si falla algo de nuestro lado (5xx), para que lo
+     * crítico se encuentre en los logs de todo el sistema; {@code WARN} si es un error del cliente (4xx), que es una
+     * respuesta esperada. Un código que sea crítico aunque responda 4xx lo sobrescribe.
+     */
+    default Level getLevel() {
+        return getStatus().is5xxServerError() ? Level.ERROR : Level.WARN;
+    }
 
     default String getCode() {
         return name().toLowerCase(Locale.ROOT);

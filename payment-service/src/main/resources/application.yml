@@ -24,11 +24,6 @@ ticketya:
       correlation:
         enabled: true
 
-logging:
-  structured:
-      format:
-        console: logstash
-
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
@@ -39,6 +34,11 @@ springdoc:
     path: /api-docs
 
 management:
+  tracing:
+    export:
+      zipkin:
+        # Las trazas van a Zipkin solo con observability.compose.yaml (ADR 0010)
+        enabled: false
   endpoints:
     web:
       exposure:

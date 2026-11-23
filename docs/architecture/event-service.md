@@ -129,18 +129,18 @@ Dos tablas más y joins para diferenciar un único campo no se justifican. Si en
 
 Si el event-service pasa a MongoDB, la cuestión desaparece: el `venue` es un documento con sus sectores embebidos, y cada uno tiene `capacity` o `seats` según su tipo.
 
-## Avisos de cambios (US-NOT-02)
+## Avisos de cambios (US-NOT-02) y de publicación (US-NOT-03)
 
-Cuando un evento se cancela, se suspende o se reprograma, el event-service lo publica en el exchange `ticketya.events` de RabbitMQ ([ADR 0004](../adr/0004-rabbitmq-para-avisos-entre-servicios.md)) con la clave `event.cancelled`, `event.suspended` o `event.rescheduled`:
+Cuando un evento se cancela, se suspende, se reprograma o se publica, el event-service lo publica en el exchange `ticketya.events` de RabbitMQ ([ADR 0004](../adr/0004-rabbitmq-para-avisos-entre-servicios.md)) con la clave `event.cancelled`, `event.suspended`, `event.rescheduled` o `event.published`:
 
 ```json
 { "messageId": "uuid", "occurredAt": "2026-11-22T18:00:00Z", "eventId": 3, "change": "CANCELLED" }
 ```
 
-- **Cuándo.** `EventService` dispara el evento de Spring `EventChanged` dentro de la última transacción de `cancel`, `suspend` o `resume`, la que cambia el estado. `EventChangedPublisher` lo manda con `@TransactionalEventListener(AFTER_COMMIT)`. Si falla el aviso al ticket-service, el estado no cambia y no se publica nada.
+- **Cuándo.** `EventService` dispara el evento de Spring `EventChanged` dentro de la última transacción de `cancel`, `suspend`, `resume` o `publish`, la que cambia el estado. `EventChangedPublisher` lo manda con `@TransactionalEventListener(AFTER_COMMIT)`. Si falla el aviso al ticket-service (o la publicación no cumple sus condiciones), el estado no cambia y no se publica nada.
 - **Solo si cambió algo.** Repetir una cancelación o una suspensión no publica. Reanudar publica `event.rescheduled` solo con una fecha nueva distinta de la que tenía; sin fecha o con la misma, no avisa.
-- **Dos cambios a la vez.** La última transacción bloquea la fila del evento (`EventRepository.lockById`, `select … for update`) antes de leerlo. Si llegan dos cambios a la vez, el segundo espera, lee el estado nuevo y no publica; un segundo `resume` se rechaza. Lo prueba `EventChangeConcurrencyMySqlIntegrationTest`.
-- **Contenido.** Solo ids: notification-service pide el evento y los compradores. `occurredAt` sale del `Clock`.
+- **Dos cambios a la vez.** La última transacción bloquea la fila del evento (`EventRepository.lockById`, `select … for update`) antes de leerlo. Si llegan dos cambios a la vez, el segundo espera, lee el estado nuevo y no publica; un segundo `resume` o `publish` se rechaza. Lo prueban `EventChangeConcurrencyMySqlIntegrationTest` y `EventPublishConcurrencyMySqlIntegrationTest`: sin el lock, dos publicaciones a la vez mandarían dos avisos y cada fan recibiría dos mails.
+- **Contenido.** Solo ids: notification-service pide el evento y los compradores (o los fans, a recommendation-service). `occurredAt` sale del `Clock`.
 - **Si RabbitMQ falla.** La operación responde igual y queda un `WARN` con el cambio y el id del evento. Sin outbox, ese aviso se pierde.
 
 `RabbitConfig` declara el exchange con los mismos atributos que ticket-service y lo intenta al arrancar; sin broker, el servicio arranca igual.

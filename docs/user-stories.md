@@ -864,6 +864,8 @@ Servicio: notification-service · Involucra: recommendation-service, event-servi
 - Al publicarse un evento, los clientes que tienen como favorito a uno de sus participantes y viven en la ciudad del lugar reciben un aviso.
 - Un cliente sin ese artista como favorito, o de otra ciudad, no recibe nada.
 
+**Estado:** MVP hecho en tres PRs (recommendation, notification y event-service): el aviso es por mail, y el favorito puede ser elegido en las preferencias o inferido de las compras. Ver [`notification-service.md`](architecture/notification-service.md#avisos-de-artistas-favoritos-us-not-03).
+
 ## F23. Preferencias y recomendaciones
 
 ### US-REC-01: Registrar mis preferencias

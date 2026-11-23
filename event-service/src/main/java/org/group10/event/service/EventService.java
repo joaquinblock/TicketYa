@@ -214,7 +214,9 @@ public class EventService {
     }
 
     /**
-     * Publishes a draft: {@code DRAFT -> PUBLISHED} through the state machine, once it can be sold.
+     * Publishes a draft: {@code DRAFT -> PUBLISHED} through the state machine, once it can be sold, and lets the fans
+     * of its participants know once it's committed (US-NOT-03). The event is locked while its status changes, so two
+     * publications at the same time notify once.
      *
      * @throws TicketYaException {@code EVENT_NOT_FOUND}, {@code INVALID_STATUS_TRANSITION} if it isn't a draft,
      *                           {@code ORGANIZER_NOT_IN_ORGANIZATION} or {@code EVENT_NOT_PUBLISHABLE} with every
@@ -239,9 +241,10 @@ public class EventService {
         ticketClient.synchronizeEventSale(id, sale);
 
         return transactions.execute(tx -> {
-            Event managed = getEvent(id);
+            Event managed = getLockedEvent(id);
             ensureStatus(managed, EventStatus.DRAFT, "Solo se publica un borrador");
             managed.changeStatus(EventStatus.PUBLISHED, statusMachine);
+            publishChange(id, EventChange.PUBLISHED);
             return toDetail(managed);
         });
     }

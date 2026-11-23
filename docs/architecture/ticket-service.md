@@ -231,6 +231,12 @@ Por eso se copian a `event_sale` y `event_sector_price` junto con el inventario,
 
 **Costo:** el event-service tiene que avisar cada cambio. Si un aviso falla, ese cambio de estado no debe darse por aplicado, porque el ticket-service seguiría vendiendo con el dato anterior.
 
+### Exigir turno en eventos de alta demanda
+
+`POST /api/orders` lee `event_sale.high_demand` y, si está activado, exige `X-Queue-Token`. El ticket-service valida localmente RS256, `iss`, `aud`, `sub`, `eventId`, `enabledUntil` y `jti` contra el JWKS del queue-service; nunca comparte la clave privada ni agrega una llamada por reserva. Nimbus mantiene en caché las claves descargadas. Configurar `QUEUE_SERVICE_URL` con la URL base del queue-service (por defecto `http://localhost:8085`), y `QUEUE_JWT_ISSUER`/`QUEUE_JWT_AUDIENCE` si se cambian los valores por defecto `ticketya-queue`/`ticket-service`.
+
+La validación ocurre antes de resolver la clave de idempotencia o tocar inventario. Si falta o no es válido el turno, responde 403 `invalid_queue_token`; si no se puede obtener una clave y no hay una válida en caché, responde 503 `service_unavailable`, sin permitir la reserva. En eventos comunes se ignora el header. El turno no se consume: se puede reservar de nuevo mientras siga vigente, respetando el límite de entradas existente. Pagar o cancelar una reserva no vuelve a validar el turno; la orden mantiene su vencimiento habitual de 10 minutos.
+
 ### Aprobar una devolución: primero payment
 
 No hay una transacción que abarque las dos bases, así que aprobar se hace en tres pasos:
@@ -394,10 +400,6 @@ Las historias y sus criterios de aceptación están en [`user-stories.md`](../us
 | Entradas de una compra compensada | Quedan `VOIDED`, con `compensated_at` | Nunca se vendieron: como `REFUNDED`, el reporte las contaría como devoluciones |
 | Reintegro de compensación rechazado con un 4xx | Se guarda el error y no se reintenta | Reintentar no lo arregla; queda en el log para resolverlo a mano. Lo que no tuvo respuesta sí se reintenta |
 
-### Pendientes para la implementación
-
-- **Códigos nuevos en `TicketErrorCode`:** `invalid_queue_token`.
-
 ### Endpoints
 
 | Método y ruta | Qué hace | Errores |
@@ -407,7 +409,7 @@ Las historias y sus criterios de aceptación están en [`user-stories.md`](../us
 | `GET /internal/events/{eventId}/buyers` | Los `userId` distintos de las órdenes `PAID` del evento que no tienen todas sus entradas con una devolución aprobada, ordenados; vacío si no hay. No filtra por el estado de la entrada porque al cancelar el evento el job de reintegros también las pasa a `REFUNDED`. La usa el notification-service para avisar que el evento se canceló, se suspendió o se reprogramó (US-NOT-02). Solo entre servicios, con `X-Internal-Secret` | 400 `validation_error`, 401 `unauthorized` |
 | `GET /api/availability?eventId=` | Disponibilidad por sector | 404 `resource_not_found` |
 | `GET /api/events/{eventId}/report` | Reporte por sector y total del evento. `REPORT_VIEW`; el organizador solo puede consultar eventos de su organización | 400 `validation_error`, 401 `unauthorized`, 403 `forbidden`, 404 `event_not_found`, 503 `service_unavailable` |
-| `POST /api/orders` | Reserva asientos (`seatIds`) o lugares (`eventSectorId` y `quantity`). `TICKET_PURCHASE` | 400 `validation_error`, 404 `resource_not_found`, 409 `seat_unavailable`, `sector_sold_out`, `ticket_limit_exceeded`, `event_not_on_sale`, `sale_not_started`, `data_conflict` |
+| `POST /api/orders` | Reserva asientos (`seatIds`) o lugares (`eventSectorId` y `quantity`). En alta demanda requiere el JWT del header `X-Queue-Token`. `TICKET_PURCHASE` | 400 `validation_error`, 403 `invalid_queue_token`, 404 `resource_not_found`, 409 `seat_unavailable`, `sector_sold_out`, `ticket_limit_exceeded`, `event_not_on_sale`, `sale_not_started`, `data_conflict`, 503 `service_unavailable` si el JWKS no puede verificarse |
 | `POST /api/orders/{id}/cancel` | Abandona una reserva. Repetirlo responde 200. `TICKET_PURCHASE` | 404 `order_not_found`, 409 `payment_in_progress`, `reservation_expired`, `order_not_cancellable` |
 | `POST /api/tickets/{ticketId}/return-requests` | Solicita la devolución de una entrada. `REFUND_REQUEST` | 404 `ticket_not_found`, 409 `refund_not_allowed`, `return_request_already_pending` |
 | `POST /api/tickets/check-in` | Valida el QR en el ingreso: body `{eventId, qrCode}`. La entrada pasa a `USED` con quién la validó y cuándo. `TICKET_VALIDATE` (personal de acceso asignado al evento) | 400 `validation_error`, `invalid_qr`, 403 `forbidden`, `staff_not_assigned`, 409 `ticket_already_used`, 503 `service_unavailable` |

@@ -22,6 +22,7 @@ import org.group10.ticket.repository.EventSectorPriceRepository;
 import org.group10.ticket.repository.EventSectorStockRepository;
 import org.group10.ticket.repository.OrderRepository;
 import org.group10.ticket.repository.TicketRepository;
+import org.group10.ticket.security.QueueTokenValidator;
 import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionOperations;
@@ -55,10 +56,19 @@ public class ReservationService {
     private final OrderQueryService orderQueryService;
     private final ReservationProperties reservationProperties;
     private final Clock clock;
+    private final QueueTokenValidator queueTokenValidator;
 
     public OrderResponse reserve(Long userId, ReservationRequest request) {
+        return reserve(userId, request, null);
+    }
+
+    public OrderResponse reserve(Long userId, ReservationRequest request, String queueToken) {
+        EventSale sale = findSaleOfEvent(request.eventId());
+        if (sale.isHighDemand()) {
+            queueTokenValidator.validate(queueToken, userId, request.eventId());
+        }
         return findOrderOfTheAttempt(userId, request)
-                .orElseGet(() -> reserveUnlessTheSameAttemptWonTheRace(userId, request));
+                .orElseGet(() -> reserveUnlessTheSameAttemptWonTheRace(userId, request, sale));
     }
 
     private Optional<OrderResponse> findOrderOfTheAttempt(Long userId, ReservationRequest request) {
@@ -66,17 +76,16 @@ public class ReservationService {
                 .map(existingOrder -> answerWithTheOrderOfTheAttempt(existingOrder, userId, request));
     }
 
-    private OrderResponse reserveUnlessTheSameAttemptWonTheRace(Long userId, ReservationRequest request) {
+    private OrderResponse reserveUnlessTheSameAttemptWonTheRace(Long userId, ReservationRequest request, EventSale sale) {
         try {
-            return reserveNewOrder(userId, request);
+            return reserveNewOrder(userId, request, sale);
         } catch (RuntimeException failure) {
             return findOrderOfTheAttempt(userId, request).orElseThrow(() -> rejectionFor(failure, request));
         }
     }
 
-    private OrderResponse reserveNewOrder(Long userId, ReservationRequest request) {
+    private OrderResponse reserveNewOrder(Long userId, ReservationRequest request, EventSale sale) {
         LocalDateTime now = LocalDateTime.now(clock);
-        EventSale sale = findSaleOfEvent(request.eventId());
         ensureSaleIsOpen(sale, now);
         ensureCustomerStaysWithinTheLimit(sale, userId, request);
 

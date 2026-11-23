@@ -151,7 +151,7 @@ La llamada es síncrona, pero con un tiempo máximo. Ese tiempo, sumando reinten
 | Fallas recurrentes (50% de las últimas 10 llamadas, mínimo 5) | Se abre el circuito y no se llama a la pasarela | 503 al instante |
 | Pasan 10 s con el circuito abierto | Deja pasar 2 llamadas de prueba; si salen bien, se cierra | Cobro normal |
 
-- **Peor caso:** unos 10 s (3 × 3 s + 2 × 500 ms), debajo de los 20 s que ticket-service espera a payment-service. Si cambia algún valor de `payment.gateway.resilience`, hay que recalcularlo.
+- **Peor caso:** unos 10 s (3 × 3 s + 2 × 500 ms), debajo de los 12 s que ticket-service espera cada llamada a payment-service (US-TKT-23). Si cambia algún valor de `payment.gateway.resilience`, hay que recalcularlo.
 - **El circuit breaker cuenta cada intento,** no cada pedido. Repetir una clave que ya tiene resultado no llama a la pasarela, así que no cuenta.
 - **Solo `PaymentGatewayUnavailableException`** se reintenta y cuenta como falla. Una pasarela real tiene que traducir sus fallas de red a esa excepción.
 

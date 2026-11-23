@@ -278,7 +278,7 @@ En los tres últimos casos los lugares se liberan, las entradas quedan `VOIDED` 
 - **La entrada sigue `VOIDED`,** con `ticket.compensated_at` cuando payment acepta el reintegro. No pasa a `REFUNDED`, porque el reporte de organizadores cuenta las `REFUNDED` como devoluciones y estas entradas nunca se vendieron.
 - **Un 4xx de payment no se reintenta:** reintentar no lo arregla. Se guarda en `ticket.refund_error` y queda en el log como `ERROR`, con la orden y la entrada, para resolverlo a mano. Los timeouts, los 5xx y el 502 `refund_failed` se reintentan en la siguiente corrida.
 - **Si el servicio se cae entre cobrar y emitir,** la orden queda `PENDING` con la marca. El job de vencimiento la pasa a `EXPIRED` y el de compensación la reintegra.
-- **Lo que no cubre:** si se pierde la respuesta de payment, no hay marca. Eso lo resuelve la anulación del intento (US-TKT-23), descrita en *Manda la reserva*.
+- **Si se pierde la respuesta de payment,** no hay marca. Eso lo resuelve la anulación del intento (US-TKT-23), descrita en *Manda la reserva*: si el intento resulta aprobado, pone la marca y pide los reintegros.
 
 ### Aviso de compra confirmada (`purchase.confirmed`)
 
@@ -323,7 +323,21 @@ La reserva dura 10 minutos y nunca se extiende. Un intento nuevo solo se acepta 
 
 La duración, el margen y el tope de rechazos son configurables.
 
-Si se pierde la respuesta y se llega al vencimiento sin resultado, la orden pasa igual a `EXPIRED` y los lugares se liberan. En la Entrega 2, el job busca las órdenes `EXPIRED` o `CANCELLED` con la clave cargada y le pide al payment-service anular el intento. Si resulta aprobado, pide el reintegro de cada entrada con motivo `PURCHASE_COMPENSATION`. Si sigue sin resultado, vuelve a preguntar en la siguiente corrida.
+**Cuánto se espera a payment (US-TKT-23).** Cada llamada de cobro tiene `connect-timeout` de 1 s y `read-timeout` de 12 s, por encima del peor caso de payment con sus reintentos a la pasarela (unos 10 s, ADR 0007). Si no hay respuesta (timeout o conexión caída, `ResourceAccessException`), se repite la llamada con la misma clave hasta `ticketya.reservation.payment-call-attempts` (2) veces. Un 5xx no se repite: payment ya agotó sus reintentos o tiene el circuito abierto. Peor caso: 2 × (1 s + 12 s) = 26 s, menos que el margen de 1 minuto. Un test lo verifica con la configuración real, así que cambiar un timeout o los intentos sin recalcularlo lo rompe. Es un bucle en `OrderPaymentService`, sin librería: no hacía falta un circuit breaker de este lado, porque ya está en payment.
+
+Si se agotan los intentos, el cliente recibe 503 `service_unavailable`, la orden sigue `PENDING` con la clave y sus lugares siguen reservados. Puede repetir ese mismo intento hasta el vencimiento sin riesgo de doble cobro: payment consulta la pasarela en vez de cobrar de nuevo (US-PAY-12).
+
+**Anular el intento de una orden cerrada.** Si se llega al vencimiento sin resultado, la orden pasa igual a `EXPIRED` y los lugares se liberan. `PaymentAttemptResolutionJob` corre cada 30 s (`ticketya.payment-attempt.resolution-check`), busca las órdenes `EXPIRED` o `CANCELLED` con la clave cargada y sin `charge_approved_at`, y llama a `POST /internal/payments/cancel`:
+
+| Respuesta de payment | Qué hace |
+|---|---|
+| `APPROVED` | Marca `charge_approved_at`, limpia la clave y pide el reintegro de cada entrada con motivo `PURCHASE_COMPENSATION`. Las entradas siguen `VOIDED`, nunca se emiten. Si un reintegro falla, lo retoma `PurchaseCompensationJob` por la marca |
+| `CANCELLED` o `REJECTED` | Limpia la clave: no hubo cobro |
+| 404 `payment_not_found` | Limpia la clave: el cobro nunca llegó a payment |
+| `PENDING`, 5xx o sin respuesta | No toca nada y vuelve a preguntar en la siguiente corrida |
+| Otro 4xx | Queda en el log como `ERROR` y se vuelve a preguntar |
+
+Limpiar la clave es un `UPDATE` condicional por orden y clave, que nunca toca una orden `PENDING`.
 
 ### Abandonar una reserva
 

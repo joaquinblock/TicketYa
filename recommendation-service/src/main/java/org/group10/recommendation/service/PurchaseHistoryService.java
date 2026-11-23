@@ -34,6 +34,32 @@ public class PurchaseHistoryService {
     }
 
     /**
+     * Suma 1 a cada participante, al lugar y a la organización del evento, una sola vez por evento.
+     * <ol>
+     *   <li>Un {@code upsert} que solo crea el documento si no existía: el listener del historial puede no haber
+     *       llegado todavía.</li>
+     *   <li>Un {@code updateFirst} atómico con filtro {@code countedEventIds: {$ne: eventId}}: marca el evento y hace
+     *       los {@code $inc} juntos. Si el evento ya estaba contado, el filtro no encuentra nada y no cambia nada.</li>
+     * </ol>
+     */
+    public void countFavorites(long userId, long eventId, List<Long> participantIds, Long venueId,
+                               Long organizationId) {
+        Query client = Query.query(Criteria.where("_id").is(userId));
+        mongoTemplate.upsert(client, new Update().setOnInsert("countedEventIds", List.of()), PurchaseHistory.class);
+
+        Update count = new Update().push("countedEventIds", eventId);
+        participantIds.stream().distinct().forEach(id -> count.inc("counts.participants." + id, 1));
+        if (venueId != null) {
+            count.inc("counts.venues." + venueId, 1);
+        }
+        if (organizationId != null) {
+            count.inc("counts.organizations." + organizationId, 1);
+        }
+        mongoTemplate.updateFirst(Query.query(Criteria.where("_id").is(userId).and("countedEventIds").ne(eventId)),
+                count, PurchaseHistory.class);
+    }
+
+    /**
      * "Quienes compraron entradas para estos eventos también compraron…": entre los otros clientes que compraron
      * alguno de {@code eventIds}, cuenta cuántos compraron cada evento que el cliente todavía no tiene. El primer
      * {@code $match} usa el índice de {@code eventIds} ({@link org.group10.recommendation.config.MongoIndexes}).

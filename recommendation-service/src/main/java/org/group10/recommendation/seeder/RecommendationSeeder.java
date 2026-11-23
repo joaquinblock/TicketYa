@@ -9,6 +9,7 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Historial coherente con el TicketSeeder: el cliente 1 del AuthSeeder tiene órdenes {@code PAID} del concierto
@@ -32,9 +33,15 @@ public class RecommendationSeeder implements ApplicationRunner {
             log.info("RecommendationSeeder: ya hay historial, se omite la carga");
             return;
         }
+        // Con los datos del EventSeeder: el concierto es de Los Serranos (1) en el Estadio del Sur (1) y la obra, de la
+        // Compañía Teatro del Centro (2) en el Teatro de la Sierra (2). Los dos son de la organización 1, que queda
+        // como favorita inferida.
         purchaseHistoryRepository.save(PurchaseHistory.builder()
                 .userId(CLIENT_USER_ID)
                 .eventIds(List.of(CONCERT_EVENT_ID, PLAY_EVENT_ID))
+                .countedEventIds(List.of(CONCERT_EVENT_ID, PLAY_EVENT_ID))
+                .counts(new PurchaseHistory.FavoriteCounts(Map.of("1", 1, "2", 1), Map.of("1", 1, "2", 1),
+                        Map.of("1", 2)))
                 .build());
         log.info("RecommendationSeeder: historial de compras del cliente {} cargado", CLIENT_USER_ID);
     }

@@ -18,7 +18,7 @@ import org.springframework.web.client.HttpClientErrorException;
 import java.text.Normalizer;
 import java.time.Clock;
 import java.time.LocalDateTime;
-import java.util.Collection;
+
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,15 +26,16 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Stream;
 
 /**
  * Sugerencias de eventos para un cliente (US-REC-02).
  * <ol>
- *   <li>Candidatos: la búsqueda de event-service por sus participantes favoritos, por sus tipos y por su ciudad (una
- *       llamada por cada preferencia que tenga), más los eventos que compraron otros clientes que compraron lo mismo
- *       que él.</li>
- *   <li>Puntaje: participante favorito +3, tipo favorito +2, su ciudad +2 y co-compra +1 por cliente (hasta 3). A
- *       igual puntaje, el más próximo.</li>
+ *   <li>Candidatos: la búsqueda de event-service por sus participantes favoritos (los que eligió y los inferidos de
+ *       sus compras), por sus tipos y por su ciudad (una llamada por cada preferencia que tenga), más los eventos que
+ *       compraron otros clientes que compraron lo mismo que él.</li>
+ *   <li>Puntaje: participante favorito +3, tipo favorito +2, su ciudad +2, lugar u organización inferidos +1 cada
+ *       uno y co-compra +1 por cliente (hasta 3). A igual puntaje, el más próximo.</li>
  *   <li>Nunca se sugiere un evento que ya compró. Sin candidatos (cliente nuevo o nada coincide), los próximos
  *       eventos.</li>
  * </ol>
@@ -55,6 +56,10 @@ public class RecommendationService {
     private static final int EVENT_TYPE_POINTS = 2;
     private static final int CITY_POINTS = 2;
     private static final int MAX_CO_PURCHASE_POINTS = 3;
+    private static final int INFERRED_VENUE_POINTS = 1;
+    private static final int INFERRED_ORGANIZATION_POINTS = 1;
+    private static final int MIN_EVENTS_TO_INFER = 2;
+    private static final int MAX_INFERRED = 3;
     /** Lo mismo que muestra la búsqueda: lo que se puede comprar o puede volver a tener lugar. */
     private static final Set<String> BUYABLE = Set.of("PUBLISHED", "SOLD_OUT");
 
@@ -67,12 +72,16 @@ public class RecommendationService {
     public List<EventSummary> suggest(Caller caller) {
         requireClient(caller);
         Optional<CustomerPreferences> preferences = preferencesRepository.findById(caller.userId());
-        List<Long> favorites = preferences.map(CustomerPreferences::getParticipantIds).map(List::copyOf).orElse(List.of());
+        Optional<PurchaseHistory> history = purchaseHistoryRepository.findById(caller.userId());
+        Optional<PurchaseHistory.FavoriteCounts> counts = history.map(PurchaseHistory::getCounts);
+        List<Long> favorites = Stream.concat(
+                        preferences.map(CustomerPreferences::getParticipantIds).stream().flatMap(List::stream),
+                        inferred(counts.map(PurchaseHistory.FavoriteCounts::getParticipants)).stream())
+                .distinct()
+                .toList();
         List<EventType> types = preferences.map(CustomerPreferences::getEventTypes).map(List::copyOf).orElse(List.of());
         String city = preferences.map(CustomerPreferences::getCity).orElse(null);
-        List<Long> bought = purchaseHistoryRepository.findById(caller.userId())
-                .map(PurchaseHistory::getEventIds)
-                .orElse(List.of());
+        List<Long> bought = history.map(PurchaseHistory::getEventIds).orElse(List.of());
 
         Map<Long, Candidate> candidates = new LinkedHashMap<>();
         if (!favorites.isEmpty()) {
@@ -98,10 +107,11 @@ public class RecommendationService {
                     .limit(MAX_SUGGESTIONS)
                     .toList();
         }
-        Set<String> typeNames = Set.copyOf(types.stream().map(Enum::name).toList());
-        String normalizedCity = normalize(city);
+        Taste taste = new Taste(Set.copyOf(types.stream().map(Enum::name).toList()), normalize(city),
+                Set.copyOf(inferred(counts.map(PurchaseHistory.FavoriteCounts::getVenues))),
+                Set.copyOf(inferred(counts.map(PurchaseHistory.FavoriteCounts::getOrganizations))));
         return candidates.values().stream()
-                .sorted(Comparator.comparingInt((Candidate c) -> c.score(typeNames, normalizedCity)).reversed()
+                .sorted(Comparator.comparingInt((Candidate c) -> c.score(taste)).reversed()
                         .thenComparing(c -> c.event.dateTime())
                         .thenComparing(c -> c.event.id()))
                 .limit(MAX_SUGGESTIONS)
@@ -122,6 +132,20 @@ public class RecommendationService {
         } catch (HttpClientErrorException.NotFound e) {
             return Optional.empty();
         }
+    }
+
+    /**
+     * Favoritos inferidos de las compras: los que aparecen en al menos {@value #MIN_EVENTS_TO_INFER} eventos, los
+     * {@value #MAX_INFERRED} más repetidos (a igual cantidad, el de menor id).
+     */
+    private static List<Long> inferred(Optional<Map<String, Integer>> counts) {
+        return counts.orElse(Map.of()).entrySet().stream()
+                .filter(entry -> entry.getValue() != null && entry.getValue() >= MIN_EVENTS_TO_INFER)
+                .map(entry -> Map.entry(Long.valueOf(entry.getKey()), entry.getValue()))
+                .sorted(Map.Entry.<Long, Integer>comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey()))
+                .limit(MAX_INFERRED)
+                .map(Map.Entry::getKey)
+                .toList();
     }
 
     private static Candidate candidate(Map<Long, Candidate> candidates, EventSummary event) {
@@ -157,18 +181,27 @@ public class RecommendationService {
 
         /**
          * El participante favorito sale de la consulta que lo trajo (el resumen solo tiene nombres) o del detalle;
-         * el tipo y la ciudad, del evento.
+         * el resto, del evento.
          */
-        private int score(Collection<String> typeNames, String normalizedCity) {
+        private int score(Taste taste) {
             int score = favoriteParticipant ? FAVORITE_PARTICIPANT_POINTS : 0;
-            if (typeNames.contains(event.type())) {
+            if (taste.typeNames().contains(event.type())) {
                 score += EVENT_TYPE_POINTS;
             }
-            if (normalizedCity != null && event.venue() != null
-                    && normalizedCity.equals(normalize(event.venue().city()))) {
+            if (taste.city() != null && event.venue() != null && taste.city().equals(normalize(event.venue().city()))) {
                 score += CITY_POINTS;
+            }
+            if (event.venue() != null && taste.venueIds().contains(event.venue().id())) {
+                score += INFERRED_VENUE_POINTS;
+            }
+            if (taste.organizationIds().contains(event.organizationId())) {
+                score += INFERRED_ORGANIZATION_POINTS;
             }
             return score + Math.min(coBuyers, MAX_CO_PURCHASE_POINTS);
         }
+    }
+
+    /** Lo que se compara con cada candidato: tipos y ciudad elegidos, y lugares y organizaciones inferidos. */
+    private record Taste(Set<String> typeNames, String city, Set<Long> venueIds, Set<Long> organizationIds) {
     }
 }

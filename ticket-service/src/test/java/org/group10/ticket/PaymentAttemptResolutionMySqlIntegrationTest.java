@@ -211,6 +211,22 @@ class PaymentAttemptResolutionMySqlIntegrationTest {
     }
 
     @Test
+    void resolve_notFoundForAnotherReason_keepsTheAttemptToAskAgain() {
+        long orderId = orderWithoutPaymentResult();
+        String key = order(orderId).getPaymentAttemptKey();
+        orderClosingService.closePendingOrderReleasingItsPlaces(orderId, OrderStatus.EXPIRED);
+        HttpClientErrorException routeNotFound = HttpClientErrorException.create(HttpStatus.NOT_FOUND, "not found",
+                new HttpHeaders(), new byte[0], StandardCharsets.UTF_8);
+        routeNotFound.setBodyConvertFunction(type -> new ErrorDto("resource_not_found",
+                "No existe el recurso", 404, null));
+        when(paymentClient.cancel(any())).thenThrow(routeNotFound);
+
+        paymentAttemptResolutionService.resolveAttemptsOfClosedOrders();
+
+        assertThat(order(orderId).getPaymentAttemptKey()).isEqualTo(key);
+    }
+
+    @Test
     void resolve_ordersThatAreNotClosedOrHaveNoAttempt_areLeftAlone() {
         long pendingOrderId = orderWithoutPaymentResult();
         String pendingKey = order(pendingOrderId).getPaymentAttemptKey();

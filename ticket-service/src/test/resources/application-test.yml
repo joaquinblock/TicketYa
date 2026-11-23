@@ -6,3 +6,7 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
+ticketya:
+  compensation:
+    # El job de compensación corre a mano en los tests: si no, toma lo que dejan pendiente otros tests
+    refund-check: PT1H

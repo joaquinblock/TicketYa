@@ -15,6 +15,7 @@ import org.group10.ticket.repository.EventSeatRepository;
 import org.group10.ticket.repository.EventSectorStockRepository;
 import org.group10.ticket.repository.OrderRepository;
 import org.group10.ticket.repository.TicketRepository;
+import org.group10.ticket.service.PurchaseCompensationService;
 import org.mockito.ArgumentCaptor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
@@ -35,6 +36,7 @@ import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestClient;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -44,7 +46,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -90,6 +95,9 @@ class PurchaseCompensationMySqlIntegrationTest {
 
     @Autowired
     private TransactionTemplate transaction;
+
+    @Autowired
+    private PurchaseCompensationService purchaseCompensationService;
 
     private RestClient client;
     private long eventId;
@@ -246,6 +254,128 @@ class PurchaseCompensationMySqlIntegrationTest {
         assertThat(tickets(orderId)).allSatisfy(ticket -> assertThat(ticket.getCompensatedAt()).isNotNull());
     }
 
+    @Test
+    void refundPendingCompensations_refundThatFailedWhilePaying_isRefundedOnTheNextRun() {
+        long orderId = reserveSeats(1);
+        issuingFails();
+        doThrow(new IllegalStateException("payment-service caído")).doNothing().when(paymentClient).refund(any());
+        pay(orderId, newKey());
+
+        purchaseCompensationService.refundPendingCompensations();
+
+        assertThat(tickets(orderId)).allSatisfy(ticket -> assertThat(ticket.getCompensatedAt()).isNotNull());
+        assertThat(refundsOf(orderId)).hasSize(2);
+    }
+
+    @Test
+    void refundPendingCompensations_alreadyCompensated_doesNotAskForTheRefundAgain() {
+        long orderId = reserveSeats(1, 2);
+        issuingFails();
+        pay(orderId, newKey());
+
+        purchaseCompensationService.refundPendingCompensations();
+        purchaseCompensationService.refundPendingCompensations();
+
+        assertRefundsOfCompensation(orderId, 2);
+    }
+
+    @Test
+    void refundPendingCompensations_oneTicketFails_refundsTheOthersAndRetriesItLater() {
+        long orderId = reserveSeats(1, 2);
+        issuingFails();
+        doThrow(new IllegalStateException("payment-service caído")).when(paymentClient).refund(any());
+        pay(orderId, newKey());
+        Long failingTicket = tickets(orderId).getFirst().getId();
+        doNothing().when(paymentClient).refund(any());
+        doThrow(new IllegalStateException("timeout")).when(paymentClient)
+                .refund(argThat(refund -> refund != null && refund.ticketId().equals(failingTicket)));
+
+        purchaseCompensationService.refundPendingCompensations();
+
+        assertThat(tickets(orderId)).filteredOn(ticket -> !ticket.getId().equals(failingTicket))
+                .allSatisfy(ticket -> assertThat(ticket.getCompensatedAt()).isNotNull());
+        assertThat(compensatedAt(failingTicket)).isNull();
+
+        doNothing().when(paymentClient).refund(any());
+        purchaseCompensationService.refundPendingCompensations();
+
+        assertThat(compensatedAt(failingTicket)).isNotNull();
+    }
+
+    @Test
+    void refundPendingCompensations_cancelledOrderWithAnApprovedCharge_isRefunded() {
+        long orderId = reserveSeats(1);
+        doAnswer(invocation -> {
+            cancelTheEvent();
+            return null;
+        }).when(paymentClient).charge(any());
+        doThrow(new IllegalStateException("payment-service caído")).doNothing().when(paymentClient).refund(any());
+        pay(orderId, newKey());
+
+        purchaseCompensationService.refundPendingCompensations();
+
+        assertThat(tickets(orderId)).allSatisfy(ticket -> assertThat(ticket.getCompensatedAt()).isNotNull());
+    }
+
+    @Test
+    void refundPendingCompensations_ordersThatWereNeverCharged_areLeftAlone() {
+        long abandonedOrderId = reserveSeats(1);
+        post("/api/orders/%d/cancel".formatted(abandonedOrderId), "");
+        long paidOrderId = reserveSeats(2);
+        pay(paidOrderId, newKey());
+
+        purchaseCompensationService.refundPendingCompensations();
+
+        assertThat(refundsOf(abandonedOrderId)).isEmpty();
+        assertThat(refundsOf(paidOrderId)).isEmpty();
+    }
+
+    @Test
+    void refundPendingCompensations_orderStillPendingWithAnApprovedCharge_waitsUntilItIsClosed() {
+        long orderId = reserveSeats(1);
+        transaction.executeWithoutResult(status -> orderRepository.markChargeApproved(orderId, LocalDateTime.now()));
+
+        purchaseCompensationService.refundPendingCompensations();
+
+        assertThat(refundsOf(orderId)).isEmpty();
+    }
+
+    @Test
+    void refundPendingCompensations_paymentRejectsTheRefund_recordsTheErrorAndStopsRetrying() {
+        long orderId = reserveSeats(1);
+        issuingFails();
+        doThrow(HttpClientErrorException.create(HttpStatus.CONFLICT, "conflict", new HttpHeaders(), new byte[0],
+                StandardCharsets.UTF_8)).when(paymentClient).refund(any());
+        pay(orderId, newKey());
+
+        purchaseCompensationService.refundPendingCompensations();
+
+        assertThat(tickets(orderId)).allSatisfy(ticket -> {
+            assertThat(ticket.getRefundError()).contains("409");
+            assertThat(ticket.getCompensatedAt()).isNull();
+        });
+        assertThat(refundsOf(orderId)).hasSize(1);
+    }
+
+    @Test
+    void refundPendingCompensations_paymentCouldNotCreditIt_keepsRetrying() {
+        long orderId = reserveSeats(1);
+        issuingFails();
+        doThrow(HttpServerErrorException.create(HttpStatus.BAD_GATEWAY, "refund_failed", new HttpHeaders(),
+                new byte[0], StandardCharsets.UTF_8)).when(paymentClient).refund(any());
+        pay(orderId, newKey());
+
+        purchaseCompensationService.refundPendingCompensations();
+        purchaseCompensationService.refundPendingCompensations();
+
+        assertThat(tickets(orderId)).allSatisfy(ticket -> assertThat(ticket.getRefundError()).isNull());
+        assertThat(refundsOf(orderId)).hasSize(3);
+    }
+
+    private LocalDateTime compensatedAt(Long ticketId) {
+        return ticketRepository.findById(ticketId).orElseThrow().getCompensatedAt();
+    }
+
     private void issuingFails() {
         doThrow(new IllegalStateException("la base no respondió al emitir"))
                 .when(eventSeatRepository).sellSeatsHeldByOrder(anyLong());
@@ -269,15 +399,24 @@ class PurchaseCompensationMySqlIntegrationTest {
     }
 
     private void assertRefundsOfCompensation(long orderId, int tickets) {
-        ArgumentCaptor<RefundRequest> refunds = ArgumentCaptor.forClass(RefundRequest.class);
-        verify(paymentClient, times(tickets)).refund(refunds.capture());
-        assertThat(refunds.getAllValues()).extracting(RefundRequest::ticketId)
+        List<RefundRequest> refunds = refundsOf(orderId);
+        assertThat(refunds).hasSize(tickets);
+        assertThat(refunds).extracting(RefundRequest::ticketId)
                 .containsExactlyInAnyOrderElementsOf(tickets(orderId).stream().map(Ticket::getId).toList());
-        assertThat(refunds.getAllValues()).allSatisfy(refund -> {
+        assertThat(refunds).allSatisfy(refund -> {
             assertThat(refund.orderId()).isEqualTo(orderId);
             assertThat(refund.reason()).isEqualTo("PURCHASE_COMPENSATION");
             assertThat(refund.returnRequestId()).isNull();
         });
+    }
+
+    /**
+     * Solo los reintegros de esta orden: el job también toma lo que dejaron pendiente otros tests.
+     */
+    private List<RefundRequest> refundsOf(long orderId) {
+        ArgumentCaptor<RefundRequest> refunds = ArgumentCaptor.forClass(RefundRequest.class);
+        verify(paymentClient, atLeast(0)).refund(refunds.capture());
+        return refunds.getAllValues().stream().filter(refund -> refund.orderId().equals(orderId)).toList();
     }
 
     private List<Ticket> tickets(long orderId) {

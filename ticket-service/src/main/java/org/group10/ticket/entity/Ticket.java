@@ -73,6 +73,12 @@ public class Ticket {
      */
     private LocalDateTime compensatedAt;
 
+    /**
+     * Por qué payment-service rechazó el reintegro de compensación con un 4xx. Reintentar no lo arregla, así que el
+     * job deja de pedirlo y queda para resolver a mano.
+     */
+    private String refundError;
+
     @Version
     private Long version;
 

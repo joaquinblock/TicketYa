@@ -119,6 +119,28 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
             """)
     int markCompensated(Long id, LocalDateTime compensatedAt);
 
+    /**
+     * Entradas de compras que se cobraron y no se concretaron, con el reintegro todavía pendiente. No hace falta
+     * filtrar por el estado de la orden: una entrada pasa a {@code VOIDED} solo cuando su orden se cierra sin pagarse,
+     * así que una orden {@code PENDING} (que puede estar emitiendo) o {@code PAID} nunca aparece.
+     */
+    @Query("""
+            select t from Ticket t join fetch t.order o
+            where t.status = org.group10.ticket.entity.TicketStatus.VOIDED
+              and t.compensatedAt is null
+              and t.refundError is null
+              and o.chargeApprovedAt is not null
+            order by t.id
+            """)
+    List<Ticket> findTicketsToCompensate();
+
+    @Modifying
+    @Query("""
+            update Ticket t set t.refundError = :refundError, t.version = t.version + 1
+            where t.id = :id and t.compensatedAt is null
+            """)
+    int registerRefundError(Long id, String refundError);
+
     @Modifying
     @Query("""
             update Ticket t

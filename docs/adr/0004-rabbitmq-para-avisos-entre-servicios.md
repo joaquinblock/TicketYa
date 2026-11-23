@@ -29,3 +29,4 @@ Los avisos entre servicios van por RabbitMQ, con un exchange topic `ticketya.eve
 - En desarrollo hay que levantar RabbitMQ antes que los servicios que lo usan.
 - Como el exchange lo declaran el que publica y el que consume, sus atributos (topic, durable) se cambian en todos los servicios a la vez. RabbitMQ rechaza una redeclaración distinta con `PRECONDITION_FAILED`.
 - Cada servicio pone en un paquete `messaging/` sus eventos internos, los records de sus mensajes y sus publicadores o consumidores, igual que `client/` para HTTP.
+- 2026-11-22 (US-NOT-02): event-service también publica en `ticketya.events` (`event.cancelled`, `event.suspended`, `event.rescheduled`), con el mismo patrón. Cuando un mensaje genera varios envíos, como un aviso por comprador, la idempotencia es por envío: la clave se deriva del `messageId` y del destinatario, y el reintento manda solo los que faltan.

@@ -81,6 +81,8 @@ assertThat(soldTicketsOfTheSeat()).isEqualTo(1);
 
 Cada resultado se consume con `future.get(timeout)`, y las excepciones inesperadas hacen fallar el test. Para el bloqueo pesimista, un hilo toma el lock dentro de `TransactionTemplate`, avisa con un latch y lo mantiene hasta que el segundo intento termine.
 
+Para forzar una carrera dentro de una transacción, un `@EventListener` de test sobre el evento de Spring que se publica adentro espera en un `CyclicBarrier(2)` con timeout. Sin lock, los dos llegan y la carrera ocurre siempre. Con lock, el primero espera hasta el timeout y confirma solo. Ejemplo: `event-service/.../EventChangeConcurrencyMySqlIntegrationTest`.
+
 ## 4. Aislamiento
 
 - Cada test crea sus propios datos, con ids y claves únicos, y solo afirma sobre ellos.

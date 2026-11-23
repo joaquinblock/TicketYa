@@ -66,6 +66,14 @@ public class OrderQueryService {
         return toResponse(order);
     }
 
+    /**
+     * Los usuarios con alguna orden PAID del evento, una vez cada uno aunque tengan varias, para que el
+     * notification-service les avise un cambio del evento. Un evento sin compras devuelve una lista vacía.
+     */
+    public List<Long> findBuyersOfEvent(Long eventId) {
+        return orderRepository.findDistinctUserIdsOfPaidOrdersOfEvent(eventId);
+    }
+
     public Order findOrderOfCustomer(Long userId, Long orderId) {
         return orderRepository.findByIdAndUserId(orderId, userId)
                 .orElseThrow(() -> new TicketYaException(TicketErrorCode.ORDER_NOT_FOUND,

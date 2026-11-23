@@ -35,6 +35,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionOperations;
 
@@ -94,6 +95,8 @@ class EventLifecycleServiceTest {
     private TransactionOperations transactions;
     @Mock
     private TicketClient ticketClient;
+    @Mock
+    private ApplicationEventPublisher events;
 
     private EventService eventService;
 
@@ -104,7 +107,7 @@ class EventLifecycleServiceTest {
     @BeforeEach
     void setUp() {
         eventService = new EventService(eventRepository, venueRepository, participantRepository, eventSectorRepository,
-                sectorRepository, seatRepository, new EventStatusMachine(), transactions, ticketClient, CLOCK);
+                sectorRepository, seatRepository, new EventStatusMachine(), transactions, ticketClient, CLOCK, events);
         when(transactions.execute(any())).thenAnswer(invocation ->
                 invocation.<TransactionCallback<?>>getArgument(0).doInTransaction(null));
         when(seatRepository.countBySectorOfVenue(theater.getId())).thenReturn(List.of(new SectorSeatCount(3L, 50)));

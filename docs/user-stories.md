@@ -852,6 +852,8 @@ Servicio: notification-service · Involucra: event-service, ticket-service · Co
 - Al suspenderse o reprogramarse, cada comprador recibe un aviso con el estado o la fecha nueva.
 - Cada comprador recibe un solo aviso por cambio, aunque tenga varias entradas.
 
+**Estado:** MVP hecho, sin story propia (PR asociado a #67): el aviso es por mail, y reanudar con la misma fecha no avisa. Ver [`notification-service.md`](architecture/notification-service.md#avisos-de-cambios-de-un-evento-us-not-02).
+
 ### US-NOT-03: Saber cuándo un artista favorito toca en mi ciudad
 
 Como cliente quiero que me avisen cuando un artista que sigo publica un evento en mi ciudad.

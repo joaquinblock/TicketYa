@@ -12,6 +12,12 @@ spring:
         base-url: ${TICKET_SERVICE_URL:http://localhost:8083}
         connect-timeout: 1s
         read-timeout: 10s
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:ticketya}
+    password: ${RABBITMQ_PASSWORD:ticketya}
+    connection-timeout: 2s
   docker:
     compose:
       file: compose.yaml

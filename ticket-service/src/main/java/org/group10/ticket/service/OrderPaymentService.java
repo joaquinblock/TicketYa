@@ -145,6 +145,11 @@ public class OrderPaymentService {
             return orderQueryService.toResponse(current);
         }
         purchaseCompensationService.refundTicketsOf(current);
+        if (current.getStatus() == OrderStatus.FAILED) {
+            throw new TicketYaException(TicketErrorCode.PURCHASE_FAILED,
+                    "La compra de la orden %d falló después de cobrar: no se emitieron entradas y el pago se reintegra"
+                            .formatted(current.getId()));
+        }
         throw rejectionOf(current);
     }
 
@@ -182,14 +187,10 @@ public class OrderPaymentService {
     }
 
     private static TicketYaException rejectionOf(Order order) {
-        return switch (order.getStatus()) {
-            case EXPIRED -> rejectionOfExpiredReservation(order);
-            case FAILED -> new TicketYaException(TicketErrorCode.PURCHASE_FAILED,
-                    "La compra de la orden %d falló después de cobrar: no se emitieron entradas y el pago se reintegra"
-                            .formatted(order.getId()));
-            default -> new TicketYaException(TicketErrorCode.ORDER_NOT_PAYABLE,
-                    "La orden %d está %s y no se puede pagar".formatted(order.getId(), order.getStatus()));
-        };
+        return order.getStatus() == OrderStatus.EXPIRED
+                ? rejectionOfExpiredReservation(order)
+                : new TicketYaException(TicketErrorCode.ORDER_NOT_PAYABLE,
+                        "La orden %d está %s y no se puede pagar".formatted(order.getId(), order.getStatus()));
     }
 
     private static TicketYaException rejectionOfExpiredReservation(Order order) {

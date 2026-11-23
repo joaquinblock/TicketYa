@@ -229,12 +229,12 @@ class PurchaseCompensationMySqlIntegrationTest {
     }
 
     @Test
-    void pay_orderFailed_answersPurchaseFailedAgainWithoutCharging() {
+    void pay_orderFailed_isNotPayableAndIsNotChargedAgain() {
         long orderId = reserveSeats(1);
         issuingFails();
         pay(orderId, newKey());
 
-        assertThat(pay(orderId, newKey()).error()).isEqualTo("purchase_failed");
+        assertThat(pay(orderId, newKey()).error()).isEqualTo("order_not_payable");
         verify(paymentClient, times(1)).charge(any());
     }
 

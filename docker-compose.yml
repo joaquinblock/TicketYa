@@ -1,0 +1,8 @@
+# Sistema completo en contenedores (Épica 11). Cada servicio trae su docker-compose.yml con su base.
+#   1. ./mvnw package -DskipTests        (Windows: mvnw.cmd package -DskipTests)
+#   2. docker compose up --build         todo, o solo lo nombrado: docker compose up --build payment-service
+# Para programar un servicio no hace falta: spring-boot:run usa el compose.yaml de cada servicio.
+name: ticketya
+
+include:
+  - payment-service/docker-compose.yml

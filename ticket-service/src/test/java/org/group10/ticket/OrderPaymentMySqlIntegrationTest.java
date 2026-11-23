@@ -277,6 +277,25 @@ class OrderPaymentMySqlIntegrationTest {
     }
 
     @Test
+    void pay_paymentServiceDoesNotAnswer_returnsServiceUnavailableAndKeepsThePlacesReserved() {
+        long seatsOrderId = reserveSeats(CUSTOMER, 1);
+        long placesOrderId = reservePlaces(CUSTOMER, 2);
+        String key = newKey();
+        doThrow(new ResourceAccessException("payment-service no respondió a tiempo")).when(paymentClient).charge(any());
+
+        HttpResult seatsResult = pay(CUSTOMER, seatsOrderId, key);
+        HttpResult placesResult = pay(CUSTOMER, placesOrderId, newKey());
+
+        assertThat(seatsResult.status()).isEqualTo(503);
+        assertThat(seatsResult.error()).isEqualTo("service_unavailable");
+        assertThat(placesResult.error()).isEqualTo("service_unavailable");
+        assertThat(order(seatsOrderId).getStatus()).isEqualTo(OrderStatus.PENDING);
+        assertThat(order(seatsOrderId).getPaymentAttemptKey()).isEqualTo(key);
+        assertThat(seat(1).getStatus()).isEqualTo(EventSeatStatus.RESERVED);
+        assertThat(eventSectorStockRepository.findById(generalSector).orElseThrow().getTaken()).isEqualTo(2);
+    }
+
+    @Test
     void pay_reservationAlreadyOverdue_returnsExpiredWithoutCharging() {
         long orderId = reserveSeats(CUSTOMER, 1);
         changeOrder(orderId, order -> order.setExpiresAt(LocalDateTime.now().minusSeconds(1)));

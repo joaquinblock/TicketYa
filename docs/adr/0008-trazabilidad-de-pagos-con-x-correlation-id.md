@@ -24,3 +24,12 @@ La agregación centralizada queda a cargo del entorno que recolecta stdout; esta
 - El filtro común crea el contexto MDC en requests HTTP y lo limpia al terminar; el interceptor común añade el header a las llamadas del grupo `payment-service`.
 - Las aplicaciones ticket-service y payment-service conservan su compatibilidad cuando un llamador no envía el header.
 - Los logs pueden centralizarse sin que los servicios dependan de un backend de observabilidad concreto.
+
+## Ampliación (US-TKT-27)
+
+US-TKT-27 lleva el mismo mecanismo a todos los servicios, en lugar de sumar uno propio:
+
+- La autoconfiguración queda activa por defecto en todos los servicios servlet, salvo el api-gateway. El filtro va con la máxima prioridad, devuelve el id en la respuesta y registra cada request con método, endpoint, usuario, status y duración.
+- El interceptor se aplica a todos los clientes HTTP entre servicios, no solo al grupo `payment-service`.
+- Los mensajes RabbitMQ llevan el id en el header `X-Correlation-ID` y los listeners lo validan con la misma regla y lo ponen en el MDC mientras procesan el mensaje.
+- Fuera de un request, como en los jobs, `CorrelationIds.currentOrNew()` da un id nuevo sin escribirlo en el MDC, para que el hilo del scheduler no arrastre el id de una corrida a las siguientes.

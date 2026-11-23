@@ -9,6 +9,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.amqp.AmqpConnectException;
+import org.springframework.amqp.core.MessagePostProcessor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
@@ -42,7 +43,8 @@ class EventChangedPublisherTest {
         publisher.publish(new EventChanged(3L, change, CHANGED_AT));
 
         ArgumentCaptor<EventChangedMessage> message = ArgumentCaptor.forClass(EventChangedMessage.class);
-        verify(rabbitTemplate).convertAndSend(eq("ticketya.events"), eq(routingKey), message.capture());
+        verify(rabbitTemplate).convertAndSend(eq("ticketya.events"), eq(routingKey), message.capture(),
+                any(MessagePostProcessor.class));
         assertThat(message.getValue().eventId()).isEqualTo(3L);
         assertThat(message.getValue().change()).isEqualTo(change);
         assertThat(message.getValue().occurredAt()).isEqualTo(CHANGED_AT);
@@ -55,14 +57,16 @@ class EventChangedPublisherTest {
         publisher.publish(new EventChanged(3L, EventChange.RESCHEDULED, CHANGED_AT));
 
         ArgumentCaptor<EventChangedMessage> messages = ArgumentCaptor.forClass(EventChangedMessage.class);
-        verify(rabbitTemplate, times(2)).convertAndSend(anyString(), anyString(), messages.capture());
+        verify(rabbitTemplate, times(2)).convertAndSend(anyString(), anyString(), messages.capture(),
+                any(MessagePostProcessor.class));
         assertThat(messages.getAllValues()).extracting(EventChangedMessage::messageId).doesNotHaveDuplicates();
     }
 
     @Test
     void publish_brokerDown_doesNotFailAndLogsTheEvent(CapturedOutput output) {
         doThrow(new AmqpConnectException(new ConnectException("Connection refused")))
-                .when(rabbitTemplate).convertAndSend(anyString(), anyString(), any(Object.class));
+                .when(rabbitTemplate).convertAndSend(anyString(), anyString(), any(Object.class),
+                        any(MessagePostProcessor.class));
 
         assertThatNoException().isThrownBy(() ->
                 publisher.publish(new EventChanged(3L, EventChange.CANCELLED, CHANGED_AT)));

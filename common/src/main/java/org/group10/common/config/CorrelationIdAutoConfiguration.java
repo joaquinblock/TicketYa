@@ -7,19 +7,27 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
 import org.springframework.web.client.support.RestClientHttpServiceGroupConfigurer;
 
+/**
+ * Correlación de requests en todos los servicios servlet salvo el gateway (ADR 0008).
+ * El filtro va primero para que los 401/403 de seguridad también queden registrados con su id.
+ */
 @AutoConfiguration
-@ConditionalOnProperty(name = "ticketya.logging.correlation.enabled", havingValue = "true")
+@ConditionalOnProperty(name = "ticketya.logging.correlation.enabled", havingValue = "true", matchIfMissing = true)
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @ConditionalOnMissingClass("org.springframework.cloud.gateway.server.mvc.handler.GatewayRouterFunctions")
 public class CorrelationIdAutoConfiguration {
 
     @Bean
-    CorrelationIdFilter ticketyaCorrelationIdFilter() {
-        return new CorrelationIdFilter();
+    FilterRegistrationBean<CorrelationIdFilter> ticketyaCorrelationIdFilter() {
+        FilterRegistrationBean<CorrelationIdFilter> registration = new FilterRegistrationBean<>(new CorrelationIdFilter());
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        return registration;
     }
 
     @Configuration(proxyBeanMethods = false)
@@ -29,11 +37,7 @@ public class CorrelationIdAutoConfiguration {
         @Bean
         RestClientHttpServiceGroupConfigurer ticketyaCorrelationIdConfigurer() {
             CorrelationIdRequestInterceptor interceptor = new CorrelationIdRequestInterceptor();
-            return groups -> groups.forEachClient((group, builder) -> {
-                if ("payment-service".equals(group)) {
-                    builder.requestInterceptor(interceptor);
-                }
-            });
+            return groups -> groups.forEachClient((group, builder) -> builder.requestInterceptor(interceptor));
         }
     }
 }

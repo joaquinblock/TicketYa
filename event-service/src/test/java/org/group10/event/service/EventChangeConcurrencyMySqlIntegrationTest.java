@@ -14,6 +14,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.amqp.core.MessagePostProcessor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -92,7 +93,7 @@ class EventChangeConcurrencyMySqlIntegrationTest {
         assertThat(outcomes).allMatch(Outcome::succeeded);
         assertThat(eventRepository.findById(id).orElseThrow().getStatus()).isEqualTo(EventStatus.CANCELLED);
         verify(rabbitTemplate, times(1)).convertAndSend(eq(RabbitConfig.EVENTS_EXCHANGE), eq("event.cancelled"),
-                any(Object.class));
+                any(Object.class), any(MessagePostProcessor.class));
     }
 
     @Test
@@ -106,7 +107,7 @@ class EventChangeConcurrencyMySqlIntegrationTest {
         assertThat(event.getStatus()).isEqualTo(EventStatus.SUSPENDED);
         assertThat(event.getStatusBeforeSuspension()).isEqualTo(EventStatus.PUBLISHED);
         verify(rabbitTemplate, times(1)).convertAndSend(eq(RabbitConfig.EVENTS_EXCHANGE), eq("event.suspended"),
-                any(Object.class));
+                any(Object.class), any(MessagePostProcessor.class));
     }
 
     @Test
@@ -119,7 +120,7 @@ class EventChangeConcurrencyMySqlIntegrationTest {
         assertThat(outcomes).filteredOn(Outcome::succeeded).hasSize(1);
         assertThat(eventRepository.findById(id).orElseThrow().getStatus()).isEqualTo(EventStatus.PUBLISHED);
         verify(rabbitTemplate, times(1)).convertAndSend(eq(RabbitConfig.EVENTS_EXCHANGE), eq("event.rescheduled"),
-                any(Object.class));
+                any(Object.class), any(MessagePostProcessor.class));
     }
 
     private List<Outcome> atTheSameTime(Callable<?> change) throws Exception {

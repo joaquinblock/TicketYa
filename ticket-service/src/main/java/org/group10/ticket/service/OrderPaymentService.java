@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.group10.common.dto.ErrorDto;
 import org.group10.common.exception.TicketYaException;
+import org.group10.common.logging.CorrelationIds;
 import org.group10.ticket.client.PaymentClient;
 import org.group10.ticket.client.dto.ChargeRequest;
 import org.group10.ticket.config.ReservationProperties;
@@ -133,6 +134,8 @@ public class OrderPaymentService {
         }
         if (issued) {
             soldOutService.markEventSoldOutIfNothingIsLeft(order.getEventId());
+            log.info("operation=purchase status=success orderId={} eventId={} correlationId={}",
+                    order.getId(), order.getEventId(), CorrelationIds.currentOrNew());
             return orderQueryService.toResponse(findOrder(order.getId()));
         }
         return closeAndCompensate(order, OrderStatus.EXPIRED);

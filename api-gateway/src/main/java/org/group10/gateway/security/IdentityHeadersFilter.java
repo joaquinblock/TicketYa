@@ -40,6 +40,9 @@ import java.util.TreeMap;
  */
 public class IdentityHeadersFilter extends OncePerRequestFilter {
 
+    /** Usuario del token ya validado, para el log del request. El {@code X-User-Id} del cliente no es confiable. */
+    public static final String USER_ID_ATTRIBUTE = IdentityHeadersFilter.class.getName() + ".userId";
+
     private static final Logger log = LoggerFactory.getLogger(IdentityHeadersFilter.class);
     /** Sin espacio: un cliente puede mandar {@code "Bearer"} solo, y eso también es un token inválido. */
     private static final String BEARER = "Bearer";
@@ -82,6 +85,7 @@ public class IdentityHeadersFilter extends OncePerRequestFilter {
                     "No se pudo validar el token en este momento. Intentá de nuevo en unos segundos");
             return;
         }
+        request.setAttribute(USER_ID_ATTRIBUTE, jwt.getSubject());
         chain.doFilter(new IdentityRequest(request, identityOf(jwt)), response);
     }
 

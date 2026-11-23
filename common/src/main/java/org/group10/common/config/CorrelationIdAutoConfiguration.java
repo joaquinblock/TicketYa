@@ -14,7 +14,8 @@ import org.springframework.core.Ordered;
 import org.springframework.web.client.support.RestClientHttpServiceGroupConfigurer;
 
 /**
- * Correlación de requests en todos los servicios servlet salvo el gateway (ADR 0008).
+ * Correlación de requests en todos los servicios servlet salvo el gateway, que la registra con su propio usuario
+ * ({@code RequestLogConfig}, ADR 0010).
  * El filtro va primero para que los 401/403 de seguridad también queden registrados con su id.
  */
 @AutoConfiguration

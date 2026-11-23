@@ -39,6 +39,7 @@ class EventSearchServiceTest {
     private static final int VISIBLE_EVENTS = 6;
     private static final int BILLBOARD_EVENTS = 30;
     private static final int BILLBOARD_CONCERTS = 7;
+    private static final int BILLBOARD_PLAYS = 6;
     private static final int BILLBOARD_CONCERTS_IN_TANDIL = 2;
     private static final int BILLBOARD_IN_CORDOBA = 7;
     private static final int BILLBOARD_IN_MAR_DEL_PLATA = 5;
@@ -154,10 +155,13 @@ class EventSearchServiceTest {
     }
 
     @Test
-    void bySeveralTypes_matchesAnyOfThem() {
-        assertThat(ids(searchBy(List.of(EventType.CONCERT, EventType.THEATER), null)))
-                .containsExactly(6L, 11L, 2L, 1L);
+    void bySeveralTypes_matchesAnyOfThem_fromTheNearest() {
+        EventPageResponse page = searchBy(List.of(EventType.CONCERT, EventType.THEATER), null);
+
+        assertThat(ids(page)).startsWith(6L, 11L, 2L, 1L);
+        assertThat(page.totalElements()).isEqualTo(4 + BILLBOARD_CONCERTS + BILLBOARD_PLAYS);
     }
+
 
     @Test
     void byParticipantId_leavesTheSuspendedEventOut() {

@@ -30,7 +30,7 @@
               "script": {
                 "exec": [
                   "pm.test('200', () => pm.response.to.have.status(200));",
-                  "pm.test('Eventos [6, 5, 11, 2, 1, 4]', () => pm.expect(pm.response.json().content.map(e => e.id)).to.eql([6, 5, 11, 2, 1, 4]));",
+                  "pm.test('Primero los eventos [6, 5, 11, 2, 1, 4], después la cartelera (36 en total)', () => { const b = pm.response.json(); pm.expect(b.content.map(e => e.id).slice(0, 6)).to.eql([6, 5, 11, 2, 1, 4]); pm.expect(b.totalElements).to.eql(36); });",
                   "pm.test('Ningún suspendido, cancelado, finalizado ni borrador', () => pm.response.json().content.forEach(e => pm.expect(['PUBLISHED', 'SOLD_OUT']).to.include(e.status)));"
                 ]
               }
@@ -49,7 +49,7 @@
               "script": {
                 "exec": [
                   "pm.test('200', () => pm.response.to.have.status(200));",
-                  "pm.test('Eventos [6, 11, 1]', () => pm.expect(pm.response.json().content.map(e => e.id)).to.eql([6, 11, 1]));"
+                  "pm.test('Primero los conciertos [6, 11, 1], después los 7 de la cartelera', () => { const b = pm.response.json(); pm.expect(b.content.map(e => e.id).slice(0, 3)).to.eql([6, 11, 1]); pm.expect(b.totalElements).to.eql(10); });"
                 ]
               }
             }
@@ -67,7 +67,7 @@
               "script": {
                 "exec": [
                   "pm.test('200', () => pm.response.to.have.status(200));",
-                  "pm.test('Eventos [4]', () => pm.expect(pm.response.json().content.map(e => e.id)).to.eql([4]));"
+                  "pm.test('Eventos [4, 15, 20, 24, 31, 32, 37, 41]', () => pm.expect(pm.response.json().content.map(e => e.id)).to.eql([4, 15, 20, 24, 31, 32, 37, 41]));"
                 ]
               }
             }
@@ -121,7 +121,7 @@
               "script": {
                 "exec": [
                   "pm.test('200', () => pm.response.to.have.status(200));",
-                  "pm.test('Eventos [11]', () => pm.expect(pm.response.json().content.map(e => e.id)).to.eql([11]));"
+                  "pm.test('Eventos [11, 17, 18]', () => pm.expect(pm.response.json().content.map(e => e.id)).to.eql([11, 17, 18]));"
                 ]
               }
             }
@@ -139,7 +139,7 @@
               "script": {
                 "exec": [
                   "pm.test('200', () => pm.response.to.have.status(200));",
-                  "pm.test('Eventos [11, 5, 2, 6, 4, 1]', () => pm.expect(pm.response.json().content.map(e => e.id)).to.eql([11, 5, 2, 6, 4, 1]));",
+                  "pm.test('Primero los eventos [11, 5, 2, 6, 4, 1], después la cartelera, que es más cara', () => pm.expect(pm.response.json().content.map(e => e.id).slice(0, 6)).to.eql([11, 5, 2, 6, 4, 1]));",
                   "pm.test('El primero es el más barato', () => pm.expect(pm.response.json().content[0].priceFrom).to.eql(7000));"
                 ]
               }
@@ -176,8 +176,8 @@
               "script": {
                 "exec": [
                   "pm.test('200', () => pm.response.to.have.status(200));",
-                  "pm.test('Eventos [1, 4]', () => pm.expect(pm.response.json().content.map(e => e.id)).to.eql([1, 4]));",
-                  "pm.test('Cuenta todos', () => { const b = pm.response.json(); pm.expect(b.totalElements).to.eql(6); pm.expect(b.totalPages).to.eql(2); });"
+                  "pm.test('Eventos [1, 4, 13, 14]', () => pm.expect(pm.response.json().content.map(e => e.id)).to.eql([1, 4, 13, 14]));",
+                  "pm.test('Cuenta todos', () => { const b = pm.response.json(); pm.expect(b.totalElements).to.eql(36); pm.expect(b.totalPages).to.eql(9); });"
                 ]
               }
             }

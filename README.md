@@ -78,6 +78,8 @@ docker compose down             # apagar
 - **Necesita unos 4 GB para Docker** (17 contenedores). Con WSL 2 se configura en `%UserProfile%\.wslconfig`, `[wsl2]` y `memory=4GB`.
 - **Las variables** (credenciales y `INTERNAL_SECRET`) son opcionales: sin `.env` se usan los valores de desarrollo. Están en `.env.example`.
 - **El sistema completo y el desarrollo no van a la vez:** RabbitMQ usa el mismo puerto en los dos.
+- **Postman contra los contenedores:** los requests a `/api/**` funcionan por el gateway. Los de `/internal/**`, que van directo al puerto de un servicio, no: ese puerto no se publica.
+- **Por qué está armado así:** [ADR 0008](docs/adr/0008-despliegue-con-docker-compose.md).
 
 - **Todo entra por el gateway (`http://localhost:8080`).** Las rutas `/internal/**` (llamadas entre servicios) no pasan por el gateway: se usan directo contra el puerto de cada servicio.
 - **Swagger de todo el sistema:** http://localhost:8080/swagger-ui.html. Arriba a la derecha se elige el servicio. Los endpoints con candado piden token: *Authorize* y pegar el `accessToken` de `dev-login` (ver *Swagger* en [`permissions.md`](docs/architecture/permissions.md)).

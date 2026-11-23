@@ -11,11 +11,13 @@ import org.group10.ticket.exception.TicketErrorCode;
 import org.group10.ticket.mapper.OrderMapper;
 import org.group10.ticket.repository.EventSaleRepository;
 import org.group10.ticket.repository.OrderRepository;
+import org.group10.ticket.repository.ReturnRequestRepository;
 import org.group10.ticket.repository.TicketRepository;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -26,21 +28,23 @@ public class OrderQueryService {
     private final OrderRepository orderRepository;
     private final TicketRepository ticketRepository;
     private final EventSaleRepository eventSaleRepository;
+    private final ReturnRequestRepository returnRequestRepository;
 
     public List<OrderResponse> findOrdersOfCustomer(Long userId) {
         List<Order> orders = orderRepository.findByUserIdOrderByIdDesc(userId);
-        Map<Long, List<Ticket>> ticketsByOrder = ticketRepository
-                .findByOrderIdInOrderById(orders.stream().map(Order::getId).toList())
-                .stream()
+        List<Ticket> allTickets = ticketRepository
+                .findByOrderIdInOrderById(orders.stream().map(Order::getId).toList());
+        Map<Long, List<Ticket>> ticketsByOrder = allTickets.stream()
                 .collect(Collectors.groupingBy(ticket -> ticket.getOrder().getId()));
         Map<Long, EventSale> salesByEvent = eventSaleRepository
                 .findAllById(orders.stream().map(Order::getEventId).distinct().toList())
                 .stream()
                 .collect(Collectors.toMap(EventSale::getEventId, Function.identity()));
+        Set<Long> pendingReturnTicketIds = findPendingReturnTicketIds(allTickets);
 
         return orders.stream()
                 .map(order -> OrderMapper.toResponse(order, salesByEvent.get(order.getEventId()),
-                        ticketsByOrder.getOrDefault(order.getId(), List.of())))
+                        ticketsByOrder.getOrDefault(order.getId(), List.of()), pendingReturnTicketIds))
                 .toList();
     }
 
@@ -85,6 +89,15 @@ public class OrderQueryService {
     }
 
     public OrderResponse toResponse(Order order, List<Ticket> tickets) {
-        return OrderMapper.toResponse(order, eventSaleRepository.findById(order.getEventId()).orElseThrow(), tickets);
+        return OrderMapper.toResponse(order, eventSaleRepository.findById(order.getEventId()).orElseThrow(),
+                tickets, findPendingReturnTicketIds(tickets));
+    }
+
+    private Set<Long> findPendingReturnTicketIds(List<Ticket> tickets) {
+        if (tickets.isEmpty()) {
+            return Set.of();
+        }
+        List<Long> ticketIds = tickets.stream().map(Ticket::getId).toList();
+        return returnRequestRepository.findTicketIdsWithPendingRequest(ticketIds);
     }
 }

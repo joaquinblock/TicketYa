@@ -10,6 +10,7 @@ import org.group10.ticket.entity.TicketStatus;
 import org.group10.ticket.exception.TicketErrorCode;
 import org.group10.ticket.repository.EventSaleRepository;
 import org.group10.ticket.repository.OrderRepository;
+import org.group10.ticket.repository.ReturnRequestRepository;
 import org.group10.ticket.repository.TicketRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -40,6 +41,9 @@ class OrderQueryServiceTest {
 
     @Mock
     private EventSaleRepository eventSaleRepository;
+
+    @Mock
+    private ReturnRequestRepository returnRequestRepository;
 
     @InjectMocks
     private OrderQueryService orderQueryService;

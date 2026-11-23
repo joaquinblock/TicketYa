@@ -50,12 +50,14 @@ public class TicketSeeder implements ApplicationRunner {
     private static final Long CONCERT_EVENT_ID = 1L;
     private static final Long PLAY_EVENT_ID = 2L;
     private static final Long SOLD_OUT_JAZZ_EVENT_ID = 6L;
+    private static final Long FINISHED_TALK_EVENT_ID = 9L;
     private static final Long FOLK_NIGHT_EVENT_ID = 11L;
 
     private static final Long CONCERT_FIELD_SECTOR_ID = 1L;
     private static final Long CONCERT_STAND_SECTOR_ID = 2L;
     private static final Long PLAY_STALLS_SECTOR_ID = 3L;
     private static final Long JAZZ_ROOM_SECTOR_ID = 10L;
+    private static final Long FINISHED_TALK_SECTOR_ID = 14L;
     private static final Long FOLK_NIGHT_STALLS_SECTOR_ID = 15L;
 
     private static final long STADIUM_FIRST_SEAT_ID = 1L;
@@ -148,6 +150,7 @@ public class TicketSeeder implements ApplicationRunner {
         sellOutTheFolkNightStalls();
         seedPaidFieldOrder();
         seedPaidSeatOrder();
+        seedPastEventOrder();
         seedPendingSeatOrder();
 
         log.info("TicketSeeder: {} asientos por evento, {} cupos, {} órdenes, {} entradas y {} devoluciones cargados",
@@ -304,6 +307,18 @@ public class TicketSeeder implements ApplicationRunner {
                 .requestedAt(LocalDateTime.now(clock))
                 .status(ReturnRequestStatus.PENDING)
                 .build());
+    }
+
+    private void seedPastEventOrder() {
+        EventSectorPrice room = sectorOf(FINISHED_TALK_SECTOR_ID);
+        Order order = orderRepository.save(order(FINISHED_TALK_EVENT_ID, OrderStatus.PAID, room.getPrice())
+                .paymentMethod(PaymentMethod.CREDIT_CARD)
+                .build());
+
+        ticketRepository.save(issuedTicket(order, room).build());
+
+        EventSectorStock stock = eventSectorStockRepository.findById(FINISHED_TALK_SECTOR_ID).orElseThrow();
+        stock.setTaken(stock.getTaken() + 1);
     }
 
     private void seedPendingSeatOrder() {

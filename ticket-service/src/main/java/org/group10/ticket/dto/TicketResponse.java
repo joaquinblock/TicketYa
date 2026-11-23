@@ -15,6 +15,7 @@ public record TicketResponse(
         @Schema(description = "Número de asiento, solo en sectores numerados", example = "15") Integer number,
         @Schema(example = "70000.00") BigDecimal price,
         @Schema(example = "ISSUED") TicketStatus status,
-        @Schema(description = "Solo en entradas ISSUED", example = "3f1c2d3e-4b5a-4c6d-8e7f-0a1b2c3d4e5f") String qrCode
+        @Schema(description = "Solo en entradas ISSUED", example = "3f1c2d3e-4b5a-4c6d-8e7f-0a1b2c3d4e5f") String qrCode,
+        @Schema(example = "false") boolean hasPendingReturnRequest
 ) {
 }

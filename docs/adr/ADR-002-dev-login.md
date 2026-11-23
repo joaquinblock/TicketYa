@@ -77,9 +77,10 @@ Usuarios del `AuthSeeder`:
 | 1 | Cliente | — |
 | 2 | Organizador | 1 |
 | 3 | Administrador | — |
-| 4 | Personal de acceso | — (hasta que exista `AccessStaff`, #19) |
+| 4 | Personal de acceso | 1 (en `access_staff`; el token no la lleva) |
 | 5 | Organizador | 2 |
 | 6 | Organizador (sin eventos propios) | 1 |
+| 7 | Personal de acceso | 2 (en `access_staff`; el token no la lleva) |
 
 En Postman, la carpeta **Login de desarrollo** de la colección del auth-service pide el token del cliente y lo guarda en `{{token}}`.
 

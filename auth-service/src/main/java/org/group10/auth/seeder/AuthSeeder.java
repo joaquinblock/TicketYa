@@ -2,12 +2,14 @@ package org.group10.auth.seeder;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.group10.auth.entity.AccessStaff;
 import org.group10.auth.entity.Organization;
 import org.group10.auth.entity.OrganizationType;
 import org.group10.auth.entity.Organizer;
 import org.group10.auth.entity.Permission;
 import org.group10.auth.entity.Role;
 import org.group10.auth.entity.User;
+import org.group10.auth.repository.AccessStaffRepository;
 import org.group10.auth.repository.OrganizationRepository;
 import org.group10.auth.repository.OrganizerRepository;
 import org.group10.auth.repository.PermissionRepository;
@@ -39,6 +41,7 @@ public class AuthSeeder implements ApplicationRunner {
     private final UserRepository userRepository;
     private final OrganizationRepository organizationRepository;
     private final OrganizerRepository organizerRepository;
+    private final AccessStaffRepository accessStaffRepository;
 
     /**
      * Gmail real del primer admin ({@code BOOTSTRAP_ADMIN_EMAIL}). Al entrar con Google, el login lo vincula por email
@@ -60,6 +63,7 @@ public class AuthSeeder implements ApplicationRunner {
         Map<String, User> users = seedUsers(roles);
         List<Organization> organizations = seedOrganizations();
         seedOrganizers(users, organizations);
+        seedAccessStaff(users, organizations);
 
         log.info("AuthSeeder: {} permisos, {} roles, {} usuarios, {} organizaciones y {} organizadores cargados",
                 permissions.size(), roles.size(), users.size(), organizations.size(), organizerRepository.count());
@@ -113,7 +117,8 @@ public class AuthSeeder implements ApplicationRunner {
                 user(adminEmail(), "Laura", "Fernández", "25555666", "Tandil", roles.get("ADMIN")),
                 user("staff@ticketya.com", "Diego", "López", "35777888", "Mar del Plata", roles.get("ACCESS_STAFF")),
                 user("organizer.serrana@ticketya.com", "Sofía", "Ruiz", "32999000", "Tandil", roles.get("ORGANIZER")),
-                user("organizer.delsur@ticketya.com", "Tomás", "Acosta", "33444555", "Buenos Aires", roles.get("ORGANIZER"))
+                user("organizer.delsur@ticketya.com", "Tomás", "Acosta", "33444555", "Buenos Aires", roles.get("ORGANIZER")),
+                user("staff.serrana@ticketya.com", "Lucía", "Benítez", "36111222", "Tandil", roles.get("ACCESS_STAFF"))
         )).stream().collect(Collectors.toMap(User::getEmail, Function.identity()));
     }
 
@@ -149,6 +154,23 @@ public class AuthSeeder implements ApplicationRunner {
                 Organizer.builder()
                         .user(users.get("organizer.delsur@ticketya.com"))
                         .organization(organizations.get(0))
+                        .build()
+        ));
+    }
+
+    /**
+     * El usuario 4 es personal de la primera organización y el 7 de la segunda. Así se ve que un organizador solo
+     * asigna a su propio personal, y que el personal solo valida en los eventos a los que lo asignaron.
+     */
+    private void seedAccessStaff(Map<String, User> users, List<Organization> organizations) {
+        accessStaffRepository.saveAll(List.of(
+                AccessStaff.builder()
+                        .user(users.get("staff@ticketya.com"))
+                        .organization(organizations.get(0))
+                        .build(),
+                AccessStaff.builder()
+                        .user(users.get("staff.serrana@ticketya.com"))
+                        .organization(organizations.get(1))
                         .build()
         ));
     }

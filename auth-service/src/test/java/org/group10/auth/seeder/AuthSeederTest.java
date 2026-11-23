@@ -2,6 +2,8 @@ package org.group10.auth.seeder;
 
 import org.group10.auth.entity.Permission;
 import org.group10.auth.entity.Role;
+import org.group10.auth.entity.AccessStaff;
+import org.group10.auth.repository.AccessStaffRepository;
 import org.group10.auth.repository.OrganizationRepository;
 import org.group10.auth.repository.OrganizerRepository;
 import org.group10.auth.repository.PermissionRepository;
@@ -45,6 +47,9 @@ class AuthSeederTest {
     @Mock
     private OrganizerRepository organizerRepository;
 
+    @Mock
+    private AccessStaffRepository accessStaffRepository;
+
     @InjectMocks
     private AuthSeeder seeder;
 
@@ -87,6 +92,27 @@ class AuthSeederTest {
     @Test
     void participants_areManagedByOrganizersAndTheAdmin() {
         assertThat(rolesWith("PARTICIPANT_MANAGE")).containsExactlyInAnyOrder("ORGANIZER", "ADMIN");
+    }
+
+    @Test
+    void accessStaff_oneStaffForEachOrganization() {
+        List<String> staffWithOrganization = this.<AccessStaff>saved(accessStaffRepository).stream()
+                .map(staff -> staff.getUser().getEmail() + " -> " + staff.getOrganization().getPublicName())
+                .toList();
+
+        assertThat(staffWithOrganization).containsExactlyInAnyOrder(
+                "staff@ticketya.com -> Del Sur Producciones",
+                "staff.serrana@ticketya.com -> Cultura Serrana");
+    }
+
+    @Test
+    void accessStaff_usersHaveTheAccessStaffRole() {
+        List<String> roles = this.<AccessStaff>saved(accessStaffRepository).stream()
+                .map(staff -> staff.getUser().getRole().getName())
+                .distinct()
+                .toList();
+
+        assertThat(roles).containsExactly("ACCESS_STAFF");
     }
 
     private List<String> rolesWith(String permission) {

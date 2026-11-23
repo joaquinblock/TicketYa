@@ -6,6 +6,10 @@ spring:
     name: ticket-service
   http:
     serviceclient:
+      auth-service:
+        base-url: ${AUTH_SERVICE_URL:http://localhost:8081}
+        connect-timeout: 1s
+        read-timeout: 2s
       event-service:
         base-url: ${EVENT_SERVICE_URL:http://localhost:8082}
         connect-timeout: 1s

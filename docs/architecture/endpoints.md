@@ -14,7 +14,7 @@
 
 | Servicio | Puerto | Endpoints | Qué cubre |
 |---|---|---|---|
-| [auth-service](#auth-service) | 8081 | 3 | Usuarios, permisos, organizaciones y organizadores. |
+| [auth-service](#auth-service) | 8081 | 4 | Usuarios, permisos, organizaciones, organizadores y personal de acceso. |
 | [event-service](#event-service) | 8082 | 31 | Lugares, sectores, asientos, participantes y eventos (alta, configuración, estados y búsqueda). |
 | [ticket-service](#ticket-service) | 8083 | 13 | Disponibilidad, reservas, pago y emisión de entradas, compras, devoluciones, ingreso con QR y reportes. |
 | [payment-service](#payment-service) | 8084 | 4 | Cobros y reintegros contra la pasarela simulada. |
@@ -30,12 +30,14 @@ Usuarios, permisos, organizaciones y organizadores. Detalle de reglas y decision
 | `GET` | `/api/organizations/{id}` | Ver una organización | `{id}` | Público | **200** Organización encontrada<br>**404** organization_not_found |
 | `GET` | `/api/organizers/{userId}` | Ver un organizador activo | `{userId}` | Público | **200** Organizador activo<br>**404** organizer_not_found |
 | `GET` | `/api/users/{id}/permissions` | Ver el rol y los permisos de un usuario | `{id}` | Público | **200** Usuario activo con su rol y sus permisos<br>**404** user_not_found |
+| `PUT` | `/api/users/{staffId}/access-assignments/{eventId}` | Asignar personal de acceso a un evento | `{staffId}`<br>`{eventId}` | `EVENT_MANAGE` (organizador) | **201** Personal asignado `{staffId, eventId}`<br>**200** Ya estaba asignado<br>**400** validation_error / invalid_parameter<br>**401** unauthorized<br>**403** forbidden: sin EVENT_MANAGE, o personal o evento de otra organización<br>**404** access_staff_not_found / event_not_found (inexistente o borrador)<br>**503** service_unavailable: el event-service no responde |
 
 ### Internos
 
 | Método | Ruta | Qué hace | Parámetros | Quién | Respuestas |
 |---|---|---|---|---|---|
 | `GET` | `/internal/users/{id}` | Ver el email y el nombre de un usuario | `{id}`<br>header `X-Internal-Secret` | Solo entre servicios | **200** Usuario activo con su email y su nombre<br>**400** validation_error<br>**401** unauthorized: sin el secreto interno<br>**404** user_not_found |
+| `GET` | `/internal/access-staff/{staffId}/events/{eventId}` | Confirmar que el personal está asignado al evento | `{staffId}`<br>`{eventId}`<br>header `X-Internal-Secret` | Solo entre servicios (ticket-service) | **204** Personal activo asignado<br>**400** validation_error<br>**401** unauthorized: sin el secreto interno<br>**403** staff_not_assigned |
 
 ## event-service
 
@@ -98,7 +100,7 @@ Disponibilidad, reservas, pago y emisión de entradas, compras, devoluciones e i
 | `GET` | `/api/orders/{id}` | Ver una compra | header `X-User-Id`<br>`{id}` | `X-User-Id`, sin validar rol | **200** Orden con sus entradas<br>**404** order_not_found: no existe o es de otro cliente |
 | `POST` | `/api/orders/{id}/cancel` | Abandonar una reserva | header `X-User-Id`<br>`{id}` | `X-User-Id`, sin validar rol | **200** Orden abandonada<br>**404** order_not_found: no existe o es de otro cliente<br>**409** payment_in_progress, reservation_expired u order_not_cancellable |
 | `POST` | `/api/tickets/{ticketId}/return-requests` | Solicitar la devolución de una entrada | header `X-User-Id`<br>`{ticketId}` | `X-User-Id`, sin validar rol | **201** Solicitud creada en PENDING<br>**404** ticket_not_found: no existe o es de otro cliente<br>**409** refund_not_allowed o return_request_already_pending |
-| `POST` | `/api/tickets/check-in` | Validar el QR de una entrada en el ingreso | body `CheckInRequest` (`eventId`, `qrCode`) | `TICKET_VALIDATE` (personal de acceso) | **200** Entrada validada, con su sector y asiento<br>**400** validation_error o invalid_qr: el QR no existe, es de otro evento o la entrada está anulada o reintegrada<br>**403** forbidden: sin TICKET_VALIDATE<br>**409** ticket_already_used |
+| `POST` | `/api/tickets/check-in` | Validar el QR de una entrada en el ingreso | body `CheckInRequest` (`eventId`, `qrCode`) | `TICKET_VALIDATE` (personal de acceso asignado al evento) | **200** Entrada validada, con su sector y asiento<br>**400** validation_error o invalid_qr: el QR no existe, es de otro evento o la entrada está anulada o reintegrada<br>**403** forbidden: sin TICKET_VALIDATE. staff_not_assigned: el personal no está asignado al evento (se controla antes que el QR)<br>**409** ticket_already_used<br>**503** service_unavailable: el auth-service no responde |
 | `GET` | `/api/return-requests` | Listar las solicitudes de devolución | `?status` (opcional)<br>`?page` (opcional)<br>`?size` (opcional) | Público | **200** Página de solicitudes<br>**400** Parámetros inválidos |
 | `POST` | `/api/return-requests/{id}/approve` | Aprobar una devolución | header `X-User-Id`<br>`{id}` | `X-User-Id`, sin validar rol | **200** Solicitud aprobada<br>**404** return_request_not_found<br>**409** refund_not_allowed o ticket_already_used<br>**503** service_unavailable: la solicitud sigue PENDING |
 | `POST` | `/api/return-requests/{id}/reject` | Rechazar una devolución | header `X-User-Id`<br>`{id}` | `X-User-Id`, sin validar rol | **200** Solicitud rechazada<br>**404** return_request_not_found<br>**409** refund_not_allowed |

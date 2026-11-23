@@ -548,7 +548,7 @@ Tipo: técnica · Servicio: payment-service · Consigna: NF · Épica: #4 · Ent
 - Los cobros con el medio configurado en `payment.mock.rejected-method` se rechazan con un motivo.
 - Los cobros con cualquier otro medio y los reintegros se aprueban, cada uno con un identificador de pasarela único.
 - Repetir un cobro con la misma clave no genera otro cobro en la pasarela.
-- Para la Entrega 2, `payment.mock.delay-ms` demora las respuestas y otra propiedad simula la caída de la pasarela. Son necesarias para probar la US-PAY-11.
+- Para la Entrega 2, `payment.mock.delay-ms` demora las respuestas y `payment.mock.down` simula la caída de la pasarela. Son necesarias para probar la US-PAY-11. Con el perfil `dev`, `PUT /internal/mock/gateway` las cambia sin reiniciar.
 
 **Notas técnicas:** el mock vive detrás de un adaptador, para reemplazarlo por una pasarela real sin tocar el resto.
 
@@ -640,7 +640,7 @@ Servicio: payment-service · Sirve a: US-TKT-23 · Consigna: NF · Épica: #10 �
 - Con la pasarela caída, los pedidos responden 503 `payment_gateway_unavailable` sin esperar todo el tiempo máximo.
 - Cuando la pasarela se recupera, los cobros vuelven a procesarse sin reiniciar el servicio.
 
-**Notas técnicas:** timeout, reintentos con la misma clave y circuit breaker. El tiempo total, sumando reintentos, tiene que ser menor al margen de 1 minuto. Ver *`PENDING` como estado de duda* en `payment-service.md`.
+**Notas técnicas:** timeout, reintentos con la misma clave y circuit breaker. El tiempo total, sumando reintentos, tiene que ser menor al margen de 1 minuto. Ver *`PENDING` como estado de duda* y *Resiliencia ante la pasarela* en `payment-service.md`, y el [ADR 0007](adr/0007-resiliencia-ante-la-pasarela-con-resilience4j.md).
 
 ### US-PAY-12: Resolver los pagos sin respuesta y anular los de una reserva vencida
 
@@ -852,6 +852,8 @@ Servicio: notification-service · Involucra: event-service, ticket-service · Co
 - Al suspenderse o reprogramarse, cada comprador recibe un aviso con el estado o la fecha nueva.
 - Cada comprador recibe un solo aviso por cambio, aunque tenga varias entradas.
 
+**Estado:** MVP hecho, sin story propia (PR asociado a #67): el aviso es por mail, y reanudar con la misma fecha no avisa. Ver [`notification-service.md`](architecture/notification-service.md#avisos-de-cambios-de-un-evento-us-not-02).
+
 ### US-NOT-03: Saber cuándo un artista favorito toca en mi ciudad
 
 Como cliente quiero que me avisen cuando un artista que sigo publica un evento en mi ciudad.
@@ -861,6 +863,8 @@ Servicio: notification-service · Involucra: recommendation-service, event-servi
 **Criterios de aceptación**
 - Al publicarse un evento, los clientes que tienen como favorito a uno de sus participantes y viven en la ciudad del lugar reciben un aviso.
 - Un cliente sin ese artista como favorito, o de otra ciudad, no recibe nada.
+
+**Estado:** MVP hecho en tres PRs (recommendation, notification y event-service): el aviso es por mail, y el favorito puede ser elegido en las preferencias o inferido de las compras. Ver [`notification-service.md`](architecture/notification-service.md#avisos-de-artistas-favoritos-us-not-03).
 
 ## F23. Preferencias y recomendaciones
 
@@ -872,7 +876,7 @@ Servicio: recommendation-service · Involucra: event-service · Consigna: 10 · 
 
 **Criterios de aceptación**
 - El cliente consulta y reemplaza sus preferencias: tipos de evento, participantes favoritos y ciudad.
-- Un participante o un tipo de evento inexistente: 404.
+- Un tipo de evento inexistente: 400. Un participante inexistente: 404.
 
 **Notas técnicas:** las preferencias se guardan en MongoDB. Los participantes se referencian por id del event-service.
 
@@ -888,4 +892,4 @@ Servicio: recommendation-service · Involucra: event-service, ticket-service · 
 - Se suman los que compraron los clientes que compraron entradas para los mismos eventos que él (*"quienes compraron entradas para este evento también compraron…"*).
 - No se sugieren eventos para los que el cliente ya compró.
 
-**Notas técnicas:** usa el historial que expone el ticket-service (US-TKT-25) y los eventos de compra (US-TKT-24). La consigna permite una versión simplificada.
+**Notas técnicas:** el historial sale de los eventos de compra (US-TKT-24): recommendation-service consume `purchase.confirmed` y lo guarda en `purchase_history`, sin pedirlo al ticket-service (US-TKT-25). La consigna permite una versión simplificada.

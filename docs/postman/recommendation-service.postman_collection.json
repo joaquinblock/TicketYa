@@ -1,0 +1,248 @@
+{
+  "info": {
+    "name": "TicketYa - Recomendaciones",
+    "description": "Lo público (/api/**) entra por el gateway (8080) con el usuario del header X-User-Id: el script de la colección pide su token con dev-login y lo manda como Authorization: Bearer (necesita auth-service con el perfil dev, ADR-002). Lo interno (/internal/**) va directo a recommendation-service (8087) con X-Internal-Secret, porque el gateway no expone las rutas internas. Usa los datos de los seeders: el cliente 1 y Los Serranos (participante 1), y la ciudad Tandil. Necesita levantados api-gateway, auth-service, event-service y recommendation-service.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "internalUrl",
+      "value": "http://localhost:8087"
+    },
+    {
+      "key": "customerId",
+      "value": "1"
+    },
+    {
+      "key": "participantId",
+      "value": "1"
+    },
+    {
+      "key": "internalSecret",
+      "value": "dev-internal-secret"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// El api-gateway valida el JWT y borra los X-User-* que mande el cliente (ADR-003). Este script pide el token",
+          "// con dev-login (perfil dev, ADR-002) para el usuario del header X-User-Id y lo manda como Authorization.",
+          "// No lo guarda: lo pide en cada request, así sigue andando si el auth-service se reinicia con otra clave.",
+          "const userHeader = pm.request.headers.get('X-User-Id');",
+          "if (userHeader) {",
+          "    const userId = pm.variables.replaceIn(userHeader);",
+          "    pm.request.headers.remove('X-User-Id');",
+          "    pm.sendRequest({",
+          "        url: pm.variables.replaceIn('{{baseUrl}}') + '/api/auth/dev-login',",
+          "        method: 'POST',",
+          "        header: { 'Content-Type': 'application/json' },",
+          "        body: { mode: 'raw', raw: JSON.stringify({ userId: Number(userId) }) }",
+          "    }, (error, response) => {",
+          "        if (error || response.code !== 200) {",
+          "            console.warn(`dev-login no dio un token para el usuario ${userId}: el request sale sin identidad`);",
+          "            return;",
+          "        }",
+          "        pm.request.headers.upsert({ key: 'Authorization', value: 'Bearer ' + response.json().accessToken });",
+          "    });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "US-NOT-03 Fans de un artista (interno)",
+      "description": "GET /internal/fans?participantIds=..&city=..: los clientes que tienen como favorito (elegido o inferido de sus compras) a alguno de los participantes y guardaron esa ciudad, sin distinguir mayúsculas ni acentos. Lo usa el notification-service al publicarse un evento. El primer request deja al cliente 1 con Los Serranos y Tandil.",
+      "item": [
+        {
+          "name": "Cliente 1 elige a Los Serranos en Tandil → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/preferences/me",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{customerId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventTypes\": [\"CONCERT\"],\n  \"participantIds\": [{{participantId}}],\n  \"city\": \"Tandil\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Su artista en su ciudad, en minúsculas → 200 con el cliente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 con el cliente 1', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json()).to.include(Number(pm.collectionVariables.get('customerId')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{internalUrl}}/internal/fans?participantIds={{participantId}}&city=tandil",
+            "header": [
+              {
+                "key": "X-Internal-Secret",
+                "value": "{{internalSecret}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Otra ciudad → 200 sin el cliente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 sin el cliente 1', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json()).to.not.include(Number(pm.collectionVariables.get('customerId')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{internalUrl}}/internal/fans?participantIds={{participantId}}&city=Rosario",
+            "header": [
+              {
+                "key": "X-Internal-Secret",
+                "value": "{{internalSecret}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Otro artista → 200 sin el cliente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 sin el cliente 1', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json()).to.not.include(Number(pm.collectionVariables.get('customerId')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{internalUrl}}/internal/fans?participantIds=999999&city=Tandil",
+            "header": [
+              {
+                "key": "X-Internal-Secret",
+                "value": "{{internalSecret}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Sin ciudad → 400 invalid_parameter",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 invalid_parameter', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error).to.eql('invalid_parameter');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{internalUrl}}/internal/fans?participantIds={{participantId}}",
+            "header": [
+              {
+                "key": "X-Internal-Secret",
+                "value": "{{internalSecret}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Participante 0 → 400 validation_error",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 validation_error', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error).to.eql('validation_error');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{internalUrl}}/internal/fans?participantIds=0&city=Tandil",
+            "header": [
+              {
+                "key": "X-Internal-Secret",
+                "value": "{{internalSecret}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Sin el secreto interno → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('401 unauthorized', () => {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error).to.eql('unauthorized');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{internalUrl}}/internal/fans?participantIds={{participantId}}&city=Tandil"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -129,6 +129,22 @@ Dos tablas más y joins para diferenciar un único campo no se justifican. Si en
 
 Si el event-service pasa a MongoDB, la cuestión desaparece: el `venue` es un documento con sus sectores embebidos, y cada uno tiene `capacity` o `seats` según su tipo.
 
+## Avisos de cambios (US-NOT-02) y de publicación (US-NOT-03)
+
+Cuando un evento se cancela, se suspende, se reprograma o se publica, el event-service lo publica en el exchange `ticketya.events` de RabbitMQ ([ADR 0004](../adr/0004-rabbitmq-para-avisos-entre-servicios.md)) con la clave `event.cancelled`, `event.suspended`, `event.rescheduled` o `event.published`:
+
+```json
+{ "messageId": "uuid", "occurredAt": "2026-11-22T18:00:00Z", "eventId": 3, "change": "CANCELLED" }
+```
+
+- **Cuándo.** `EventService` dispara el evento de Spring `EventChanged` dentro de la última transacción de `cancel`, `suspend`, `resume` o `publish`, la que cambia el estado. `EventChangedPublisher` lo manda con `@TransactionalEventListener(AFTER_COMMIT)`. Si falla el aviso al ticket-service (o la publicación no cumple sus condiciones), el estado no cambia y no se publica nada.
+- **Solo si cambió algo.** Repetir una cancelación o una suspensión no publica. Reanudar publica `event.rescheduled` solo con una fecha nueva distinta de la que tenía; sin fecha o con la misma, no avisa.
+- **Dos cambios a la vez.** La última transacción bloquea la fila del evento (`EventRepository.lockById`, `select … for update`) antes de leerlo. Si llegan dos cambios a la vez, el segundo espera, lee el estado nuevo y no publica; un segundo `resume` o `publish` se rechaza. Lo prueban `EventChangeConcurrencyMySqlIntegrationTest` y `EventPublishConcurrencyMySqlIntegrationTest`: sin el lock, dos publicaciones a la vez mandarían dos avisos y cada fan recibiría dos mails.
+- **Contenido.** Solo ids: notification-service pide el evento y los compradores (o los fans, a recommendation-service). `occurredAt` sale del `Clock`.
+- **Si RabbitMQ falla.** La operación responde igual y queda un `WARN` con el cambio y el id del evento. Sin outbox, ese aviso se pierde.
+
+`RabbitConfig` declara el exchange con los mismos atributos que ticket-service y lo intenta al arrancar; sin broker, el servicio arranca igual.
+
 ## Lo que no vive acá
 
 La **disponibilidad** no es parte del catálogo: vive en el **ticket-service**, porque necesita consistencia fuerte y no puede cachearse. El event-service solo dice qué se vende y a qué precio.
@@ -175,6 +191,9 @@ Organización `1` (*Del Sur Producciones*, organizador `2`), salvo los dos últi
 | 10 | Muestra de fin de año | `THEATER` | Tandil | `DRAFT` | +50 días | Borrador sin sectores ni participantes: no se puede publicar |
 | 11 | Peña folklórica serrana | `CONCERT` | Tandil | `PUBLISHED` | +18 días | Organización `2` |
 | 12 | Cultura y territorio | `CONFERENCE` | Tandil | `DRAFT` | +70 días | Organización `2` |
+| 13–42 | Cartelera (*Noche de tango*, *Hamlet*, *Final de vóley*…) | Los cinco | Las cinco | `PUBLISHED` | +75 días, uno cada 3 | Que la cartelera del front tenga varias páginas |
+
+**La cartelera (13 a 42)** son 30 eventos publicados, de un solo sector, sin participantes y sin "serr" en el nombre. Van después de todos los demás en fecha (desde +75) y en precio (desde $50.000, con $1.500 más cada uno), así que por fecha y por precio los seis visibles de arriba siguen primeros. Por tipo: 7 recitales, 5 festivales, 6 obras, 6 partidos y 6 conferencias.
 
 **Para el ABM de participantes:** *Sofía Lanza* (`SPEAKER`) no está en ningún evento y se puede borrar. El Festival (evento 4) es el evento de referencia con todos los campos completos, y `EventSeederTest` verifica que siga así.
 

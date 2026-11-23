@@ -9,6 +9,7 @@ import org.group10.event.entity.EventType;
 import org.springframework.format.annotation.DateTimeFormat;
 
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * Filtros de {@code GET /api/events}. Todos son opcionales; los que no vienen no filtran.
@@ -19,8 +20,8 @@ public record EventSearchRequest(
         @Size(max = 100)
         String q,
 
-        @Schema(description = "Tipo de evento", example = "CONCERT")
-        EventType type,
+        @Schema(description = "Tipo de evento. Se puede repetir: trae los de cualquiera de los tipos", example = "CONCERT")
+        List<EventType> type,
 
         @Schema(description = "Ciudad del lugar, completa y sin distinguir mayúsculas ni acentos", example = "Córdoba")
         @Size(max = 255)
@@ -29,6 +30,10 @@ public record EventSearchRequest(
         @Schema(description = "Parte del nombre de un artista, equipo o disertante", example = "serranos")
         @Size(max = 255)
         String participant,
+
+        @Schema(description = "Id de un participante. Se puede repetir: trae los eventos de cualquiera de ellos",
+                example = "1")
+        List<@Positive Long> participantId,
 
         @Schema(description = "Organización que publica el evento (id del auth-service)", example = "1")
         @Positive

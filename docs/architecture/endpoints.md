@@ -14,7 +14,7 @@
 
 | Servicio | Puerto | Endpoints | Qué cubre |
 |---|---|---|---|
-| [auth-service](#auth-service) | 8081 | 3 | Usuarios, permisos, organizaciones y organizadores. |
+| [auth-service](#auth-service) | 8081 | 4 | Usuarios, permisos, organizaciones, organizadores y personal de acceso. |
 | [event-service](#event-service) | 8082 | 31 | Lugares, sectores, asientos, participantes y eventos (alta, configuración, estados y búsqueda). |
 | [ticket-service](#ticket-service) | 8083 | 13 | Disponibilidad, reservas, pago y emisión de entradas, compras, devoluciones, ingreso con QR y reportes. |
 | [payment-service](#payment-service) | 8084 | 4 | Cobros y reintegros contra la pasarela simulada. |
@@ -31,12 +31,14 @@ Usuarios, permisos, organizaciones y organizadores. Detalle de reglas y decision
 | `GET` | `/api/organizations/{id}` | Ver una organización | `{id}` | Público | **200** Organización encontrada<br>**404** organization_not_found |
 | `GET` | `/api/organizers/{userId}` | Ver un organizador activo | `{userId}` | Público | **200** Organizador activo<br>**404** organizer_not_found |
 | `GET` | `/api/users/{id}/permissions` | Ver el rol y los permisos de un usuario | `{id}` | Público | **200** Usuario activo con su rol y sus permisos<br>**404** user_not_found |
+| `PUT` | `/api/users/{staffId}/access-assignments/{eventId}` | Asignar personal de acceso a un evento | `{staffId}`<br>`{eventId}` | `EVENT_MANAGE` (organizador) | **201** Personal asignado `{staffId, eventId}`<br>**200** Ya estaba asignado<br>**400** validation_error / invalid_parameter<br>**401** unauthorized<br>**403** forbidden: sin EVENT_MANAGE, o personal o evento de otra organización<br>**404** access_staff_not_found / event_not_found (inexistente o borrador)<br>**503** service_unavailable: el event-service no responde |
 
 ### Internos
 
 | Método | Ruta | Qué hace | Parámetros | Quién | Respuestas |
 |---|---|---|---|---|---|
 | `GET` | `/internal/users/{id}` | Ver el email y el nombre de un usuario | `{id}`<br>header `X-Internal-Secret` | Solo entre servicios | **200** Usuario activo con su email y su nombre<br>**400** validation_error<br>**401** unauthorized: sin el secreto interno<br>**404** user_not_found |
+| `GET` | `/internal/access-staff/{staffId}/events/{eventId}` | Confirmar que el personal está asignado al evento | `{staffId}`<br>`{eventId}`<br>header `X-Internal-Secret` | Solo entre servicios (ticket-service) | **204** Personal activo asignado<br>**400** validation_error<br>**401** unauthorized: sin el secreto interno<br>**403** staff_not_assigned |
 
 ## event-service
 
@@ -94,12 +96,12 @@ Disponibilidad, reservas, pago y emisión de entradas, compras, devoluciones e i
 | `GET` | `/api/availability` | Consultar la disponibilidad de un evento | `?eventId` | Público | **200** Disponibilidad por sector<br>**404** resource_not_found: el evento no tiene lugares a la venta |
 | `GET` | `/api/events/{eventId}/report` | Consultar el reporte de un evento | `{eventId}` | `REPORT_VIEW`, organizador de la organización del evento | **200** Reporte por sector y total del evento<br>**400** validation_error<br>**401** unauthorized<br>**403** forbidden<br>**404** event_not_found<br>**503** service_unavailable: el event-service no responde |
 | `POST` | `/api/orders` | Reservar lugares | header `X-User-Id`<br>body `ReservationRequest` | `X-User-Id`, sin validar rol | **201** Reserva creada, o la orden ya creada por ese mismo intento<br>**400** validation_error<br>**404** resource_not_found: el evento, sector o asiento no existe<br>**409** seat_unavailable, sector_sold_out, ticket_limit_exceeded, event_not_on_sale, sale_not_started o data_conflict |
-| `POST` | `/api/orders/{id}/pay` | Pagar una orden | header `X-User-Id`<br>`{id}`<br>body `PayOrderRequest` | `X-User-Id`, sin validar rol | **200** Orden pagada, con sus entradas y QR<br>**400** validation_error<br>**404** order_not_found: no existe o es de otro cliente<br>**409** reservation_expired, payment_window_closed, order_not_payable o payment_in_progress<br>**422** payment_rejected, con reason y rejectedAttempts en detail<br>**503** service_unavailable: el pago quedó sin resultado y solo se puede repetir ese intento |
+| `POST` | `/api/orders/{id}/pay` | Pagar una orden | header `X-User-Id`<br>`{id}`<br>body `PayOrderRequest` | `X-User-Id`, sin validar rol | **200** Orden pagada, con sus entradas y QR<br>**400** validation_error<br>**404** order_not_found: no existe o es de otro cliente<br>**409** reservation_expired, payment_window_closed, order_not_payable, payment_in_progress o purchase_failed: se cobró, falló la emisión y el pago se reintegra<br>**422** payment_rejected, con reason y rejectedAttempts en detail<br>**503** service_unavailable: el pago quedó sin resultado y solo se puede repetir ese intento |
 | `GET` | `/api/orders` | Ver mis compras | header `X-User-Id` | `X-User-Id`, sin validar rol | **200** Órdenes del cliente, de la más nueva a la más vieja |
 | `GET` | `/api/orders/{id}` | Ver una compra | header `X-User-Id`<br>`{id}` | `X-User-Id`, sin validar rol | **200** Orden con sus entradas<br>**404** order_not_found: no existe o es de otro cliente |
 | `POST` | `/api/orders/{id}/cancel` | Abandonar una reserva | header `X-User-Id`<br>`{id}` | `X-User-Id`, sin validar rol | **200** Orden abandonada<br>**404** order_not_found: no existe o es de otro cliente<br>**409** payment_in_progress, reservation_expired u order_not_cancellable |
 | `POST` | `/api/tickets/{ticketId}/return-requests` | Solicitar la devolución de una entrada | header `X-User-Id`<br>`{ticketId}` | `X-User-Id`, sin validar rol | **201** Solicitud creada en PENDING<br>**404** ticket_not_found: no existe o es de otro cliente<br>**409** refund_not_allowed o return_request_already_pending |
-| `POST` | `/api/tickets/check-in` | Validar el QR de una entrada en el ingreso | body `CheckInRequest` (`eventId`, `qrCode`) | `TICKET_VALIDATE` (personal de acceso) | **200** Entrada validada, con su sector y asiento<br>**400** validation_error o invalid_qr: el QR no existe, es de otro evento o la entrada está anulada o reintegrada<br>**403** forbidden: sin TICKET_VALIDATE<br>**409** ticket_already_used |
+| `POST` | `/api/tickets/check-in` | Validar el QR de una entrada en el ingreso | body `CheckInRequest` (`eventId`, `qrCode`) | `TICKET_VALIDATE` (personal de acceso asignado al evento) | **200** Entrada validada, con su sector y asiento<br>**400** validation_error o invalid_qr: el QR no existe, es de otro evento o la entrada está anulada o reintegrada<br>**403** forbidden: sin TICKET_VALIDATE. staff_not_assigned: el personal no está asignado al evento (se controla antes que el QR)<br>**409** ticket_already_used<br>**503** service_unavailable: el auth-service no responde |
 | `GET` | `/api/return-requests` | Listar las solicitudes de devolución | `?status` (opcional)<br>`?page` (opcional)<br>`?size` (opcional) | Público | **200** Página de solicitudes<br>**400** Parámetros inválidos |
 | `POST` | `/api/return-requests/{id}/approve` | Aprobar una devolución | header `X-User-Id`<br>`{id}` | `X-User-Id`, sin validar rol | **200** Solicitud aprobada<br>**404** return_request_not_found<br>**409** refund_not_allowed o ticket_already_used<br>**503** service_unavailable: la solicitud sigue PENDING |
 | `POST` | `/api/return-requests/{id}/reject` | Rechazar una devolución | header `X-User-Id`<br>`{id}` | `X-User-Id`, sin validar rol | **200** Solicitud rechazada<br>**404** return_request_not_found<br>**409** refund_not_allowed |
@@ -129,22 +131,15 @@ Cobros y reintegros contra la pasarela simulada. Detalle de reglas y decisiones:
 | `GET` | `/internal/payments` | Consultar los pagos de una orden | `?orderId` | Solo entre servicios | **200** Pagos de la orden, del más antiguo al más nuevo<br>**400** invalid_parameter o validation_error: falta orderId o no es válido<br>**404** payment_not_found: la orden no tiene pagos |
 | `POST` | `/internal/refunds` | Reintegrar una entrada | body `RefundRequest` | Solo entre servicios | **201** Reintegro acreditado<br>**200** La entrada ya tenía ese reintegro y no se acredita de nuevo<br>**400** validation_error<br>**404** payment_not_found: la orden no tiene pagos<br>**409** payment_not_refundable: sin pago aprobado o supera lo cobrado. data_conflict: la entrada ya tiene un reintegro con otros datos<br>**502** refund_failed: la pasarela no acreditó y se puede reintentar |
 
-## queue-service
+## recommendation-service
 
-Fila virtual para eventos de alta demanda. El cliente entra y consulta por el gateway; ticket-service obtiene directamente el JWKS para validar el turno sin llamar a queue-service por cada reserva. Diseño y simplificaciones: [`queue-service.md`](queue-service.md).
+Preferencias, sugerencias y fans de un artista. Puerto 8087.
 
-### Públicos
-
-| Método | Ruta | Qué hace | Parámetros | Quién | Respuestas |
-|---|---|---|---|---|---|
-| `POST` | `/api/queue/{eventId}/join` | Entrar o reintentar el ingreso a la fila | `{eventId}` | `TICKET_PURCHASE` | **201** Estado `WAITING` con posición, o estado vigente si ya estaba habilitado<br>**401** unauthorized<br>**403** forbidden<br>**404** event_not_found<br>**409** event_not_high_demand / sale_not_started<br>**503** service_unavailable: event-service no responde |
-| `GET` | `/api/queue/{eventId}/me` | Consultar posición o turno actual | `{eventId}` | `TICKET_PURCHASE` | **200** Estado `WAITING`, `ENABLED` con turno y `enabledUntil`, o `EXPIRED` sin turno<br>**401** unauthorized<br>**403** forbidden<br>**404** queue_entry_not_found |
-
-### Entre servicios
+### Internos (entre servicios)
 
 | Método | Ruta | Qué hace | Parámetros | Quién | Respuestas |
 |---|---|---|---|---|---|
-| `GET` | `/.well-known/jwks.json` | Publicar la clave para verificar los turnos RS256 | — | ticket-service, directo a queue-service (`8085`) | **200** JWKS de claves públicas vigentes |
+| `GET` | `/internal/fans` | Ver los clientes con alguno de los participantes como favorito (elegido o inferido de sus compras) que guardaron esa ciudad (US-NOT-03) | `?participantIds` (uno o más, repetido o separado por comas)<br>`?city`<br>header `X-Internal-Secret` | Solo entre servicios (notification-service) | **200** Ids de los clientes, de menor a mayor; vacío si no hay<br>**400** invalid_parameter: falta un parámetro o un id no es número. validation_error: id no positivo o ciudad en blanco<br>**401** unauthorized: sin el secreto interno |
 
 ## Ejemplos
 
@@ -219,11 +214,11 @@ GET /api/events?q=serran&sort=RELEVANCE&size=2
 {
   "content": [
     { "id": 11, "name": "Peña folklórica serrana", "type": "CONCERT", "status": "PUBLISHED",
-      "dateTime": "2026-11-28T21:00:00", "highDemand": false, "organizationId": 2,
+      "dateTime": "2026-11-28T21:00:00", "highDemand": false, "saleStart": null, "organizationId": 2,
       "venue": { "id": 2, "name": "Teatro de la Sierra", "city": "Tandil", "...": "..." },
       "priceFrom": 7000.00, "participants": ["Ballet Folklórico Serrano"] },
     { "id": 1, "name": "Los Serranos en vivo", "type": "CONCERT", "status": "PUBLISHED",
-      "dateTime": "2026-12-13T21:00:00", "highDemand": true, "organizationId": 1,
+      "dateTime": "2026-12-13T21:00:00", "highDemand": true, "saleStart": "2026-11-20T10:00:00", "organizationId": 1,
       "venue": { "id": 1, "name": "Estadio del Sur", "city": "Buenos Aires", "...": "..." },
       "priceFrom": 45000.00, "participants": ["Los Serranos"] }
   ],

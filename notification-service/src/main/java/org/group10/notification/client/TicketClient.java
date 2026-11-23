@@ -5,6 +5,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.service.annotation.GetExchange;
 import org.springframework.web.service.annotation.HttpExchange;
 
+import java.util.List;
+
 @HttpExchange
 public interface TicketClient {
 
@@ -13,4 +15,10 @@ public interface TicketClient {
      */
     @GetExchange("/internal/orders/{id}")
     PaidOrder findPaidOrder(@PathVariable Long id);
+
+    /**
+     * Los ids de los usuarios con alguna orden pagada del evento, sin repetir. Vacío si no hay.
+     */
+    @GetExchange("/internal/events/{eventId}/buyers")
+    List<Long> findBuyers(@PathVariable Long eventId);
 }

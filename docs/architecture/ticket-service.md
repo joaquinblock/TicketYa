@@ -22,6 +22,7 @@ erDiagram
         decimal total
         varchar idempotency_key UK
         varchar payment_attempt_key "attempt without result; NULL if none"
+        datetime charge_approved_at "payment approved the charge; refund it if not PAID"
         datetime created_at
     }
     event_seat {
@@ -72,6 +73,8 @@ erDiagram
         enum status "RESERVED | ISSUED | USED | VOIDED | REFUNDED"
         datetime used_at
         bigint validated_by "auth-service, by ID"
+        datetime compensated_at "refund of a failed purchase accepted"
+        varchar refund_error "4xx of that refund, solved by hand"
         bigint version "optimistic locking"
     }
     return_request {
@@ -165,6 +168,8 @@ Protege dos casos de la consigna 8 y la 7:
 
 `POST /api/tickets/check-in` recibe el evento donde está el personal y el QR escaneado (US-TKT-19).
 
+- **Primero, la asignación.** Antes de mirar el QR, `CheckInController` le pregunta al auth-service (`AuthClient`, `GET /internal/access-staff/{staffId}/events/{eventId}`) si el usuario del token está asignado a ese evento (US-AUTH-04). Si no lo está, el `403 staff_not_assigned` del auth-service se reenvía tal cual y no se busca el QR, así que tampoco se revela si existe. Si el auth-service no responde (1 s para conectar, 2 s para leer) o da un 5xx, el ingreso responde `503 service_unavailable` y la entrada no se toca. La llamada va en el controller y no en `CheckInService`: así queda fuera de la transacción que marca la entrada.
+
 - **El QR va en el body, no en la URL.** Es la credencial de entrada, y las URLs quedan en los logs del gateway y de cada servicio.
 - **Un QR de otro evento da `invalid_qr`, igual que uno que no existe o una entrada anulada, reintegrada o sin pagar.** Así no se puede averiguar a qué evento pertenece un QR ajeno. Solo una entrada ya usada tiene su propio error: `ticket_already_used`.
 - **Un QR entra una sola vez.** Se lee la entrada para validar el evento y el estado, y después se marca con un `update` condicional: `status = USED` solo `where status = ISSUED`, subiendo `version`. Si dos lectores la escanean a la vez, uno actualiza la fila y el otro recibe 0 filas y `ticket_already_used`. Es el mismo patrón que el reintegro y no depende de cuántas instancias haya. Lo prueba `CheckInMySqlIntegrationTest` con 16 escaneos simultáneos.
@@ -244,6 +249,25 @@ Una orden en `PENDING` puede terminar por varios caminos a la vez: se confirma e
 
 Si el pago se aprobó y la orden ya no puede pasar a `PAID`, no se emiten entradas y se pide el reintegro de cada `ticket` con motivo `PURCHASE_COMPENSATION`.
 
+### Compensar una compra que falla después de cobrar (US-TKT-22)
+
+Apenas payment-service aprueba el cobro, `orders.charge_approved_at` se guarda en una transacción corta, antes de emitir. Es la marca de que hay dinero cobrado: si la orden no termina `PAID`, hay que devolverlo.
+
+| Qué pasa después del cobro | Orden | Respuesta al cliente |
+|---|---|---|
+| Se emiten las entradas | `PAID` | 200 con las entradas |
+| La reserva venció o se perdió un asiento mientras se cobraba | `EXPIRED` | 409 `reservation_expired` |
+| El evento se canceló mientras se cobraba | Sigue `CANCELLED` | 409 `order_not_payable` |
+| La emisión falla por cualquier otro motivo (una excepción, la base) | `FAILED` | 409 `purchase_failed` |
+
+En los tres últimos casos los lugares se liberan, las entradas quedan `VOIDED` y se pide en el momento un reintegro por entrada con motivo `PURCHASE_COMPENSATION` (`PurchaseCompensationService`). Pagar de nuevo una orden `FAILED` responde 409 `order_not_payable`, sin cobrar.
+
+- **Reintentos hasta tener respuesta.** `PurchaseCompensationJob` corre cada 30 segundos (`ticketya.compensation.refund-check`). Busca entradas `VOIDED` sin `compensated_at` ni `refund_error` de órdenes con `charge_approved_at`, y vuelve a pedir su reintegro. Pedirlo dos veces es seguro, porque payment-service reintegra una sola vez por `ticket_id`.
+- **La entrada sigue `VOIDED`,** con `ticket.compensated_at` cuando payment acepta el reintegro. No pasa a `REFUNDED`, porque el reporte de organizadores cuenta las `REFUNDED` como devoluciones y estas entradas nunca se vendieron.
+- **Un 4xx de payment no se reintenta:** reintentar no lo arregla. Se guarda en `ticket.refund_error` y queda en el log como `ERROR`, con la orden y la entrada, para resolverlo a mano. Los timeouts, los 5xx y el 502 `refund_failed` se reintentan en la siguiente corrida.
+- **Si el servicio se cae entre cobrar y emitir,** la orden queda `PENDING` con la marca. El job de vencimiento la pasa a `EXPIRED` y el de compensación la reintegra.
+- **Lo que no cubre:** si se pierde la respuesta de payment, no hay marca. Eso lo resuelve la anulación del intento (US-TKT-23), descrita en *Manda la reserva*.
+
 ### Aviso de compra confirmada (`purchase.confirmed`)
 
 Cuando la transacción que deja la orden `PAID` se confirma, el ticket-service publica en el exchange `ticketya.events`, con la clave `purchase.confirmed` (ADR 0004):
@@ -321,8 +345,6 @@ Si la orden se cancela mientras se confirma su pago, no se emiten entradas y el 
 
 **Límite de entradas por cliente.** Se controla contando las entradas del usuario para el evento (`orders.user_id` + `orders.event_id`) contra `event_sale.max_tickets_per_customer`. Si el mismo usuario lanza dos compras exactamente al mismo tiempo, las dos pueden pasar el control. Resolverlo requiere un lock por usuario y evento; para la Entrega 1 se valida en el service y queda anotado. No afecta la no doble venta: cada lugar sigue vendiéndose una sola vez.
 
-**Personal asignado al evento.** El ingreso exige el permiso `TICKET_VALIDATE`, pero todavía no controla que ese personal trabaje en el evento (403 `staff_not_assigned` de US-TKT-19): el auth-service aún no registra qué personal está asignado a qué evento (#19).
-
 **Ingreso durante la aprobación de una devolución.** Si alguien entra con una entrada justo entre el pedido de reintegro y la confirmación local, el reintegro ya se pidió y la entrada queda `USED`. Es muy improbable y se registra en el log para resolverlo a mano. Si la entrada ya estaba usada al aprobar, no se pide el reintegro.
 
 **Reintegro rechazado de un evento cancelado.** Si el payment-service rechaza el reintegro con un 4xx, por ejemplo porque la entrada ya tenía un reintegro acreditado con otros datos, la entrada sigue sin pasar a `REFUNDED`, el job la reintenta y cada intento queda en el log para resolverlo a mano.
@@ -342,6 +364,7 @@ El `TicketSeeder` usa los IDs, fechas y nombres que generan los seeders del auth
 | 8 Recital acústico | `CANCELLED` | 13 Platea Baja | 155–199 |
 | 9 Jornada de arquitectura | `FINISHED` | 14 Sala | — |
 | 11 Peña folklórica serrana | `PUBLISHED` | 15 Platea, 16 Pullman | 81–154 |
+| 13 a 42, la cartelera | `PUBLISHED`, venta abierta, hasta 4 por persona | 18 a 47, uno por evento | Platea 81–130, Pullman 131–154 |
 
 Los eventos en `DRAFT` (3, 10 y 12) no tienen venta. Si se cambia el orden de los datos en el `EventSeeder`, hay que actualizar el `TicketSeeder`.
 
@@ -366,8 +389,10 @@ Las historias y sus criterios de aceptación están en [`user-stories.md`](../us
 | Abandono voluntario de una reserva | La orden también pasa a `CANCELLED`, salvo con un pago en curso | Para el cliente es lo mismo que una cancelación, y la causa queda en el log de operaciones |
 | Entradas `USED` al cancelar | También se reintegran | La consigna 7 dice "todas sus entradas vendidas" |
 | Aprobar una devolución si el payment-service no responde | La solicitud sigue `PENDING` y el administrador reintenta | La entrada no se marca como devuelta hasta que payment acepte el reintegro |
-| Compra que falla después de cobrar | La orden termina en `FAILED` | El pago sí se aprobó, así que el cliente no debe ver "rechazado" |
+| Compra que falla después de cobrar | La orden termina en `FAILED` y el cliente recibe 409 `purchase_failed` | El pago sí se aprobó, así que el cliente no debe ver "rechazado" |
 | Compensación por vencimiento durante el pago | Va en la Entrega 1, en su forma simple | El caso puede ocurrir desde la primera entrega y la llamada de reintegro ya existe. La US-TKT-22 agrega los reintentos y los demás fallos |
+| Entradas de una compra compensada | Quedan `VOIDED`, con `compensated_at` | Nunca se vendieron: como `REFUNDED`, el reporte las contaría como devoluciones |
+| Reintegro de compensación rechazado con un 4xx | Se guarda el error y no se reintenta | Reintentar no lo arregla; queda en el log para resolverlo a mano. Lo que no tuvo respuesta sí se reintenta |
 
 ### Pendientes para la implementación
 
@@ -379,17 +404,18 @@ Las historias y sus criterios de aceptación están en [`user-stories.md`](../us
 |---|---|---|
 | `PUT /internal/event-sales/{eventId}` | Sincroniza la venta, el inventario y los datos que se imprimen en la entrada (nombre del evento, lugar, sectores, filas y números). Con estado `CANCELLED` cierra las compras abiertas y deja los reintegros al job. Solo entre servicios; el gateway no la expone | 400 `validation_error` |
 | `GET /internal/orders/{id}` | Una orden `PAID` con los datos del evento y el QR de cada entrada `ISSUED`, la misma forma que `GET /api/orders/{id}`. La usa el notification-service para el mail de la compra (US-NOT-01). No filtra por cliente; solo entre servicios, con `X-Internal-Secret` | 401 `unauthorized`, 404 `order_not_found`, 409 `order_not_paid` |
+| `GET /internal/events/{eventId}/buyers` | Los `userId` distintos de las órdenes `PAID` del evento que no tienen todas sus entradas con una devolución aprobada, ordenados; vacío si no hay. No filtra por el estado de la entrada porque al cancelar el evento el job de reintegros también las pasa a `REFUNDED`. La usa el notification-service para avisar que el evento se canceló, se suspendió o se reprogramó (US-NOT-02). Solo entre servicios, con `X-Internal-Secret` | 400 `validation_error`, 401 `unauthorized` |
 | `GET /api/availability?eventId=` | Disponibilidad por sector | 404 `resource_not_found` |
 | `GET /api/events/{eventId}/report` | Reporte por sector y total del evento. `REPORT_VIEW`; el organizador solo puede consultar eventos de su organización | 400 `validation_error`, 401 `unauthorized`, 403 `forbidden`, 404 `event_not_found`, 503 `service_unavailable` |
 | `POST /api/orders` | Reserva asientos (`seatIds`) o lugares (`eventSectorId` y `quantity`). `TICKET_PURCHASE` | 400 `validation_error`, 404 `resource_not_found`, 409 `seat_unavailable`, `sector_sold_out`, `ticket_limit_exceeded`, `event_not_on_sale`, `sale_not_started`, `data_conflict` |
 | `POST /api/orders/{id}/cancel` | Abandona una reserva. Repetirlo responde 200. `TICKET_PURCHASE` | 404 `order_not_found`, 409 `payment_in_progress`, `reservation_expired`, `order_not_cancellable` |
 | `POST /api/tickets/{ticketId}/return-requests` | Solicita la devolución de una entrada. `REFUND_REQUEST` | 404 `ticket_not_found`, 409 `refund_not_allowed`, `return_request_already_pending` |
-| `POST /api/tickets/check-in` | Valida el QR en el ingreso: body `{eventId, qrCode}`. La entrada pasa a `USED` con quién la validó y cuándo. `TICKET_VALIDATE` (personal de acceso) | 400 `validation_error`, `invalid_qr`, 403 `forbidden`, 409 `ticket_already_used` |
+| `POST /api/tickets/check-in` | Valida el QR en el ingreso: body `{eventId, qrCode}`. La entrada pasa a `USED` con quién la validó y cuándo. `TICKET_VALIDATE` (personal de acceso asignado al evento) | 400 `validation_error`, `invalid_qr`, 403 `forbidden`, `staff_not_assigned`, 409 `ticket_already_used`, 503 `service_unavailable` |
 | `GET /api/return-requests?status=&page=&size=` | Lista paginada, primero las más antiguas. Por defecto, `PENDING`. `REFUND_RESOLVE` (administrador) | 400 si un parámetro es inválido, 403 `forbidden` |
 | `POST /api/return-requests/{id}/approve` | Pide el reintegro, marca la entrada `REFUNDED` y libera el lugar. `REFUND_RESOLVE` (administrador) | 403 `forbidden`, 404 `return_request_not_found`, 409 `refund_not_allowed`, `ticket_already_used`, 503 `service_unavailable` |
 | `POST /api/return-requests/{id}/reject` | Rechaza la solicitud y la entrada sigue vigente. `REFUND_RESOLVE` (administrador) | 403 `forbidden`, 404 `return_request_not_found`, 409 `refund_not_allowed` |
 
-**Quién puede hacer qué (US-TKT-26).** Cada endpoint de `/api` pide su permiso con `@RequiresPermission`, y el usuario sale del token (`Caller`): sin token, 401; sin el permiso, 403, antes de leer el body. Como el `userId` es el del token, un cliente no puede operar en nombre de otro: una orden o una entrada ajena da 404. Resolver una devolución ya no le pregunta nada al auth-service. En el seeder del auth-service, el usuario 3 es el administrador y el 4 es el personal de acceso. Validar el QR (US-TKT-19) pide `TICKET_VALIDATE` y el reporte (US-TKT-20), `REPORT_VIEW`.
+**Quién puede hacer qué (US-TKT-26).** Cada endpoint de `/api` pide su permiso con `@RequiresPermission`, y el usuario sale del token (`Caller`): sin token, 401; sin el permiso, 403, antes de leer el body. Como el `userId` es el del token, un cliente no puede operar en nombre de otro: una orden o una entrada ajena da 404. Resolver una devolución ya no le pregunta nada al auth-service. En el seeder del auth-service, el usuario 3 es el administrador y el 4 y el 7 son personal de acceso de las organizaciones 1 y 2. Para validar, el organizador primero tiene que asignarlos al evento. Validar el QR (US-TKT-19) pide `TICKET_VALIDATE` y el reporte (US-TKT-20), `REPORT_VIEW`.
 
 **Reporte de un evento.** El ticket-service agrupa las entradas por `event_sector_id`. Cuenta `ISSUED` y `USED` como vendidas, `REFUNDED` como devueltas, y excluye `RESERVED` y `VOIDED`. La recaudación suma el precio de las entradas vendidas. La capacidad y la organización se obtienen del detalle del evento en event-service; el sector se relaciona con la copia local por su nombre, único dentro del lugar. Para consultar el reporte se requiere `REPORT_VIEW` y que la organización del caller coincida con la del evento. La ocupación total se calcula sobre la capacidad total (no como promedio de porcentajes sectoriales).
 
@@ -404,6 +430,7 @@ La respuesta incluye `eventId`, una lista `sectors` con capacidad, ventas, devol
 | event-service → ticket-service | Avisar la publicación con asientos, capacidades y datos de venta; avisar cualquier cambio de esos datos y la cancelación | US-TKT-01, 07, 18 |
 | ticket-service → event-service | Pedir `SOLD_OUT` y su reversa; capacidad y organización para los reportes | US-TKT-13, 20 |
 | ticket-service → payment-service | Cobrar por `order_id` con el monto de `orders.total` y la clave del intento; anular un intento sin resultado; reintegrar por `ticket_id`. Contrato en `payment-service.md` | US-TKT-09 a 11, 16, 18, 22, 23 |
-| ticket-service → auth-service | Confirmar la asignación del personal de acceso y la organización del organizador | US-TKT-19, 20 |
+| ticket-service → auth-service | Confirmar la asignación del personal de acceso y la organización del organizador (`GET /internal/access-staff/{staffId}/events/{eventId}`, con `AUTH_SERVICE_URL`) | US-TKT-19, 20 |
 | ticket-service → RabbitMQ (`ticketya.events`) | Avisar `purchase.confirmed` cuando una orden queda `PAID`. Lo consumen notification-service y recommendation-service | US-TKT-24 |
+| notification-service → ticket-service | Los compradores de un evento que cambió. Las cancelaciones no las publica el ticket-service: las publica el event-service | US-NOT-02 |
 | recommendation-service → ticket-service | Historial de compras | US-TKT-25 |

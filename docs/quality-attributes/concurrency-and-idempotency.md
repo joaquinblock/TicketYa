@@ -40,6 +40,7 @@ El mail de la compra es la excepción: la operación es un envío y no una fila,
 | Dos intentos de pago con medios distintos | `UPDATE` condicional sobre `orders.payment_attempt_key` | 409 `payment_in_progress` |
 | Dos pagos activos en una orden | `payment.active_order_id`, columna generada y UNIQUE | 409 `data_conflict` |
 | Reintegros simultáneos que superan lo cobrado | Bloqueo pesimista de la fila de `payment` | Se rechaza con `payment_not_refundable` |
+| Dos cambios del mismo evento a la vez (cancelar, suspender, reprogramar) | Bloqueo pesimista de la fila de `event` | Lee el estado nuevo: no publica otro aviso, o se rechaza si es `resume` |
 | Dos solicitudes de devolución pendientes | `return_request.pending_ticket_id`, columna generada y UNIQUE | Conflicto |
 
 Las columnas generadas reemplazan a los índices parciales, que MySQL no tiene. Valen el ID mientras el registro está activo y `NULL` cuando no, y el UNIQUE ignora los `NULL`.

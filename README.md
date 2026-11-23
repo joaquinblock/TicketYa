@@ -26,12 +26,12 @@
 | `ticket-service` | 8083 | MySQL (3309) | 1 |
 | `payment-service` | 8084 | MySQL (3310) | 1 |
 | `queue-service` | 8085 | Redis (6379) | 2 (esqueleto) |
-| `notification-service` | 8086 | MySQL (3311) | 2 (esqueleto) |
-| `recommendation-service` | 8087 | MongoDB (27017) | 2 (esqueleto) |
+| `notification-service` | 8086 | MySQL (3311) | 2 |
+| `recommendation-service` | 8087 | MongoDB (27017) | 2 |
 
 **Para la Entrega 1 alcanza con el gateway y los cuatro primeros servicios.** Cada servicio arranca su base con Docker la primera vez (`spring.docker.compose`). No hace falta levantarlas a mano.
 
-**RabbitMQ** (AMQP en 5672, consola en http://localhost:15672, usuario `ticketya` / `ticketya`) lleva los avisos entre servicios ([ADR 0004](docs/adr/0004-rabbitmq-para-avisos-entre-servicios.md)). Es uno solo para todos, así que no lo levanta ningún servicio: va antes que ellos (ver *Levantarlo*). Lo usan ticket-service y notification-service; sin él arrancan igual, pero no se mandan los avisos.
+**RabbitMQ** (AMQP en 5672, consola en http://localhost:15672, usuario `ticketya` / `ticketya`) lleva los avisos entre servicios ([ADR 0004](docs/adr/0004-rabbitmq-para-avisos-entre-servicios.md)). Es uno solo para todos, así que no lo levanta ningún servicio: va antes que ellos (ver *Levantarlo*). Lo usan ticket-service, event-service, notification-service y recommendation-service; sin él arrancan igual, pero no se mandan los avisos.
 
 ### Levantarlo
 
@@ -75,7 +75,7 @@ Cada servicio recrea su base al arrancar (`ddl-auto: create`) y su seeder la vue
 
 | Seeder | Qué carga |
 |---|---|
-| `AuthSeeder` | 11 permisos, 4 roles y 6 usuarios: `1` cliente, `2` organizador de la org 1, `3` admin (con el Gmail de `BOOTSTRAP_ADMIN_EMAIL`, si está configurado), `4` personal de acceso, `5` organizador de la org 2 y `6` organizador de la org 1 sin eventos propios. Organizaciones `1` *Del Sur Producciones* y `2` *Cultura Serrana* |
+| `AuthSeeder` | 11 permisos, 4 roles y 7 usuarios: `1` cliente, `2` organizador de la org 1, `3` admin (con el Gmail de `BOOTSTRAP_ADMIN_EMAIL`, si está configurado), `4` personal de acceso de la org 1, `5` organizador de la org 2, `6` organizador de la org 1 sin eventos propios y `7` personal de acceso de la org 2. Organizaciones `1` *Del Sur Producciones* y `2` *Cultura Serrana*. No hay personal asignado a eventos: lo asigna el organizador |
 | `EventSeeder` | 5 lugares en 5 ciudades, 239 asientos, 11 participantes y 12 eventos en todos los estados, con fechas relativas al día de arranque (ver *Datos de prueba* en [`event-service.md`](docs/architecture/event-service.md)) |
 | `TicketSeeder` | El inventario de todos los eventos del seeder, dos compras pagadas (una con una devolución pendiente) y una reserva en curso (ver [`ticket-service.md`](docs/architecture/ticket-service.md)) |
 | `PaymentSeeder` | Los pagos de esas órdenes: aprobados, uno rechazado y uno pendiente |
@@ -109,7 +109,7 @@ Los ABM de lugares y participantes y el manejo de errores de `common` se probaro
 
 Están en [`docs/postman/`](docs/postman/). Se importan en Postman y cada una trae sus variables. Para correr una entera: clic derecho → *Run collection*.
 
-**El token lo piden solas.** Cada request dice con qué usuario del `AuthSeeder` va, en el header `X-User-Id`. El script de la colección pide su token con `dev-login` y lo manda como `Authorization: Bearer`, así que **hace falta el auth-service con el perfil `dev`** además del servicio que se prueba. Los usuarios son los de *Datos de prueba*: `1` cliente, `2`, `5` y `6` organizadores, `3` admin, `4` personal de acceso.
+**El token lo piden solas.** Cada request dice con qué usuario del `AuthSeeder` va, en el header `X-User-Id`. El script de la colección pide su token con `dev-login` y lo manda como `Authorization: Bearer`, así que **hace falta el auth-service con el perfil `dev`** además del servicio que se prueba. Los usuarios son los de *Datos de prueba*: `1` cliente, `2`, `5` y `6` organizadores, `3` admin, `4` y `7` personal de acceso.
 
 | Colección | Qué cubre | Apunta a | ¿Cambia datos? |
 |---|---|---|---|

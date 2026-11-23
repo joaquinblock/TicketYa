@@ -28,6 +28,17 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             """)
     int takeOrderForPaymentAttempt(Long id, String attemptKey);
 
+    /**
+     * Marca el cobro aprobado sin mirar el estado: si la orden venció o se canceló mientras se cobraba, el
+     * reintegro igual hay que hacerlo, y el job de compensación la encuentra por esta marca.
+     */
+    @Modifying
+    @Query("""
+            update Order o set o.chargeApprovedAt = :approvedAt
+            where o.id = :id and o.chargeApprovedAt is null
+            """)
+    int markChargeApproved(Long id, LocalDateTime approvedAt);
+
     @Modifying
     @Query("""
             update Order o set o.paymentAttemptKey = null
@@ -58,6 +69,22 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             where o.eventId = :eventId and o.status = org.group10.ticket.entity.OrderStatus.PENDING
             """)
     List<Long> findIdsOfPendingOrdersOfEvent(Long eventId);
+
+    /**
+     * Compradores de órdenes {@code PAID} del evento, sin los que tienen todas sus entradas con una devolución
+     * aprobada: esos ya no van al evento. No se filtra por estado de la entrada porque al cancelar el evento el job
+     * de reintegros también las pasa a {@code REFUNDED}.
+     */
+    @Query("""
+            select distinct o.userId from Order o
+            where o.eventId = :eventId and o.status = org.group10.ticket.entity.OrderStatus.PAID
+              and (not exists (select t from Ticket t where t.order = o)
+                   or exists (select t from Ticket t where t.order = o
+                              and not exists (select r from ReturnRequest r where r.ticket = t
+                                              and r.status = org.group10.ticket.entity.ReturnRequestStatus.APPROVED)))
+            order by o.userId
+            """)
+    List<Long> findDistinctUserIdsOfPaidOrdersOfEvent(Long eventId);
 
     @Modifying
     @Query("""

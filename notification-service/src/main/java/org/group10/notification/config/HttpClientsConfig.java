@@ -2,6 +2,7 @@ package org.group10.notification.config;
 
 import org.group10.notification.client.AuthClient;
 import org.group10.notification.client.EventClient;
+import org.group10.notification.client.RecommendationClient;
 import org.group10.notification.client.TicketClient;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.service.registry.ImportHttpServices;
@@ -10,5 +11,6 @@ import org.springframework.web.service.registry.ImportHttpServices;
 @ImportHttpServices(group = "auth-service", types = AuthClient.class)
 @ImportHttpServices(group = "event-service", types = EventClient.class)
 @ImportHttpServices(group = "ticket-service", types = TicketClient.class)
+@ImportHttpServices(group = "recommendation-service", types = RecommendationClient.class)
 public class HttpClientsConfig {
 }

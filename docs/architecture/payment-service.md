@@ -139,6 +139,22 @@ Un pago queda `PENDING` mientras no hay respuesta de la pasarela, incluso si la 
 
 La llamada es síncrona, pero con un tiempo máximo. Ese tiempo, sumando reintentos, tiene que ser menor al margen de la hora de corte de la reserva (1 minuto), para que el resultado llegue antes del vencimiento.
 
+### Resiliencia ante la pasarela (US-PAY-11)
+
+`ResilientPaymentGateway` envuelve a la pasarela con Resilience4j ([ADR 0007](../adr/0007-resiliencia-ante-la-pasarela-con-resilience4j.md)). Es el bean `@Primary` de `PaymentGateway`, así que `PaymentService` no lo conoce. Solo cubre los cobros: los reintegros pasan directo hasta la US-PAY-13.
+
+| Situación | Qué pasa | Respuesta |
+|---|---|---|
+| La pasarela falla o tarda más de 3 s | Se reintenta con la misma clave, hasta 3 intentos con 500 ms entre ellos | La del intento que responde, cobrado una sola vez |
+| Ningún intento responde | El pago queda `PENDING` y no cuenta en `rejectedAttempts` | 503 `payment_gateway_unavailable` |
+| La pasarela rechaza | No se reintenta: es una respuesta | 422 `payment_rejected` |
+| Fallas recurrentes (50% de las últimas 10 llamadas, mínimo 5) | Se abre el circuito y no se llama a la pasarela | 503 al instante |
+| Pasan 10 s con el circuito abierto | Deja pasar 2 llamadas de prueba; si salen bien, se cierra | Cobro normal |
+
+- **Peor caso:** unos 10 s (3 × 3 s + 2 × 500 ms), debajo de los 20 s que ticket-service espera a payment-service. Si cambia algún valor de `payment.gateway.resilience`, hay que recalcularlo.
+- **El circuit breaker cuenta cada intento,** no cada pedido. Repetir una clave que ya tiene resultado no llama a la pasarela, así que no cuenta.
+- **Solo `PaymentGatewayUnavailableException`** se reintenta y cuenta como falla. Una pasarela real tiene que traducir sus fallas de red a esa excepción.
+
 ### Anular un intento sin resultado (Entrega 2)
 
 Si la reserva vence y un intento sigue sin resultado, el ticket-service pide anularlo. El payment-service le pide la cancelación a la pasarela y solo marca el pago `CANCELLED` si ella la confirma. Responde con el estado final:
@@ -171,7 +187,10 @@ El enunciado pide que en la Entrega 1 sea simulada, así que `MockPaymentGateway
 | No cobrar dos veces con la misma clave | El `gatewayId` se deriva de la `idempotency_key`, así que repetirla da el mismo resultado |
 | Rechazar un cobro | Decide por medio de pago, con una propiedad (`payment.mock.rejected-method: DEBIT_CARD`) |
 | Aprobar un reintegro | Devuelve `CREDITED` con un `gatewayId` derivado del `ticket_id`, que es único por reintegro. No depende del medio de pago |
-| Lentitud y caída (Entrega 2) | Propiedades `payment.mock.delay-ms` y otra para la caída |
+| Lentitud | `payment.mock.delay-ms` (0 por defecto) demora cada cobro y cada reintegro |
+| Caída | Con `payment.mock.down: true`, cada cobro y cada reintegro tira `PaymentGatewayUnavailableException` |
+
+Las dos propiedades son el valor inicial. Con el perfil `dev`, `GET` y `PUT /internal/mock/gateway` (`{"delayMs", "down"}`, demora entre 0 y 60000) las leen y las cambian en ejecución, para probar la caída y la recuperación sin reiniciar. Sin el perfil, la ruta da 404. La configuración de IntelliJ de `.run/` levanta el servicio con `dev`, y la carpeta US-PAY-11 de la colección de Postman recorre la caída, el circuito abierto y la recuperación.
 
 `PaymentService` solo conoce la interfaz `PaymentGateway` y recibe la respuesta como `ChargeResult`. Ahí quedan nuestras reglas, separadas de la simulación. Para conectar una pasarela real alcanza con otra implementación de la interfaz.
 

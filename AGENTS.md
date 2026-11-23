@@ -7,6 +7,7 @@
 - Un solo test: `./mvnw -pl <servicio> -am test -Dtest=<Clase> -Dsurefire.failIfNoSpecifiedTests=false`
 - Verificación completa, para saber que no se rompió nada: `./mvnw verify`
 - Formato y lint: no configurado
+- Compila con Java 25. Si Maven dice `release version 25 not supported`, apuntá `JAVA_HOME` a un JDK 25.
 
 ## Flujo
 `/ticket` → PR de stories → `/tracker` → `/clear` → `/implement` → `/clear` → `/rdd` → `/retro` → PR. El detalle está en `docs/flujo-de-trabajo.md`.

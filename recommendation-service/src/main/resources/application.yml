@@ -10,6 +10,22 @@ spring:
         base-url: ${EVENT_SERVICE_URL:http://localhost:8082}
       ticket-service:
         base-url: ${TICKET_SERVICE_URL:http://localhost:8083}
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:ticketya}
+    password: ${RABBITMQ_PASSWORD:ticketya}
+    connection-timeout: 2s
+    listener:
+      simple:
+        # 3 intentos en total (max-retries cuenta los reintentos), con 1 s y 2 s de espera.
+        # Al agotarlos, RabbitConfig manda el mensaje a recommendation.purchase.dlq.
+        retry:
+          enabled: true
+          max-retries: 2
+          initial-interval: 1s
+          multiplier: 2
+          max-interval: 10s
   docker:
     compose:
       file: compose.yaml
@@ -24,9 +40,16 @@ springdoc:
   api-docs:
     path: /api-docs
 
+ticketya:
+  # Las fechas de los eventos vienen sin zona: "fecha futura" se mide en esta
+  time-zone: America/Argentina/Buenos_Aires
 
 management:
   endpoints:
     web:
       exposure:
         include: health,info
+  endpoint:
+    health:
+      # Muestra qué componente está caído (p. ej. rabbit) sin exponer sus detalles
+      show-components: always

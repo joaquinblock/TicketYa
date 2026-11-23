@@ -25,6 +25,8 @@ import org.group10.event.entity.Venue;
 import org.group10.event.exception.EventErrorCode;
 import org.group10.event.mapper.EventMapper;
 import org.group10.event.mapper.ParticipantMapper;
+import org.group10.event.messaging.EventChange;
+import org.group10.event.messaging.EventChanged;
 import org.group10.event.repository.EventRepository;
 import org.group10.event.repository.EventSectorRepository;
 import org.group10.event.repository.ParticipantRepository;
@@ -33,6 +35,7 @@ import org.group10.event.repository.SectorRepository;
 import org.group10.event.repository.SectorSeatCount;
 import org.group10.event.repository.VenueRepository;
 import org.group10.event.statemachine.EventStatusMachine;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -68,6 +71,7 @@ public class EventService {
     private final TransactionOperations transactions;
     private final TicketClient ticketClient;
     private final Clock clock;
+    private final ApplicationEventPublisher events;
 
     /**
      * The event with its venue, the sectors it sells with their price and capacity, and its participants.
@@ -210,7 +214,9 @@ public class EventService {
     }
 
     /**
-     * Publishes a draft: {@code DRAFT -> PUBLISHED} through the state machine, once it can be sold.
+     * Publishes a draft: {@code DRAFT -> PUBLISHED} through the state machine, once it can be sold, and lets the fans
+     * of its participants know once it's committed (US-NOT-03). The event is locked while its status changes, so two
+     * publications at the same time notify once.
      *
      * @throws TicketYaException {@code EVENT_NOT_FOUND}, {@code INVALID_STATUS_TRANSITION} if it isn't a draft,
      *                           {@code ORGANIZER_NOT_IN_ORGANIZATION} or {@code EVENT_NOT_PUBLISHABLE} with every
@@ -235,15 +241,17 @@ public class EventService {
         ticketClient.synchronizeEventSale(id, sale);
 
         return transactions.execute(tx -> {
-            Event managed = getEvent(id);
+            Event managed = getLockedEvent(id);
             ensureStatus(managed, EventStatus.DRAFT, "Solo se publica un borrador");
             managed.changeStatus(EventStatus.PUBLISHED, statusMachine);
+            publishChange(id, EventChange.PUBLISHED);
             return toDetail(managed);
         });
     }
 
     /**
-     * Cancels a published, sold out or suspended event for good.
+     * Cancels a published, sold out or suspended event for good, and lets the buyers know once it's committed.
+     * Cancelling it again changes nothing and doesn't notify them twice.
      *
      * @param caller an administrator, or the organizer who created the event (see {@link #ensureCanSuspendOrCancel})
      * @throws TicketYaException {@code EVENT_NOT_FOUND}, {@code NOT_EVENT_CREATOR}, {@code ORGANIZER_NOT_IN_ORGANIZATION}
@@ -262,8 +270,12 @@ public class EventService {
                 saleSnapshotOf(getEvent(id), EventStatus.CANCELLED)));
 
         return transactions.execute(tx -> {
-            Event managed = getEvent(id);
+            Event managed = getLockedEvent(id);
+            EventStatus previous = managed.getStatus();
             managed.changeStatus(EventStatus.CANCELLED, statusMachine);
+            if (previous != EventStatus.CANCELLED) {
+                publishChange(id, EventChange.CANCELLED);
+            }
             return toDetail(managed);
         });
     }
@@ -296,7 +308,8 @@ public class EventService {
     }
 
     /**
-     * Suspends a published or sold out event, remembering which of the two it was so {@link #resume} goes back to it.
+     * Suspends a published or sold out event, remembering which of the two it was so {@link #resume} goes back to it,
+     * and lets the buyers know once it's committed. Suspending it again doesn't notify them twice.
      *
      * @param caller an administrator, or the organizer who created the event
      * @throws TicketYaException {@code EVENT_NOT_FOUND}, {@code NOT_EVENT_CREATOR}, {@code ORGANIZER_NOT_IN_ORGANIZATION}
@@ -313,17 +326,21 @@ public class EventService {
                 saleSnapshotOf(getEvent(id), EventStatus.SUSPENDED)));
 
         return transactions.execute(tx -> {
-            Event managed = getEvent(id);
+            Event managed = getLockedEvent(id);
+            EventStatus previous = managed.getStatus();
             managed.suspend(statusMachine);
-            // TODO: keep accepting returns with the 72 h rule (US-TKT-07, #49). Notifying the buyers comes with the
-            //  notifications (Entrega 2).
+            if (previous != EventStatus.SUSPENDED) {
+                publishChange(id, EventChange.SUSPENDED);
+            }
+            // TODO: keep accepting returns with the 72 h rule (US-TKT-07, #49).
             return toDetail(managed);
         });
     }
 
     /**
      * Resumes a suspended event: it goes back to {@code PUBLISHED} or {@code SOLD_OUT}, whichever it was. If it was
-     * rescheduled, {@code request.dateTime()} is the new date.
+     * rescheduled, {@code request.dateTime()} is the new date, and the buyers are told once it's committed. Resuming
+     * on the same date doesn't notify them.
      *
      * @param request optional; {@code null} or without a date keeps the current one
      * @throws TicketYaException {@code EVENT_NOT_FOUND}, {@code NOT_EVENT_CREATOR}, {@code ORGANIZER_NOT_IN_ORGANIZATION},
@@ -344,15 +361,25 @@ public class EventService {
         }));
 
         return transactions.execute(tx -> {
-            Event managed = getEvent(id);
+            Event managed = getLockedEvent(id);
             ensureCanBeResumedOn(managed, newDate);
+            boolean rescheduled = newDate != null && !newDate.equals(managed.getDateTime());
             if (newDate != null) {
                 managed.setDateTime(newDate);
             }
             managed.resume(statusMachine);
-            // TODO: notify the buyers if the date changed (Entrega 2, notifications).
+            if (rescheduled) {
+                publishChange(id, EventChange.RESCHEDULED);
+            }
             return toDetail(managed);
         });
+    }
+
+    /**
+     * Inside the transaction that changes the event: {@code EventChangedPublisher} sends it only after the commit.
+     */
+    private void publishChange(Long id, EventChange change) {
+        events.publishEvent(new EventChanged(id, change, clock.instant()));
     }
 
     private void ensureCanBeResumedOn(Event event, LocalDateTime newDate) {
@@ -558,6 +585,15 @@ public class EventService {
 
     private Event getEvent(Long id) {
         return eventRepository.findById(id).orElseThrow(() -> eventNotFound(id));
+    }
+
+    /**
+     * For the transaction that changes the status and notifies the buyers: with the row locked, a second cancel,
+     * suspend or resume of the same event waits and then reads the new status, so the change is published once.
+     */
+    private Event getLockedEvent(Long id) {
+        eventRepository.lockById(id);
+        return getEvent(id);
     }
 
     private static TicketYaException eventNotFound(Long id) {

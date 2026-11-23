@@ -8,6 +8,8 @@ spring:
     serviceclient:
       event-service:
         base-url: ${EVENT_SERVICE_URL:http://localhost:8082}
+        connect-timeout: 1s
+        read-timeout: 2s
   docker:
     compose:
       file: compose.yaml

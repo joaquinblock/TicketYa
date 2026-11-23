@@ -7,6 +7,7 @@ import org.group10.event.dto.EventSearchRequest;
 import org.group10.event.dto.EventSort;
 import org.group10.event.dto.EventSummaryResponse;
 import org.group10.event.entity.EventType;
+import org.group10.event.repository.ParticipantRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -26,30 +27,54 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * Unión (SPORTS, Rosario, +15, from 12000), 6 Jazz en el puerto (CONCERT, SOLD_OUT, Mar del Plata, +10, from 18000) and
  * 11 Peña folklórica serrana (CONCERT, organization 2, Tandil, +18, from 7000). Left out: drafts 3, 10 and 12, the
  * suspended 7 (with Los Serranos), the cancelled 8 and the finished 9.
+ * <p>
+ * After them come the 30 billboard events (ids 13 to 42), from +75 on and from 50000 on, so the six above are
+ * always first by date and by price. That's why the lists check {@code startsWith} plus the total: the total is what
+ * catches a draft, suspended or cancelled event that leaks in.
  */
 @SpringBootTest
 @ActiveProfiles("test")
 class EventSearchServiceTest {
 
+    private static final int VISIBLE_EVENTS = 6;
+    private static final int BILLBOARD_EVENTS = 30;
+    private static final int BILLBOARD_CONCERTS = 7;
+    private static final int BILLBOARD_PLAYS = 6;
+    private static final int BILLBOARD_CONCERTS_IN_TANDIL = 2;
+    private static final int BILLBOARD_IN_CORDOBA = 7;
+    private static final int BILLBOARD_IN_MAR_DEL_PLATA = 5;
+
     @Autowired
     private EventSearchService searchService;
 
+    @Autowired
+    private ParticipantRepository participantRepository;
+
     @Test
     void withoutFilters_showsOnlyPublishedAndSoldOutFromTheNearest() {
-        assertThat(ids(search(null, null, null, null, null, null, null, null)))
-                .containsExactly(6L, 5L, 11L, 2L, 1L, 4L);
+        EventPageResponse page = search(null, null, null, null, null, null, null, null);
+
+        assertThat(ids(page)).startsWith(6L, 5L, 11L, 2L, 1L, 4L);
+        assertThat(page.totalElements()).isEqualTo(VISIBLE_EVENTS + BILLBOARD_EVENTS);
     }
 
     @Test
     void byType() {
-        assertThat(ids(search(null, EventType.CONCERT, null, null, null, null, null, null)))
-                .containsExactly(6L, 11L, 1L);
+        EventPageResponse page = search(null, EventType.CONCERT, null, null, null, null, null, null);
+
+        assertThat(ids(page)).startsWith(6L, 11L, 1L);
+        assertThat(page.totalElements()).isEqualTo(3 + BILLBOARD_CONCERTS);
     }
 
     @Test
     void byCity_ignoresCaseAndAccents() {
-        assertThat(ids(search(null, null, "cordoba", null, null, null, null, null))).containsExactly(4L);
-        assertThat(ids(search(null, null, "MAR DEL PLATA", null, null, null, null, null))).containsExactly(6L);
+        EventPageResponse cordoba = search(null, null, "cordoba", null, null, null, null, null);
+        EventPageResponse marDelPlata = search(null, null, "MAR DEL PLATA", null, null, null, null, null);
+
+        assertThat(ids(cordoba)).startsWith(4L);
+        assertThat(cordoba.totalElements()).isEqualTo(1 + BILLBOARD_IN_CORDOBA);
+        assertThat(ids(marDelPlata)).startsWith(6L);
+        assertThat(marDelPlata.totalElements()).isEqualTo(1 + BILLBOARD_IN_MAR_DEL_PLATA);
     }
 
     @Test
@@ -72,14 +97,17 @@ class EventSearchServiceTest {
 
     @Test
     void severalFilters_combine() {
-        assertThat(ids(search(null, EventType.CONCERT, "tandil", null, null, null, null, null))).containsExactly(11L);
+        EventPageResponse page = search(null, EventType.CONCERT, "tandil", null, null, null, null, null);
+
+        assertThat(ids(page)).startsWith(11L);
+        assertThat(page.totalElements()).isEqualTo(1 + BILLBOARD_CONCERTS_IN_TANDIL);
     }
 
     @Test
     void sortByPrice_fromTheCheapestPriceFrom() {
         EventPageResponse page = search(null, null, null, null, null, null, null, EventSort.PRICE);
 
-        assertThat(ids(page)).containsExactly(11L, 5L, 2L, 6L, 4L, 1L);
+        assertThat(ids(page)).startsWith(11L, 5L, 2L, 6L, 4L, 1L);
         assertThat(page.content().getFirst().priceFrom()).isEqualByComparingTo("7000");
     }
 
@@ -108,13 +136,53 @@ class EventSearchServiceTest {
     }
 
     @Test
+    void summary_bringsTheSaleStart_orNullWhenTheSaleHasNoStart() {
+        EventSummaryResponse festival = search(null, EventType.FESTIVAL, null, null, null, null, null, null).content().getFirst();
+        EventSummaryResponse play = search(null, EventType.THEATER, null, null, null, null, null, null).content().getFirst();
+
+        assertThat(festival.saleStart()).isEqualTo(LocalDate.now().plusDays(20).atTime(12, 0));
+        assertThat(play.saleStart()).isNull();
+    }
+
+    @Test
     void paging_countsEveryResult() {
         EventPageResponse second = searchService.search(
-                new EventSearchRequest(null, null, null, null, null, null, null, null, 1, 4));
+                new EventSearchRequest(null, null, null, null, null, null, null, null, null, 1, 4));
 
-        assertThat(ids(second)).containsExactly(1L, 4L);
-        assertThat(second.totalElements()).isEqualTo(6);
-        assertThat(second.totalPages()).isEqualTo(2);
+        assertThat(ids(second)).containsExactly(1L, 4L, 13L, 14L);
+        assertThat(second.totalElements()).isEqualTo(VISIBLE_EVENTS + BILLBOARD_EVENTS);
+        assertThat(second.totalPages()).isEqualTo(9);
+    }
+
+    @Test
+    void bySeveralTypes_matchesAnyOfThem_fromTheNearest() {
+        EventPageResponse page = searchBy(List.of(EventType.CONCERT, EventType.THEATER), null);
+
+        assertThat(ids(page)).startsWith(6L, 11L, 2L, 1L);
+        assertThat(page.totalElements()).isEqualTo(4 + BILLBOARD_CONCERTS + BILLBOARD_PLAYS);
+    }
+
+
+    @Test
+    void byParticipantId_leavesTheSuspendedEventOut() {
+        assertThat(ids(searchBy(null, List.of(participantId("Los Serranos"))))).containsExactly(1L, 4L);
+    }
+
+    @Test
+    void bySeveralParticipantIds_matchesAnyOfThem() {
+        assertThat(ids(searchBy(null, List.of(participantId("Los Serranos"), participantId("Trío Costero")))))
+                .containsExactly(6L, 1L, 4L);
+    }
+
+    @Test
+    void byParticipantIdAndType_combine() {
+        assertThat(ids(searchBy(List.of(EventType.FESTIVAL), List.of(participantId("Los Serranos")))))
+                .containsExactly(4L);
+    }
+
+    @Test
+    void byParticipantIdThatDoesNotExist_findsNothing() {
+        assertThat(ids(searchBy(null, List.of(Long.MAX_VALUE)))).isEmpty();
     }
 
     @Test
@@ -127,8 +195,19 @@ class EventSearchServiceTest {
 
     private EventPageResponse search(String q, EventType type, String city, String participant, Long organizationId,
                                      LocalDate from, LocalDate to, EventSort sort) {
-        return searchService.search(new EventSearchRequest(q, type, city, participant, organizationId, from, to, sort,
-                null, null));
+        return searchService.search(new EventSearchRequest(q, type == null ? null : List.of(type), city, participant,
+                null, organizationId, from, to, sort, null, null));
+    }
+
+    private EventPageResponse searchBy(List<EventType> types, List<Long> participantIds) {
+        return searchService.search(new EventSearchRequest(null, types, null, null, participantIds, null, null, null,
+                null, null, null));
+    }
+
+    private long participantId(String name) {
+        return participantRepository.findAll().stream()
+                .filter(participant -> participant.getName().equals(name))
+                .findFirst().orElseThrow().getId();
     }
 
     private static List<Long> ids(EventPageResponse page) {

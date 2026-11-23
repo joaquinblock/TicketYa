@@ -44,7 +44,7 @@ Al consultar una entrada `ENABLED`, queue-service devuelve un JWT RS256. Sus cla
 | `enabledUntil` y `exp` | Fin fijo de la ventana, en segundos Unix para el claim y como expiración JWT estándar |
 | `jti` | ID de la generación de la entrada |
 
-El token se firma con una clave RSA propia del queue-service, distinta de la clave de autenticación de auth-service. `GET /.well-known/jwks.json` publica solo la clave pública y su `kid`; ticket-service puede verificar firma, emisor, audiencia, cliente, evento y vencimiento sin una llamada por compra. El endpoint se consume directo entre servicios, no por el gateway. US-TKT-21 (#64) implementa la validación del turno en ticket-service y queda fuera de esta historia.
+El token se firma con una clave RSA propia del queue-service, distinta de la clave de autenticación de auth-service. `GET /.well-known/jwks.json` publica solo la clave pública y su `kid`; ticket-service verifica firma, emisor, audiencia, cliente, evento y vencimiento localmente, sin una llamada por compra. El endpoint se consume directo entre servicios, no por el gateway. La validación en ticket-service pertenece a US-TKT-21 (#64).
 
 Configurar `QUEUE_JWT_PRIVATE_KEY_LOCATION` con una clave privada PKCS#8 montada como secreto en entornos persistentes. Si no está definida, se genera una clave efímera para desarrollo y los turnos dejan de verificarse tras reiniciar queue-service. No compartir la clave privada de auth-service. La rotación de claves debe considerar que los turnos emitidos siguen vigentes hasta 10 minutos.
 

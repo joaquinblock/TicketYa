@@ -95,7 +95,7 @@ Disponibilidad, reservas, pago y emisión de entradas, compras, devoluciones e i
 |---|---|---|---|---|---|
 | `GET` | `/api/availability` | Consultar la disponibilidad de un evento | `?eventId` | Público | **200** Disponibilidad por sector<br>**404** resource_not_found: el evento no tiene lugares a la venta |
 | `GET` | `/api/events/{eventId}/report` | Consultar el reporte de un evento | `{eventId}` | `REPORT_VIEW`, organizador de la organización del evento | **200** Reporte por sector y total del evento<br>**400** validation_error<br>**401** unauthorized<br>**403** forbidden<br>**404** event_not_found<br>**503** service_unavailable: el event-service no responde |
-| `POST` | `/api/orders` | Reservar lugares | header `X-User-Id`<br>body `ReservationRequest` | `X-User-Id`, sin validar rol | **201** Reserva creada, o la orden ya creada por ese mismo intento<br>**400** validation_error<br>**404** resource_not_found: el evento, sector o asiento no existe<br>**409** seat_unavailable, sector_sold_out, ticket_limit_exceeded, event_not_on_sale, sale_not_started o data_conflict |
+| `POST` | `/api/orders` | Reservar lugares | header `X-User-Id`<br>header opcional `X-Queue-Token`<br>body `ReservationRequest` | `X-User-Id`, sin validar rol | **201** Reserva creada, o la orden ya creada por ese mismo intento<br>**400** validation_error<br>**403** invalid_queue_token: turno faltante o no válido para cliente/evento de alta demanda<br>**404** resource_not_found: el evento, sector o asiento no existe<br>**409** seat_unavailable, sector_sold_out, ticket_limit_exceeded, event_not_on_sale, sale_not_started o data_conflict<br>**503** service_unavailable: no se pudo consultar el JWKS |
 | `POST` | `/api/orders/{id}/pay` | Pagar una orden | header `X-User-Id`<br>`{id}`<br>body `PayOrderRequest` | `X-User-Id`, sin validar rol | **200** Orden pagada, con sus entradas y QR<br>**400** validation_error<br>**404** order_not_found: no existe o es de otro cliente<br>**409** reservation_expired, payment_window_closed, order_not_payable, payment_in_progress o purchase_failed: se cobró, falló la emisión y el pago se reintegra<br>**422** payment_rejected, con reason y rejectedAttempts en detail<br>**503** service_unavailable: el pago quedó sin resultado y solo se puede repetir ese intento |
 | `GET` | `/api/orders` | Ver mis compras | header `X-User-Id` | `X-User-Id`, sin validar rol | **200** Órdenes del cliente, de la más nueva a la más vieja |
 | `GET` | `/api/orders/{id}` | Ver una compra | header `X-User-Id`<br>`{id}` | `X-User-Id`, sin validar rol | **200** Orden con sus entradas<br>**404** order_not_found: no existe o es de otro cliente |
@@ -231,6 +231,7 @@ GET /api/events?q=serran&sort=RELEVANCE&size=2
 ```http
 POST /api/orders
 X-User-Id: 1
+X-Queue-Token: <JWT de turno; solo para eventos de alta demanda>
 Content-Type: application/json
 
 { "eventId": 2, "idempotencyKey": "e3b0c442-98fc-4b1d-8f3a-7c5d1a2b3c4d", "seatIds": [90, 91] }

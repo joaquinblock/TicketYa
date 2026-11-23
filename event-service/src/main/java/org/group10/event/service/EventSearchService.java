@@ -142,6 +142,14 @@ public class EventSearchService {
         return subquery.select(cb.literal(1)).where(like(cb, participant.get("name"), pattern));
     }
 
+    private static Subquery<Integer> participantWithId(CriteriaBuilder cb, AbstractQuery<?> query, Root<Event> event,
+                                                       List<Long> ids) {
+        Subquery<Integer> subquery = query.subquery(Integer.class);
+        Root<Event> correlated = subquery.correlate(event);
+        Join<Event, Participant> participant = correlated.join("participants");
+        return subquery.select(cb.literal(1)).where(participant.get("id").in(ids));
+    }
+
     private static Predicate like(CriteriaBuilder cb, Expression<String> field, String pattern) {
         return cb.like(cb.lower(field), pattern, LIKE_ESCAPE);
     }
@@ -161,8 +169,11 @@ public class EventSearchService {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(event.get("status").in(VISIBLE));
             predicates.add(cb.greaterThan(event.get("dateTime"), now));
-            if (request.type() != null) {
-                predicates.add(cb.equal(event.get("type"), request.type()));
+            if (request.type() != null && !request.type().isEmpty()) {
+                predicates.add(event.get("type").in(request.type()));
+            }
+            if (request.participantId() != null && !request.participantId().isEmpty()) {
+                predicates.add(cb.exists(participantWithId(cb, query, event, request.participantId())));
             }
             if (request.organizationId() != null) {
                 predicates.add(cb.equal(event.get("organizationId"), request.organizationId()));

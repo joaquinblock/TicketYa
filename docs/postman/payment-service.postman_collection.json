@@ -29,7 +29,10 @@
     { "key": "orderPaymentsAnswer", "value": "" },
     { "key": "resilienceOrderId", "value": "" },
     { "key": "resilienceKey", "value": "" },
-    { "key": "resilienceApprovedAnswer", "value": "" }
+    { "key": "resilienceApprovedAnswer", "value": "" },
+    { "key": "cancelOrderId", "value": "" },
+    { "key": "cancelKey", "value": "" },
+    { "key": "cancelAnswer", "value": "" }
   ],
   "item": [
     {
@@ -1019,6 +1022,139 @@
               "mode": "raw",
               "raw": "{\n  \"delayMs\": 0,\n  \"down\": false\n}"
             }
+          }
+        }
+      ]
+    },
+    {
+      "name": "US-PAY-12: Resolver pagos sin respuesta y anular una reserva vencida",
+      "description": "Necesita payment-service con el perfil dev. Correr en orden: crea un pago PENDING cuando la pasarela está caída, deja la cancelación pendiente, recupera la pasarela y reintenta hasta CANCELLED. Al final deja la pasarela habilitada.",
+      "item": [
+        {
+          "name": "Tirar la pasarela → 200",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 con la pasarela caída', () => {",
+            "  pm.response.to.have.status(200);",
+            "  pm.expect(pm.response.json().down).to.eql(true);",
+            "});"
+          ] } }],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"delayMs\":0,\"down\":true}" },
+            "url": "{{paymentUrl}}/internal/mock/gateway"
+          }
+        },
+        {
+          "name": "Crear un pago PENDING → 503",
+          "event": [
+            { "listen": "prerequest", "script": { "exec": [
+              "pm.collectionVariables.set('cancelOrderId', String(Date.now()));",
+              "pm.collectionVariables.set('cancelKey', pm.variables.replaceIn('{{$guid}}'));"
+            ] } },
+            { "listen": "test", "script": { "exec": [
+              "pm.test('503 payment_gateway_unavailable', () => {",
+              "  pm.response.to.have.status(503);",
+              "  pm.expect(pm.response.json().error).to.eql('payment_gateway_unavailable');",
+              "});"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": {{cancelOrderId}},\n  \"amount\": 25000.00,\n  \"paymentMethod\": \"CREDIT_CARD\",\n  \"idempotencyKey\": \"{{cancelKey}}\"\n}" },
+            "url": "{{paymentUrl}}/internal/payments"
+          }
+        },
+        {
+          "name": "Pasarela sin respuesta al anular → 200 PENDING",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 y el pago sigue PENDING', () => {",
+            "  pm.response.to.have.status(200);",
+            "  pm.expect(pm.response.json().status).to.eql('PENDING');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"idempotencyKey\":\"{{cancelKey}}\"}" },
+            "url": "{{paymentUrl}}/internal/payments/cancel"
+          }
+        },
+        {
+          "name": "Recuperar la pasarela → 200",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 con la pasarela disponible', () => {",
+            "  pm.response.to.have.status(200);",
+            "  pm.expect(pm.response.json().down).to.eql(false);",
+            "});"
+          ] } }],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"delayMs\":0,\"down\":false}" },
+            "url": "{{paymentUrl}}/internal/mock/gateway"
+          }
+        },
+        {
+          "name": "Reintentar cancelación → 200 CANCELLED",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 y cancelación confirmada', () => {",
+            "  pm.response.to.have.status(200);",
+            "  pm.expect(pm.response.json().status).to.eql('CANCELLED');",
+            "});",
+            "pm.collectionVariables.set('cancelAnswer', pm.response.text());"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"idempotencyKey\":\"{{cancelKey}}\"}" },
+            "url": "{{paymentUrl}}/internal/payments/cancel"
+          }
+        },
+        {
+          "name": "Repetir cancelación → misma respuesta",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('El estado terminal no cambia', () => {",
+            "  pm.response.to.have.status(200);",
+            "  pm.expect(pm.response.text()).to.eql(pm.collectionVariables.get('cancelAnswer'));",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"idempotencyKey\":\"{{cancelKey}}\"}" },
+            "url": "{{paymentUrl}}/internal/payments/cancel"
+          }
+        },
+        {
+          "name": "Clave inexistente → 404",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('404 payment_not_found', () => {",
+            "  pm.response.to.have.status(404);",
+            "  pm.expect(pm.response.json().error).to.eql('payment_not_found');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"idempotencyKey\":\"{{$guid}}\"}" },
+            "url": "{{paymentUrl}}/internal/payments/cancel"
+          }
+        },
+        {
+          "name": "Falta la clave → 400",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('400 validation_error', () => {",
+            "  pm.response.to.have.status(400);",
+            "  pm.expect(pm.response.json().error).to.eql('validation_error');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{paymentUrl}}/internal/payments/cancel"
           }
         }
       ]

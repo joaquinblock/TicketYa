@@ -548,7 +548,7 @@ Tipo: técnica · Servicio: payment-service · Consigna: NF · Épica: #4 · Ent
 - Los cobros con el medio configurado en `payment.mock.rejected-method` se rechazan con un motivo.
 - Los cobros con cualquier otro medio y los reintegros se aprueban, cada uno con un identificador de pasarela único.
 - Repetir un cobro con la misma clave no genera otro cobro en la pasarela.
-- Para la Entrega 2, `payment.mock.delay-ms` demora las respuestas y otra propiedad simula la caída de la pasarela. Son necesarias para probar la US-PAY-11.
+- Para la Entrega 2, `payment.mock.delay-ms` demora las respuestas y `payment.mock.down` simula la caída de la pasarela. Son necesarias para probar la US-PAY-11. Con el perfil `dev`, `PUT /internal/mock/gateway` las cambia sin reiniciar.
 
 **Notas técnicas:** el mock vive detrás de un adaptador, para reemplazarlo por una pasarela real sin tocar el resto.
 
@@ -640,7 +640,7 @@ Servicio: payment-service · Sirve a: US-TKT-23 · Consigna: NF · Épica: #10 �
 - Con la pasarela caída, los pedidos responden 503 `payment_gateway_unavailable` sin esperar todo el tiempo máximo.
 - Cuando la pasarela se recupera, los cobros vuelven a procesarse sin reiniciar el servicio.
 
-**Notas técnicas:** timeout, reintentos con la misma clave y circuit breaker. El tiempo total, sumando reintentos, tiene que ser menor al margen de 1 minuto. Ver *`PENDING` como estado de duda* en `payment-service.md`.
+**Notas técnicas:** timeout, reintentos con la misma clave y circuit breaker. El tiempo total, sumando reintentos, tiene que ser menor al margen de 1 minuto. Ver *`PENDING` como estado de duda* y *Resiliencia ante la pasarela* en `payment-service.md`, y el [ADR 0007](adr/0007-resiliencia-ante-la-pasarela-con-resilience4j.md).
 
 ### US-PAY-12: Resolver los pagos sin respuesta y anular los de una reserva vencida
 

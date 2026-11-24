@@ -9,6 +9,7 @@ import org.group10.ticket.entity.OrderStatus;
 import org.group10.ticket.entity.Ticket;
 import org.group10.ticket.exception.TicketErrorCode;
 import org.group10.ticket.mapper.OrderMapper;
+import org.group10.ticket.mapper.ReturnRequestMarks;
 import org.group10.ticket.repository.EventSaleRepository;
 import org.group10.ticket.repository.OrderRepository;
 import org.group10.ticket.repository.ReturnRequestRepository;
@@ -40,11 +41,11 @@ public class OrderQueryService {
                 .findAllById(orders.stream().map(Order::getEventId).distinct().toList())
                 .stream()
                 .collect(Collectors.toMap(EventSale::getEventId, Function.identity()));
-        Set<Long> pendingReturnTicketIds = findPendingReturnTicketIds(allTickets);
+        ReturnRequestMarks returnRequests = findReturnRequestMarks(allTickets);
 
         return orders.stream()
                 .map(order -> OrderMapper.toResponse(order, salesByEvent.get(order.getEventId()),
-                        ticketsByOrder.getOrDefault(order.getId(), List.of()), pendingReturnTicketIds))
+                        ticketsByOrder.getOrDefault(order.getId(), List.of()), returnRequests))
                 .toList();
     }
 
@@ -90,14 +91,15 @@ public class OrderQueryService {
 
     public OrderResponse toResponse(Order order, List<Ticket> tickets) {
         return OrderMapper.toResponse(order, eventSaleRepository.findById(order.getEventId()).orElseThrow(),
-                tickets, findPendingReturnTicketIds(tickets));
+                tickets, findReturnRequestMarks(tickets));
     }
 
-    private Set<Long> findPendingReturnTicketIds(List<Ticket> tickets) {
+    private ReturnRequestMarks findReturnRequestMarks(List<Ticket> tickets) {
         if (tickets.isEmpty()) {
-            return Set.of();
+            return ReturnRequestMarks.NONE;
         }
         List<Long> ticketIds = tickets.stream().map(Ticket::getId).toList();
-        return returnRequestRepository.findTicketIdsWithPendingRequest(ticketIds);
+        return new ReturnRequestMarks(returnRequestRepository.findTicketIdsWithPendingRequest(ticketIds),
+                returnRequestRepository.findTicketIdsWithRejectedRequest(ticketIds));
     }
 }

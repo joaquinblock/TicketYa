@@ -265,6 +265,20 @@ public class EventSeeder implements ApplicationRunner {
 
         seedSaleShowcase();
 
+        // Event 47: a second high demand event with the sale open, after all the others so no id moves. In the dev
+        // profile the queue-service puts 2 test people ahead, so the front shows 3 (event 1 shows 1)
+        Event secondHighDemand = eventRepository.save(base("Las Voces del Sur en el Litoral", "Única fecha en Rosario",
+                EventType.CONCERT, litoral, at(45, 21, 0), EventStatus.PUBLISHED)
+                .highDemand(true)
+                .saleStart(at(-1, 10, 0))
+                .maxTicketsPerCustomer(4)
+                .participants(participants(vocesDelSur))
+                .build());
+        eventSectorRepository.saveAll(List.of(
+                eventSector(secondHighDemand, litoralTerrace, "40000"),
+                eventSector(secondHighDemand, litoralStand, "60000")
+        ));
+
         log.info("EventSeeder: {} lugares, {} sectores, {} asientos, {} participantes y {} eventos cargados",
                 venueRepository.count(), sectorRepository.count(), seatRepository.count(),
                 participantRepository.count(), eventRepository.count());

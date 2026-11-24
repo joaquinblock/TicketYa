@@ -198,6 +198,15 @@ public class QueueRepository {
         return storedToken.toString();
     }
 
+    /** Borra la fila entera de un evento: quién entró, en qué orden y los turnos dados. Solo para el perfil dev. */
+    public void clear(Long eventId) {
+        Set<String> keys = redis.keys(prefix(eventId) + "*");
+        if (keys != null && !keys.isEmpty()) {
+            redis.delete(keys);
+        }
+        redis.opsForSet().remove(ACTIVE_EVENTS_KEY, eventId.toString());
+    }
+
     private static QueueEntrySnapshot toSnapshot(List<?> result) {
         String entryId = result.get(0).toString();
         String status = result.get(1).toString();

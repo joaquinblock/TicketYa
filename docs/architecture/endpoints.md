@@ -301,6 +301,8 @@ Authorization: Bearer <JWT de auth-service con TICKET_PURCHASE>
 ```
 El token de turno vence exactamente en `enabledUntil`; consultas posteriores no renuevan la ventana.
 
+**Para volver a probar la fila (solo perfil `dev`):** `POST /api/queue/{eventId}/dev-reset` responde 204, vacía la fila del evento y vuelve a poner la gente de prueba. Lo mismo pasa al arrancar el queue-service. En el evento 1 entrás primero (`position: 1`) y en el 47, *Las Voces del Sur en el Litoral*, con 2 personas de prueba delante (`position: 3`). La gente de prueba pasa con la primera tanda, a los 30 s. Sin el perfil, la ruta da 404.
+
 ### Un error de permisos (event-service)
 
 ```http

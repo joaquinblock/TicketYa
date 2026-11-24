@@ -73,6 +73,7 @@ Las decisiones de diseño y las dependencias entre servicios están en la docume
 | [US-NOT-01](#us-not-01-recibir-la-confirmación-de-la-compra) | Recibir la confirmación de la compra | F22. Notificaciones | notification-service | ticket-service, auth-service | 2 | #8 |
 | [US-NOT-02](#us-not-02-enterarme-si-un-evento-se-cancela-o-cambia) | Enterarme si un evento se cancela o cambia | F22. Notificaciones | notification-service | event-service, ticket-service | 2 | #8 |
 | [US-NOT-03](#us-not-03-saber-cuándo-un-artista-favorito-toca-en-mi-ciudad) | Saber cuándo un artista favorito toca en mi ciudad | F22. Notificaciones | notification-service | recommendation-service, event-service | 2 | #8 |
+| [US-NOT-04](#us-not-04-ver-mis-notificaciones) | Ver mis notificaciones | F22. Notificaciones | notification-service | — | 2 | #8 |
 | [US-REC-01](#us-rec-01-registrar-mis-preferencias) | Registrar mis preferencias | F23. Preferencias y recomendaciones | recommendation-service | event-service | 2 | #8 |
 | [US-REC-02](#us-rec-02-recibir-sugerencias-de-eventos) | Recibir sugerencias de eventos | F23. Preferencias y recomendaciones | recommendation-service | event-service, ticket-service | 2 | #8 |
 
@@ -872,6 +873,19 @@ Servicio: notification-service · Involucra: recommendation-service, event-servi
 - Un cliente sin ese artista como favorito, o de otra ciudad, no recibe nada.
 
 **Estado:** MVP hecho en tres PRs (recommendation, notification y event-service): el aviso es por mail, y el favorito puede ser elegido en las preferencias o inferido de las compras. Ver [`notification-service.md`](architecture/notification-service.md#avisos-de-artistas-favoritos-us-not-03).
+
+### US-NOT-04: Ver mis notificaciones
+
+Como cliente quiero ver en la app los avisos que me mandaron, para no depender de revisar el mail.
+
+Servicio: notification-service · Consigna: 11 · Épica: #8 · Entrega 2
+
+**Criterios de aceptación**
+- `GET /api/notifications` devuelve los avisos del usuario del token, de la más nueva a la más vieja, con título, texto, fecha y si está leído.
+- Cada mail de US-NOT-01, 02 y 03 que sale también queda como aviso.
+- `POST /api/notifications/read-all` marca todos como leídos. Sin token, 401.
+
+**Estado:** hecho. El seeder deja 2 avisos al cliente (user 1): uno leído y uno sin leer.
 
 ## F23. Preferencias y recomendaciones
 

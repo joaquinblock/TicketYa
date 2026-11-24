@@ -30,15 +30,18 @@ public class FanNotifier {
     private final FavoriteEventMailComposer composer;
     private final JavaMailSender mailSender;
     private final String from;
+    private final NotificationInbox inbox;
 
     public FanNotifier(ProcessedMessageRepository processedMessages, AuthClient authClient,
                        FavoriteEventMailComposer composer, JavaMailSender mailSender,
+                       NotificationInbox inbox,
                        @Value("${ticketya.mail.from}") String from) {
         this.processedMessages = processedMessages;
         this.authClient = authClient;
         this.composer = composer;
         this.mailSender = mailSender;
         this.from = from;
+        this.inbox = inbox;
     }
 
     @Transactional
@@ -55,6 +58,7 @@ public class FanNotifier {
         SimpleMailMessage mail = composer.compose(event, user);
         mail.setFrom(from);
         mailSender.send(mail);
+        inbox.record(userId, mail.getSubject(), mail.getText());
         log.info("Se avisó la publicación del evento {} al usuario {}", event.id(), userId);
     }
 }

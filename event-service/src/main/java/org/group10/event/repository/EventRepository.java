@@ -15,6 +15,10 @@ import java.util.Optional;
 
 public interface EventRepository extends JpaRepository<Event, Long> {
 
+    /** Lo que ve el administrador: todos los estados salvo DRAFT, del más próximo al más lejano. */
+    @Query("select e from Event e join fetch e.venue where e.status <> org.group10.event.entity.EventStatus.DRAFT order by e.dateTime")
+    List<Event> findAllPublishedAtSomePointWithVenue();
+
     boolean existsByVenueId(Long venueId);
 
     boolean existsByParticipantsId(Long participantId);

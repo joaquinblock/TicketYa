@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.group10.common.dto.ErrorDto;
+import org.group10.event.dto.AdminEventResponse;
 import org.group10.event.dto.EventCreateRequest;
 import org.group10.event.dto.EventDetailResponse;
 import org.group10.event.dto.EventPageResponse;
@@ -112,6 +113,19 @@ public class EventController {
             content = @Content(schema = @Schema(implementation = ErrorDto.class)))
     public List<EventResponse> findOwn(Caller caller) {
         return eventService.findOwn(caller);
+    }
+
+    @GetMapping("/admin")
+    @RequiresPermission(Permission.EVENT_ADMIN)
+    @Operation(summary = "Listar los eventos para el administrador", description = """
+            Todos los eventos salvo los borradores, en cualquier estado (también suspendidos, cancelados y 
+            finalizados), del más próximo al más lejano. Es la lista desde la que el administrador los suspende, 
+            reanuda o cancela.""")
+    @ApiResponse(responseCode = "200", description = "Los eventos")
+    @ApiResponse(responseCode = "403", description = "forbidden (sin EVENT_ADMIN)",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    public List<AdminEventResponse> listForAdmin() {
+        return eventSearchService.listForAdmin();
     }
 
     @GetMapping("/{id}")

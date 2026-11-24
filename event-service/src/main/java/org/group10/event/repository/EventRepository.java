@@ -29,6 +29,12 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     @EntityGraph(attributePaths = "participants")
     List<Event> findWithParticipantsByIdIn(Collection<Long> ids);
 
+    /**
+     * Every event of the organization, in any status, with its venue: for the organizer's backoffice.
+     */
+    @EntityGraph(attributePaths = "venue")
+    List<Event> findByOrganizationIdOrderByDateTimeDescIdDesc(Long organizationId);
+
     @Query("""
             select e.id from Event e
             where e.status in (org.group10.event.entity.EventStatus.PUBLISHED,

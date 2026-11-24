@@ -103,6 +103,14 @@ La página es un record propio (`EventPageResponse`), y no el `Page` de Spring D
 - **Para cualquier otro, un borrador da `404 event_not_found`,** igual que un id que no existe. Así el id no revela que el evento se está preparando.
 - **No se le consulta a nadie.** La organización del organizador viene en los headers del api-gateway.
 
+## Eventos de mi organización
+
+La búsqueda es la vitrina pública, así que no muestra lo que el organizador necesita gestionar: borradores, suspendidos, cancelados y finalizados. Para eso está `GET /api/events/mine`, con `EVENT_MANAGE`.
+
+- **Devuelve todos los eventos de la organización del token,** en cualquier estado, del más nuevo al más viejo. Un token sin organización da `403 organizer_not_in_organization`.
+- **No se agregó un `?status=` a la búsqueda,** porque mezclaría la vitrina pública con la gestión privada y obligaría a chequear permisos según el filtro.
+- **Sin paginar ni filtrar:** una organización tiene pocas decenas de eventos, y el backoffice filtra en el navegador. Las ventas y la recaudación no vienen acá: son del reporte del ticket-service.
+
 ## Implementación
 
 - **`EventSearchService`, con la Criteria API de JPA.** Cada filtro que viene agrega su condición. La base resuelve el filtrado, el orden y la paginación, no la memoria.

@@ -100,6 +100,19 @@ public class EventService {
     }
 
     /**
+     * Every event of the caller's organization, in any status and newest first: the public search only shows the ones
+     * on sale, and the backoffice also needs drafts, suspended, cancelled and finished events.
+     *
+     * @throws TicketYaException {@code ORGANIZER_NOT_IN_ORGANIZATION} if the token carries no organization
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public List<EventResponse> findOwn(Caller caller) {
+        return eventRepository.findByOrganizationIdOrderByDateTimeDescIdDesc(organizationOf(caller)).stream()
+                .map(EventMapper::toResponse)
+                .toList();
+    }
+
+    /**
      * Whether the caller organizes for the organization, according to its token: the auth-service only puts the
      * organization there while both the organizer and the organization are active.
      */

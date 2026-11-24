@@ -71,6 +71,76 @@
             "method": "GET",
             "url": "{{baseUrl}}/api/events/999"
           }
+        },
+        {
+          "name": "Organizador → 200 con todos los estados de su organización",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Todos son de la organización 1', () => body.forEach(e => pm.expect(e.organizationId).to.eql(1)));",
+                  "pm.test('Trae también borradores', () => pm.expect(body.map(e => e.status)).to.include('DRAFT'));",
+                  "pm.test('Del más nuevo al más viejo', () => body.slice(1).forEach((e, i) => pm.expect(e.dateTime <= body[i].dateTime).to.be.true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/events/mine",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{organizerId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Admin sin EVENT_MANAGE → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('403 forbidden', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error).to.eql('forbidden');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/events/mine",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{adminId}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Sin token → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('401 unauthorized', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/events/mine"
+          }
         }
       ]
     },

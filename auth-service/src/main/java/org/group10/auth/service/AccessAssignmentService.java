@@ -15,6 +15,7 @@ import org.group10.common.security.Caller;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Objects;
 
 @Service
@@ -48,6 +49,21 @@ public class AccessAssignmentService {
         if (!Objects.equals(caller.organizationId(), organizationId)) {
             throw new TicketYaException(CommonErrorCode.FORBIDDEN, message);
         }
+    }
+
+    /**
+     * Los eventos donde el personal puede validar entradas, para su pantalla de inicio. Si no es personal de acceso o
+     * está dado de baja, no tiene ninguno: la puerta igual lo rechaza con {@code STAFF_NOT_ASSIGNED}.
+     */
+    @Transactional(readOnly = true)
+    public List<AccessAssignmentResponse> findOwn(Long staffId) {
+        boolean active = accessStaffRepository.findById(staffId).filter(AccessStaff::isActive).isPresent();
+        if (!active) {
+            return List.of();
+        }
+        return accessAssignmentRepository.findByAccessStaffUserIdOrderByEventId(staffId).stream()
+                .map(assignment -> new AccessAssignmentResponse(staffId, assignment.getEventId()))
+                .toList();
     }
 
     /**

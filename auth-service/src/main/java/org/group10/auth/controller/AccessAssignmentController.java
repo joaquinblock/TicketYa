@@ -16,10 +16,13 @@ import org.group10.common.security.Permission;
 import org.group10.common.security.RequiresPermission;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/users")
@@ -28,6 +31,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class AccessAssignmentController {
 
     private final AccessAssignmentService accessAssignmentService;
+
+    @GetMapping("/me/access-assignments")
+    @RequiresPermission(Permission.TICKET_VALIDATE)
+    @Operation(summary = "Ver mis eventos asignados", description = """
+            Los eventos donde el personal de acceso del token puede validar entradas, ordenados por id. Si está \n            dado de baja, la lista viene vacía.""")
+    @ApiResponse(responseCode = "200", description = "Asignaciones del personal (puede ser una lista vacía)")
+    @ApiResponse(responseCode = "401", description = "unauthorized: sin token",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "403", description = "forbidden: sin TICKET_VALIDATE",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    public List<AccessAssignmentResponse> findOwn(Caller caller) {
+        return accessAssignmentService.findOwn(caller.userId());
+    }
 
     @PutMapping("/{staffId}/access-assignments/{eventId}")
     @RequiresPermission(Permission.EVENT_MANAGE)

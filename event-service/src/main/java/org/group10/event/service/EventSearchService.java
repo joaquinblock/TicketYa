@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.group10.common.exception.CommonErrorCode;
 import org.group10.common.exception.TicketYaException;
 import org.group10.event.config.CatalogCaches;
+import org.group10.event.dto.AdminEventResponse;
 import org.group10.event.dto.EventPageResponse;
 import org.group10.event.dto.EventSearchRequest;
 import org.group10.event.dto.EventSort;
@@ -61,6 +62,14 @@ public class EventSearchService {
     private final EventRepository eventRepository;
     private final EventSectorRepository eventSectorRepository;
     private final Clock clock;
+
+    /** Lo que lista el administrador: todos los estados salvo DRAFT. Sin caché, porque cambia con cada acción. */
+    @Transactional(readOnly = true)
+    public List<AdminEventResponse> listForAdmin() {
+        return eventRepository.findAllPublishedAtSomePointWithVenue().stream()
+                .map(AdminEventResponse::from)
+                .toList();
+    }
 
     /**
      * Only the initial list is cached: any other combination of filters hardly ever repeats (ADR 0009).

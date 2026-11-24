@@ -83,6 +83,7 @@ Usuarios de prueba: `1` cliente, `2` organizador (org `1`), `3` admin, `4` perso
 | event-service | `PUT /api/events/{id}`, `DELETE /api/events/{id}` | `EVENT_MANAGE` |
 | event-service | `POST /api/events/{id}/publish` | `EVENT_MANAGE` |
 | event-service | `POST /api/events/{id}/cancel`, `/suspend`, `/resume` | `EVENT_ADMIN` **o** `EVENT_MANAGE` (y el service exige que sea el organizador que creó el evento) |
+| event-service | `GET /api/events/admin` | `EVENT_ADMIN`: solo el admin |
 | event-service | `POST`/`PUT`/`DELETE` de `/api/venues`, sus sectores (`/api/venues/{id}/sectors`) y sus asientos | `VENUE_MANAGE`: solo el admin. Un organizador es externo a TicketYa y podría cargar lugares que no existen |
 | event-service | `POST`/`PUT`/`DELETE` de `/api/participants` | `PARTICIPANT_MANAGE`: organizadores y admin |
 | auth-service | `POST /api/organizations/{id}/organizers`, `DELETE /api/organizations/{id}/organizers/{userId}` | `USER_MANAGE`: solo el admin promueve o quita organizadores |

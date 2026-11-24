@@ -33,6 +33,7 @@ Usuarios, permisos, organizaciones y organizadores. Detalle de reglas y decision
 | `GET` | `/api/organizers/{userId}` | Ver un organizador activo | `{userId}` | Público | **200** Organizador activo<br>**404** organizer_not_found |
 | `GET` | `/api/users/me` | Ver mis datos | — | Cualquier usuario con token | **200** `{userId, email, firstName, lastName}` del usuario del token<br>**401** unauthorized<br>**404** user_not_found (dado de baja) |
 | `GET` | `/api/users/{id}/permissions` | Ver el rol y los permisos de un usuario | `{id}` | Público | **200** Usuario activo con su rol y sus permisos<br>**404** user_not_found |
+| `GET` | `/api/users/me/access-assignments` | Ver mis eventos asignados (personal de acceso) | — | `TICKET_VALIDATE` | **200** Asignaciones `[{staffId, eventId}]`, ordenadas por evento (vacía si está dado de baja)<br>**401** unauthorized<br>**403** forbidden: sin TICKET_VALIDATE |
 | `PUT` | `/api/users/{staffId}/access-assignments/{eventId}` | Asignar personal de acceso a un evento | `{staffId}`<br>`{eventId}` | `EVENT_MANAGE` (organizador) | **201** Personal asignado `{staffId, eventId}`<br>**200** Ya estaba asignado<br>**400** validation_error / invalid_parameter<br>**401** unauthorized<br>**403** forbidden: sin EVENT_MANAGE, o personal o evento de otra organización<br>**404** access_staff_not_found / event_not_found (inexistente o borrador)<br>**503** service_unavailable: el event-service no responde |
 
 ### Internos

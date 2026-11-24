@@ -86,6 +86,7 @@ Los consume el event-service con `AuthClient`. Swagger: `/swagger-ui.html` en el
 | `POST` | `/api/auth/dev-login` | JWT de un usuario **activo**, sin Google. **Solo con el perfil `dev`**: fuera de él da 404 (ver [ADR-002](../adr/ADR-002-dev-login.md)) | 200 |
 | `GET` | `/.well-known/jwks.json` | Clave pública para verificar los JWT. La usa el api-gateway, directo contra el servicio | 200 |
 | `GET` | `/internal/users/{id}` | Email y nombre de un usuario **activo**. Lo usa el notification-service para el mail de una compra (US-NOT-01). Solo entre servicios: no pasa por el gateway y pide `X-Internal-Secret` | 200 |
+| `GET` | `/api/users/me/access-assignments` | **Solo personal de acceso** (`TICKET_VALIDATE`). Los eventos donde puede validar entradas, para su pantalla de inicio. Dado de baja: lista vacía | 200 |
 | `PUT` | `/api/users/{staffId}/access-assignments/{eventId}` | **Solo un organizador** (`EVENT_MANAGE`). Asigna a su personal de acceso a un evento de su organización (US-AUTH-04). Asignarlo otra vez da 200 y no lo duplica | 201 / 200 |
 | `GET` | `/internal/access-staff/{staffId}/events/{eventId}` | Confirma que el personal está activo y asignado al evento. Lo usa el ticket-service antes de validar un QR (US-TKT-19). Solo entre servicios, con `X-Internal-Secret` | 204 |
 
@@ -125,6 +126,7 @@ GET /internal/access-staff/4/events/1   X-Internal-Secret: …
 - **La respuesta del organizador trae `organizationId`.** El event-service lo usa para comprobar que el organizador pertenece a la organización del evento.
 - **Asignar personal, en este orden:** primero se busca el personal **activo** (si no, `404 access_staff_not_found`), después se controla que sea de la organización del organizador (`403 forbidden`, sin consultar el evento) y por último se pide el evento al event-service con `GET /api/events/{id}`, que debe ser de la misma organización (`403 forbidden`). La llamada al event-service va antes de guardar: si falla, no se crea nada.
 - **No se asigna a borradores.** El event-service responde `404 event_not_found` a un borrador que no pide su organizador, y el auth-service consulta sin token de usuario, así que ese 404 se reenvía tal cual. Para asignar personal, el evento tiene que estar publicado.
+- **Asignaciones de prueba:** `AccessAssignmentSeeder` corre después del `AuthSeeder` y asigna el personal 4 a los eventos 1, 2, 6 y 43 (organización 1) y el 7 al 11 (organización 2), ids del seeder del event-service. Así se prueba la puerta sin asignar antes.
 - **Validar en la puerta:** la consulta interna da `204` solo si el personal está activo y asignado a ese evento. Cualquier otro caso (asignado a otro evento, sin fila en `access_staff`, dado de baja) da `403 staff_not_assigned`.
 
 ## Errores

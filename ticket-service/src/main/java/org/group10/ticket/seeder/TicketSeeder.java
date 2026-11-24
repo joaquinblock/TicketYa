@@ -106,6 +106,7 @@ public class TicketSeeder implements ApplicationRunner {
     private static final Long DERBY_EVENT_ID = 44L;
     private static final Long COAST_FESTIVAL_EVENT_ID = 45L;
     private static final Long CUP_FINAL_EVENT_ID = 46L;
+    private static final Long SECOND_HIGH_DEMAND_EVENT_ID = 47L;
 
     private static final Long BIG_NIGHT_LOWER_STAND_SECTOR_ID = 49L;
     private static final Long BIG_NIGHT_UPPER_STAND_SECTOR_ID = 50L;
@@ -179,6 +180,7 @@ public class TicketSeeder implements ApplicationRunner {
         seedPastEventOrder();
         seedPendingSeatOrder();
         seedSaleShowcase();
+        seedSecondHighDemandSale();
 
         log.info("TicketSeeder: {} asientos por evento, {} cupos, {} órdenes, {} entradas y {} devoluciones cargados",
                 eventSeatRepository.count(), eventSectorStockRepository.count(), orderRepository.count(),
@@ -292,6 +294,17 @@ public class TicketSeeder implements ApplicationRunner {
         eventSeatRepository.findByEventIdOrderBySeatId(FOLK_NIGHT_EVENT_ID).stream()
                 .filter(seat -> FOLK_NIGHT_STALLS_SECTOR_ID.equals(seat.getEventSectorId()))
                 .forEach(seat -> seat.setStatus(EventSeatStatus.SOLD));
+    }
+
+    /**
+     * The EventSeeder's event 47, the second high demand event: same date, sale start and prices, event_sector 62
+     * and 63. Without it the queue gives the turn but there is nothing to buy.
+     */
+    private void seedSecondHighDemandSale() {
+        sale(SECOND_HIGH_DEMAND_EVENT_ID, "Las Voces del Sur en el Litoral", LITORAL, EventSaleStatus.PUBLISHED,
+                at(45, 21, 0), at(-1, 10, 0), true, 4,
+                generalAdmission(62L, "Popular", "40000", 12000),
+                numbered(63L, "Platea", "60000", LITORAL_STAND));
     }
 
     /**

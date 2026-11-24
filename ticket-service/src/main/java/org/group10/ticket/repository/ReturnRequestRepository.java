@@ -43,4 +43,10 @@ public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Lo
             where r.ticket.id in :ticketIds and r.status = org.group10.ticket.entity.ReturnRequestStatus.PENDING
             """)
     Set<Long> findTicketIdsWithPendingRequest(Collection<Long> ticketIds);
+
+    @Query("""
+            select r.ticket.id from ReturnRequest r
+            where r.ticket.id in :ticketIds and r.status = org.group10.ticket.entity.ReturnRequestStatus.REJECTED
+            """)
+    Set<Long> findTicketIdsWithRejectedRequest(Collection<Long> ticketIds);
 }

@@ -17,10 +17,10 @@ public final class OrderMapper {
     }
 
     public static OrderResponse toResponse(Order order, EventSale sale, List<Ticket> tickets,
-                                           Set<Long> pendingReturnTicketIds) {
+                                           ReturnRequestMarks returnRequests) {
         return new OrderResponse(order.getId(), order.getEventId(), toEventOfOrder(sale), order.getStatus(),
                 order.getExpiresAt(), order.getTotal(), order.getPaymentMethod(),
-                tickets.stream().map(ticket -> toTicketResponse(ticket, pendingReturnTicketIds)).toList());
+                tickets.stream().map(ticket -> toTicketResponse(ticket, returnRequests)).toList());
     }
 
     private static EventOfOrder toEventOfOrder(EventSale sale) {
@@ -28,10 +28,11 @@ public final class OrderMapper {
                 sale.getVenueCity());
     }
 
-    private static TicketResponse toTicketResponse(Ticket ticket, Set<Long> pendingReturnTicketIds) {
+    private static TicketResponse toTicketResponse(Ticket ticket, ReturnRequestMarks returnRequests) {
         return new TicketResponse(ticket.getId(), ticket.getEventSectorId(), ticket.getSectorName(),
                 ticket.getSeatId(), ticket.getRow(), ticket.getNumber(), ticket.getPrice(), ticket.getStatus(),
                 ticket.getStatus() == TicketStatus.ISSUED ? ticket.getQrCode() : null,
-                pendingReturnTicketIds.contains(ticket.getId()));
+                returnRequests.pending().contains(ticket.getId()),
+                returnRequests.rejected().contains(ticket.getId()));
     }
 }

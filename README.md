@@ -4,7 +4,7 @@
 
 [Consigna completa](#trabajo-práctico-grupal-ticketya).
 
--Repo frontend: https://github.com/joaquinblock/TicketYa-UI
+**Interfaz gráfica:** vive en su propio repositorio, [TicketYa-UI](https://github.com/joaquinblock/TicketYa-UI), y consume la API a través del gateway.
 
 ## Cómo ejecutarlo
 

@@ -101,6 +101,19 @@ public class EventController {
         return eventSearchService.search(request);
     }
 
+    @GetMapping("/mine")
+    @RequiresPermission(Permission.EVENT_MANAGE)
+    @Operation(summary = "Ver los eventos de mi organización", description = """
+            Todos los eventos de la organización del token, en cualquier estado (también borradores, suspendidos,             cancelados y finalizados), del más nuevo al más viejo. Es para el backoffice del organizador: la             búsqueda pública solo trae los que están a la venta. Sin paginar.""")
+    @ApiResponse(responseCode = "200", description = "Eventos de la organización (puede ser una lista vacía)")
+    @ApiResponse(responseCode = "401", description = "unauthorized",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    @ApiResponse(responseCode = "403", description = "forbidden (sin EVENT_MANAGE) / organizer_not_in_organization",
+            content = @Content(schema = @Schema(implementation = ErrorDto.class)))
+    public List<EventResponse> findOwn(Caller caller) {
+        return eventService.findOwn(caller);
+    }
+
     @GetMapping("/{id}")
     @Operation(summary = "Ver un evento", description = """
             Público, en cualquier estado salvo `DRAFT`: trae el lugar, los sectores que vende con su precio y             capacidad, los participantes y la capacidad total. Un borrador solo lo ve un organizador de su             organización, con su token; para cualquier otro da 404, igual que un id que no existe.""")

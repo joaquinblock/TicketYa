@@ -35,15 +35,18 @@ public class BuyerNotifier {
     private final EventChangeMailComposer composer;
     private final JavaMailSender mailSender;
     private final String from;
+    private final NotificationInbox inbox;
 
     public BuyerNotifier(ProcessedMessageRepository processedMessages, AuthClient authClient,
                          EventChangeMailComposer composer, JavaMailSender mailSender,
+                         NotificationInbox inbox,
                          @Value("${ticketya.mail.from}") String from) {
         this.processedMessages = processedMessages;
         this.authClient = authClient;
         this.composer = composer;
         this.mailSender = mailSender;
         this.from = from;
+        this.inbox = inbox;
     }
 
     /**
@@ -67,6 +70,7 @@ public class BuyerNotifier {
         SimpleMailMessage mail = composer.compose(event, change, user);
         mail.setFrom(from);
         mailSender.send(mail);
+        inbox.record(userId, mail.getSubject(), mail.getText());
         log.info("Se avisó el cambio {} del evento {} al usuario {}", change, event.id(), userId);
     }
 }

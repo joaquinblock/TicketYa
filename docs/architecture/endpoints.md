@@ -19,6 +19,7 @@
 | [ticket-service](#ticket-service) | 8083 | 13 | Disponibilidad, reservas, pago y emisión de entradas, compras, devoluciones, ingreso con QR y reportes. |
 | [payment-service](#payment-service) | 8084 | 4 | Cobros y reintegros contra la pasarela simulada. |
 | [queue-service](#queue-service) | 8085 | 3 | Fila virtual, turnos de compra y publicación de la clave pública para verificarlos. |
+| [notification-service](#notification-service) | 8086 | 2 | Bandeja de avisos de cada usuario (los mails también se guardan ahí). |
 
 ## auth-service
 
@@ -141,6 +142,17 @@ Preferencias, sugerencias y fans de un artista. Puerto 8087.
 | Método | Ruta | Qué hace | Parámetros | Quién | Respuestas |
 |---|---|---|---|---|---|
 | `GET` | `/internal/fans` | Ver los clientes con alguno de los participantes como favorito (elegido o inferido de sus compras) que guardaron esa ciudad (US-NOT-03) | `?participantIds` (uno o más, repetido o separado por comas)<br>`?city`<br>header `X-Internal-Secret` | Solo entre servicios (notification-service) | **200** Ids de los clientes, de menor a mayor; vacío si no hay<br>**400** invalid_parameter: falta un parámetro o un id no es número. validation_error: id no positivo o ciudad en blanco<br>**401** unauthorized: sin el secreto interno |
+
+## notification-service
+
+Mails de compra, cambios de eventos y artistas favoritos, y la bandeja de avisos. Puerto 8086. Cada mail que sale también queda como aviso del usuario.
+
+### Públicos
+
+| Método | Ruta | Qué hace | Parámetros | Quién | Respuestas |
+|---|---|---|---|---|---|
+| `GET` | `/api/notifications` | Ver mis notificaciones, de la más nueva a la más vieja (US-NOT-04) | — | Cualquier rol autenticado | **200** `[{id, title, body, createdAt, read}]`; vacío si no hay<br>**401** unauthorized: sin token |
+| `POST` | `/api/notifications/read-all` | Marcar todas mis notificaciones como leídas (US-NOT-04) | — | Cualquier rol autenticado | **204** sin cuerpo<br>**401** unauthorized: sin token |
 
 ## Ejemplos
 

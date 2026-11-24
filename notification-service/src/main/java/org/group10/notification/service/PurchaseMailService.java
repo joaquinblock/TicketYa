@@ -37,9 +37,10 @@ public class PurchaseMailService {
     private final QrCodeGenerator qrCodeGenerator;
     private final JavaMailSender mailSender;
     private final String from;
+    private final NotificationInbox inbox;
 
     public PurchaseMailService(TicketClient ticketClient, AuthClient authClient, PurchaseMailComposer composer,
-                               QrCodeGenerator qrCodeGenerator, JavaMailSender mailSender,
+                               QrCodeGenerator qrCodeGenerator, JavaMailSender mailSender, NotificationInbox inbox,
                                @Value("${ticketya.mail.from}") String from) {
         this.ticketClient = ticketClient;
         this.authClient = authClient;
@@ -47,6 +48,7 @@ public class PurchaseMailService {
         this.qrCodeGenerator = qrCodeGenerator;
         this.mailSender = mailSender;
         this.from = from;
+        this.inbox = inbox;
     }
 
     public void send(Long orderId, Long userId) {
@@ -79,6 +81,7 @@ public class PurchaseMailService {
                 helper.addInline(image.getKey(), new ByteArrayResource(image.getValue()), "image/png");
             }
         });
+        inbox.record(userId, mail.subject(), "Tus entradas ya están en Mis entradas, con su código QR para el ingreso.");
         log.info("Se envió el mail de la compra de la orden {} al usuario {}", orderId, userId);
     }
 }

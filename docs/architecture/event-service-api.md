@@ -169,6 +169,7 @@ El alta (`POST /api/events`) está en `event-creation-pending.md`. Las transicio
 | Método | Ruta | Qué hace | Permiso | OK |
 |---|---|---|---|---|
 | `GET` | `/api/events` | Búsqueda: `PUBLISHED` y `SOLD_OUT` futuros, con filtros, orden y páginas (ver [`event-search.md`](event-search.md)) | Público | 200 |
+| `GET` | `/api/events/mine` | Todos los eventos de la organización del token, en cualquier estado y del más nuevo al más viejo, sin paginar. Para el backoffice del organizador | `EVENT_MANAGE` | 200 |
 | `GET` | `/api/events/{id}` | El evento con su lugar, los sectores que vende (precio y capacidad), los participantes y la capacidad total. Un `DRAFT` solo lo ve un organizador de su organización; para el resto da 404 | Público | 200 |
 | `PUT` | `/api/events/{id}` | Reemplaza los datos del alta. Usa el mismo body que `POST` | `EVENT_MANAGE` | 200 |
 | `PUT` | `/api/events/{id}/sectors` | Reemplaza los sectores que vende y sus precios | `EVENT_MANAGE` | 200 |

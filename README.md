@@ -4,7 +4,7 @@
 
 [Consigna completa](#trabajo-práctico-grupal-ticketya).
 
--Repo frontend: [https://github.com/joaquinblock/TicketYa-UI]
+-Repo frontend: https://github.com/joaquinblock/TicketYa-UI
 
 ## Cómo ejecutarlo
 

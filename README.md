@@ -4,6 +4,8 @@
 
 [Consigna completa](#trabajo-práctico-grupal-ticketya).
 
+(repo frontend)[https://github.com/joaquinblock/TicketYa-UI]
+
 ## Cómo ejecutarlo
 
 ### Requisitos

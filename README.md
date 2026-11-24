@@ -4,6 +4,8 @@
 
 [Consigna completa](#trabajo-práctico-grupal-ticketya).
 
+**Interfaz gráfica:** vive en su propio repositorio, [TicketYa-UI](https://github.com/joaquinblock/TicketYa-UI), y consume la API a través del gateway.
+
 ## Cómo ejecutarlo
 
 ### Requisitos

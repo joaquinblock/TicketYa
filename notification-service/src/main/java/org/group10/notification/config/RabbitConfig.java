@@ -49,6 +49,9 @@ public class RabbitConfig {
     public static final String EVENT_PUBLISHED = "event.published";
     public static final String FAVORITES_QUEUE = "notification.favorites";
     public static final String FAVORITES_DLQ = FAVORITES_QUEUE + ".dlq";
+    public static final String RETURN_RESOLVED = "return.resolved";
+    public static final String RETURN_QUEUE = "notification.return";
+    public static final String RETURN_DLQ = RETURN_QUEUE + ".dlq";
 
     /** La autoconfiguración lo usa en el RabbitTemplate y en los listeners. */
     @Bean
@@ -113,6 +116,25 @@ public class RabbitConfig {
     @Bean
     Binding eventPublishedBinding(Queue favoritesQueue, TopicExchange eventsExchange) {
         return BindingBuilder.bind(favoritesQueue).to(eventsExchange).with(EVENT_PUBLISHED);
+    }
+
+    /** {@code notification.return} recibe {@code return.resolved}: la devolución que aprobó o rechazó el admin. */
+    @Bean
+    Queue returnQueue() {
+        return QueueBuilder.durable(RETURN_QUEUE)
+                .deadLetterExchange("")
+                .deadLetterRoutingKey(RETURN_DLQ)
+                .build();
+    }
+
+    @Bean
+    Queue returnDeadLetterQueue() {
+        return QueueBuilder.durable(RETURN_DLQ).build();
+    }
+
+    @Bean
+    Binding returnResolvedBinding(Queue returnQueue, TopicExchange eventsExchange) {
+        return BindingBuilder.bind(returnQueue).to(eventsExchange).with(RETURN_RESOLVED);
     }
 
     /**

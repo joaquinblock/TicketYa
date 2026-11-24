@@ -16,6 +16,7 @@ import org.group10.ticket.entity.Ticket;
 import org.group10.ticket.entity.TicketStatus;
 import org.group10.ticket.exception.TicketErrorCode;
 import org.group10.ticket.mapper.ReturnRequestMapper;
+import org.group10.ticket.messaging.ReturnResolvedPublisher;
 import org.group10.ticket.repository.EventSaleRepository;
 import org.group10.ticket.repository.EventSeatRepository;
 import org.group10.ticket.repository.EventSectorStockRepository;
@@ -52,6 +53,7 @@ public class ReturnRequestService {
     private final PaymentClient paymentClient;
     private final TransactionOperations transactions;
     private final Clock clock;
+    private final ReturnResolvedPublisher returnResolvedPublisher;
 
     public ReturnRequestResponse requestReturn(Long userId, Long ticketId) {
         Ticket ticket = ticketRepository.findTicketOfCustomerWithItsOrder(ticketId, userId)
@@ -83,7 +85,7 @@ public class ReturnRequestService {
         }
         log.info("operation=refund_request status=success requestId={} ticketId={} correlationId={}",
                 requestId, request.getTicket().getId(), CorrelationIds.currentOrNew());
-        return ReturnRequestMapper.toResponse(findRequest(requestId));
+        return resolved(requestId);
     }
 
     public ReturnRequestResponse reject(Long administratorId, Long requestId) {
@@ -94,7 +96,16 @@ public class ReturnRequestService {
         if (resolvedRequests == null || resolvedRequests == 0) {
             throw requestAlreadyResolved(requestId);
         }
-        return ReturnRequestMapper.toResponse(findRequest(requestId));
+        log.info("operation=refund_request status=rejected requestId={} correlationId={}", requestId,
+                CorrelationIds.currentOrNew());
+        return resolved(requestId);
+    }
+
+    /** Le avisa al cliente cómo se resolvió su solicitud y la devuelve ya resuelta. */
+    private ReturnRequestResponse resolved(Long requestId) {
+        ReturnRequest request = findRequest(requestId);
+        returnResolvedPublisher.publish(request);
+        return ReturnRequestMapper.toResponse(request);
     }
 
     private void ensureTicketCanBeReturned(Ticket ticket) {
